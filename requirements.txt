@@ -1,0 +1,8 @@
+wxpython>=4.2
+requests>=2.31
+pillow>=10.0
+
+# PDF import only. PyMuPDF publishes no Windows ARM64 package, so this
+# line is skipped on ARM64 machines; every other feature works without
+# it, and PDF import then explains how to proceed.
+pymupdf>=1.24; platform_machine != 'ARM64'
