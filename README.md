@@ -1,12 +1,10 @@
 # Accessible Manga Reader
 
-Manga, read aloud properly — for blind and low-vision readers.
+Manga read aloud properly for blind readers.
 
 Manga is one of the few storytelling media that stayed almost entirely closed to blind readers: the words are drawn into the artwork, so no screen reader can touch them, and the story is carried as much by panels, expressions, and sound effects as by dialogue. Accessible Manga Reader sends each page to an AI vision model and turns it into a script you can read with your screen reader: panel-by-panel descriptions, dialogue attributed to the character speaking, sound effects with their meaning, and the silent panels that carry so much of the storytelling.
 
 It follows manga's own reading grammar. Pages are read right to left, top to bottom — panels, speech bubbles 				inside a panel, and the artwork itself.
-
-**Status: beta.** It works and is in real use, but settings and behaviour may still change between versions.
 
 ## Install
 
@@ -36,7 +34,7 @@ Import a book from the File menu:
 
 Then press Alt+P to process. You are offered a box for optional instructions to the AI first — the most useful thing to put there is the cast, for example: *Aiko: short dark hair, school uniform, the class representative. Kenta: messy hair, always late.* The AI will then use those names from the very first page instead of guessing.
 
-Processing sends the pages to the AI in small batches and saves after every batch, so you can cancel any time, hit a daily quota, or lose your connection without losing a page of work; choose Process again to carry on where it stopped. Each book is processed once and then cached, so re-reading is instant and free.
+Processing sends the pages to the AI in small batches and saves after every batch, so you can cancel any time, choose Process again to carry on where it stopped. Each book is processed once and then cached, so re-reading is instant.
 
 When it is done, press Enter or Alt+R on the book to read it.
 
@@ -71,7 +69,7 @@ In the reader:
 * Ctrl+E — save the whole book as a text file
 * Alt+C or Escape — close, remembering your place
 
-**AI engine tab.** Choose the service, the model, and enter one or more API keys (one per line, up to 10 — when a key runs out of quota the next is used automatically). Use **Refresh model list** to fetch the models your key can actually use, straight from the service; this is the reliable cure for "model not found", since availability differs between accounts and changes over time. Pages per request (default 4) trades fewer requests against larger ones; lower it if a service says a request is too large. The delay between requests keeps long runs under per-minute limits.
+**AI engine tab.** Choose the service, the model, and enter one or more API keys (one per line, up to 10 — when a key runs out of quota the next is used automatically). Use **Refresh model list** to fetch the models your key can actually use, straight from the service. Pages per request (default 4) trades fewer requests against larger ones; lower it if a service says a request is too large. The delay between requests keeps long runs under per-minute limits.
 
 **General tab.** Output language (choose from the list or type any language — the script is translated into it, while Japanese honorifics are kept and sound effects stay romanized with their meaning explained). Verbosity: Concise, Detailed, or Extensive, which walks every panel through composition, each character's expression and pose, the background, and drawn effects like speed lines. Reading direction: right-to-left manga, left-to-right comics, or vertical webtoons. And the default reader view.
 
@@ -101,6 +99,4 @@ Run the tests before changing anything:
 ## Licence
 
 GNU General Public License, version 3 or later. See LICENSE.
-
-
 
