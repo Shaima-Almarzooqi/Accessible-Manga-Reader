@@ -32,10 +32,24 @@ jobs:
       - name: Run tests
         run: python run_tests.py
 
+      # wx loads WebView2Loader.dll at runtime, so PyInstaller's wx hook
+      # does not pick it up; without it the HTML view silently falls back
+      # to the legacy IE engine.
+      - name: Locate WebView2Loader.dll
+        run: |
+          $dll = python -c "import wx, os; print(os.path.join(os.path.dirname(wx.__file__), 'WebView2Loader.dll'))"
+          if (-not (Test-Path $dll)) {
+            Write-Host "WebView2Loader.dll not found. wx package directory contains:"
+            Get-ChildItem (Split-Path $dll)
+            exit 1
+          }
+          "WEBVIEW2_DLL=$dll" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Build single executable
         run: >
           pyinstaller --onefile --windowed --clean
           --name AccessibleMangaReader-${{ matrix.arch }}
+          --add-binary "${{ env.WEBVIEW2_DLL }};wx"
           main.py
 
       - uses: actions/upload-artifact@v4
