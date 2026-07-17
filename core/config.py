@@ -4,7 +4,7 @@ import json
 import os
 
 APP_NAME = "Accessible Manga Reader"
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.10.0"
 
 # Folders used by earlier versions, migrated on first run so existing
 # libraries and settings are not lost to a rename.
@@ -44,6 +44,9 @@ DEFAULT_SETTINGS = {
     # Reader display mode: "book" (whole book as one document),
     # "page" (one page at a time), "panel" (one panel at a time).
     "reader_view": "book",
+    # Show "Panel N (position)" markers in the reader text. Off gives a
+    # continuous narrative; the cached scripts are unchanged either way.
+    "show_panel_labels": True,
     "image_max_dimension": 1568,
     "image_jpeg_quality": 85,
 }

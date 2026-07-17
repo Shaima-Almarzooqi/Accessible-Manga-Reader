@@ -1276,5 +1276,112 @@ class TestProcessorRobustness(WorkspaceTestCase):
         self.assertEqual(book.scripts, {})
 
 
+
+
+class TestStricterPromptRules(unittest.TestCase):
+    def test_worked_example_present(self):
+        prompt = prompts.build_system_prompt("rtl", "detailed", "English")
+        self.assertIn("top right, 2) top center, 3) top left", prompt)
+        self.assertIn("RETURN TO ITS RIGHT EDGE", prompt)
+        self.assertIn("silently map the page's panel grid", prompt)
+
+    def test_completeness_rule_present_at_every_verbosity(self):
+        for verbosity in ("concise", "detailed", "extensive"):
+            prompt = prompts.build_system_prompt("rtl", verbosity, "English")
+            self.assertIn("COMPLETENESS IS MANDATORY", prompt)
+            self.assertIn("(illegible)", prompt)
+
+
+class TestPanelLabelStripping(unittest.TestCase):
+    SCRIPT = ("Panel 1 (top right): A boy runs down the street.\n"
+              'Aiko: "Wait for me!"\n'
+              "Panel 2: Silent. She stops.\n"
+              "The sign says Panel 3 is next.")
+
+    def test_prefixes_removed_content_kept(self):
+        stripped = prompts.strip_panel_labels(self.SCRIPT)
+        self.assertNotIn("Panel 1", stripped)
+        self.assertIn("A boy runs down the street.", stripped)
+        self.assertIn('Aiko: "Wait for me!"', stripped)
+        self.assertIn("Silent. She stops.", stripped)
+
+    def test_midline_mentions_untouched(self):
+        stripped = prompts.strip_panel_labels(self.SCRIPT)
+        self.assertIn("The sign says Panel 3 is next.", stripped)
+
+    def test_page_markers_untouched(self):
+        text = "=== Page 2 of 9 ===\nPanel 1 (top left): x."
+        stripped = prompts.strip_panel_labels(text)
+        self.assertIn("=== Page 2 of 9 ===", stripped)
+
+    def test_default_setting_shows_labels(self):
+        self.assertTrue(config.DEFAULT_SETTINGS["show_panel_labels"])
+
+
+class TestHtmlExport(WorkspaceTestCase):
+    def _book(self):
+        book = library.Book(self.workspace)
+        book.title = "HTML <Test> & Co"
+        book.page_count = 2
+        book.scripts[1] = ("Panel 1 (top right): A <b>boy</b> runs.\n"
+                           'Aiko: "Wait & see!"\n'
+                           "Panel 2 (bottom left): Silent.")
+        return book
+
+    def test_headings_with_labels(self):
+        from core import html_export
+        page = html_export.build_html(self._book(), show_panel_labels=True)
+        self.assertIn("<h1>HTML &lt;Test&gt; &amp; Co</h1>", page)
+        self.assertIn("<h2>Page 1 of 2</h2>", page)
+        self.assertIn("<h3>Panel 1 of 2 (top right)</h3>", page)
+        self.assertIn("<h3>Panel 2 of 2 (bottom left)</h3>", page)
+        # Content is escaped, so nothing a script wrote can inject HTML.
+        self.assertIn("A &lt;b&gt;boy&lt;/b&gt; runs.", page)
+        self.assertIn("&quot;Wait &amp; see!&quot;", page)
+
+    def test_continuous_mode_has_page_headings_only(self):
+        from core import html_export
+        page = html_export.build_html(self._book(), show_panel_labels=False)
+        self.assertIn("<h2>Page 1 of 2</h2>", page)
+        self.assertNotIn("<h3>", page)
+        self.assertNotIn("Panel 1", page)
+        self.assertIn("A &lt;b&gt;boy&lt;/b&gt; runs.", page)
+
+    def test_unprocessed_page_placeholder(self):
+        from core import html_export
+        page = html_export.build_html(self._book(), show_panel_labels=True)
+        self.assertIn("<h2>Page 2 of 2</h2>", page)
+        self.assertIn("not been processed yet", page)
+
+
+class TestPageImageCleanup(WorkspaceTestCase):
+    def _book(self):
+        book = library.Book(self.workspace)
+        book.title = "Cleanup Book"
+        pages_dir = os.path.join(self.workspace, "pages")
+        os.makedirs(pages_dir, exist_ok=True)
+        for i in (1, 2):
+            make_test_image().save(
+                os.path.join(pages_dir, "%04d.jpg" % i), "JPEG")
+        book.detect_page_count()
+        book.scripts = {1: "Panel 1 (top right): x.",
+                        2: "Panel 1 (top right): y."}
+        book.save()
+        return book
+
+    def test_cleanup_keeps_book_readable(self):
+        book = self._book()
+        self.assertTrue(book.has_page_images())
+        self.assertGreater(book.page_images_size(), 0)
+        book.delete_page_images()
+        self.assertFalse(book.has_page_images())
+        self.assertEqual(book.page_images_size(), 0)
+        # Reading is unaffected: page count and scripts persist on disk.
+        loaded = library.Book.load(self.workspace)
+        self.assertEqual(loaded.page_count, 2)
+        self.assertIn("Panel 1 (top right): x.", loaded.full_text())
+        self.assertTrue(loaded.is_complete())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

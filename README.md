@@ -4,7 +4,7 @@ Manga read aloud properly for blind readers.
 
 Manga is one of the few storytelling media that stayed almost entirely closed to blind readers: the words are drawn into the artwork, so no screen reader can touch them, and the story is carried as much by panels, expressions, and sound effects as by dialogue. Accessible Manga Reader sends each page to an AI vision model and turns it into a script you can read with your screen reader: panel-by-panel descriptions, dialogue attributed to the character speaking, sound effects with their meaning, and the silent panels that carry so much of the storytelling.
 
-It follows manga's own reading grammar. Pages are read right to left, top to bottom — panels, speech bubbles 				inside a panel, and the artwork itself.
+It follows manga's own reading grammar. Pages are read right to left, top to bottom — panels, speech bubbles inside a panel, and the artwork itself.
 
 ## Install
 
@@ -36,6 +36,8 @@ Then press Alt+P to process. You are offered a box for optional instructions to 
 
 Processing sends the pages to the AI in small batches and saves after every batch, so you can cancel any time, choose Process again to carry on where it stopped. Each book is processed once and then cached, so re-reading is instant.
 
+After a book is fully processed, **Free up space** in the Book menu deletes its stored page images. Reading is unaffected; processing the book again later requires importing the original file again.
+
 When it is done, press Enter or Alt+R on the book to read it.
 
 ## Reading modes
@@ -45,6 +47,10 @@ The reader's View menu offers three ways to read, and the default is in Settings
 * **Entire book** — one continuous document, ideal for say-all reading.
 * **One page at a time** — with a "Page 3 of 20" position line.
 * **One panel at a time** — the closest equivalent to how a sighted reader takes a page in, with a position line like "Page 3 of 20, panel 2 of 6, top right" so you build the same mental map of the page.
+
+The View menu also has **Show panel labels**. When it is off, the "Panel N (position)" markers are hidden and each page reads as one continuous narrative. The processed text is unchanged; the option only affects the display. The same option is in Settings.
+
+**HTML view** (Ctrl+H) opens the book in a separate window as an HTML document. Each page is a level-2 heading and each panel a level-3 heading, so screen reader browse mode navigates with H, 2, and 3. With panel labels off, only page headings are used. The window has a Save as HTML button, and Ctrl+Shift+E in the reader saves the same document.
 
 The text area is an ordinary read-only text control, so say-all, review commands, and find all behave exactly as they do in any document.
 
@@ -67,11 +73,17 @@ In the reader:
 * Alt+G or Ctrl+G — go to a page
 * Ctrl+F — find (entire-book mode)
 * Ctrl+E — save the whole book as a text file
+* Ctrl+H — open the HTML view
+* Ctrl+Shift+E — save as an HTML file
 * Alt+C or Escape — close, remembering your place
+
+Tab moves between controls; arrow keys stay inside the control that has focus. Shortcuts belong to the window they are shown in, so Alt+P means Process in the library and Previous in the reader.
+
+## Settings
 
 **AI engine tab.** Choose the service, the model, and enter one or more API keys (one per line, up to 10 — when a key runs out of quota the next is used automatically). Use **Refresh model list** to fetch the models your key can actually use, straight from the service. Pages per request (default 4) trades fewer requests against larger ones; lower it if a service says a request is too large. The delay between requests keeps long runs under per-minute limits.
 
-**General tab.** Output language (choose from the list or type any language — the script is translated into it, while Japanese honorifics are kept and sound effects stay romanized with their meaning explained). Verbosity: Concise, Detailed, or Extensive, which walks every panel through composition, each character's expression and pose, the background, and drawn effects like speed lines. Reading direction: right-to-left manga, left-to-right comics, or vertical webtoons. And the default reader view.
+**General tab.** Output language (choose from the list or type any language — the script is translated into it, while Japanese honorifics are kept and sound effects stay romanized with their meaning explained). Verbosity: Concise, Detailed, or Extensive, which walks every panel through composition, each character's expression and pose, the background, and drawn effects like speed lines. Reading direction: right-to-left manga, left-to-right comics, or vertical webtoons. The default reader view, and whether panel labels are shown.
 
 Verbosity and AI instructions apply to pages processed from then on. To apply them to a book already processed, use **Reprocess entire book** in the Book menu.
 
@@ -85,18 +97,15 @@ Verbosity and AI instructions apply to pages processed from then on. To apply th
 
 ## Running from source
 
-&#x20;   pip install -r requirements.txt
-python main.py
-
-
+    pip install -r requirements.txt
+    python main.py
 
 Run the tests before changing anything:
 
-&#x20;   python run\_tests.py
-
-
+    python run_tests.py
 
 ## Licence
 
 GNU General Public License, version 3 or later. See LICENSE.
 
+The Windows x64 build bundles PyMuPDF (for PDF import), which is licensed under the GNU AGPL v3 by Artifex; that component keeps its own licence. The ARM64 build does not include it.

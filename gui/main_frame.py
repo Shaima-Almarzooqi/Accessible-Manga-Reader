@@ -92,6 +92,10 @@ class MainFrame(wx.Frame):
             wx.ID_ANY, "Reprocess entire boo&k...",
             "Clear the processed pages and process the whole book again, "
             "for example after changing AI instructions or verbosity"))
+        self.Bind(wx.EVT_MENU, self.on_free_space, book_menu.Append(
+            wx.ID_ANY, "&Free up space (remove page images)...",
+            "Delete the stored page images of a fully processed book; "
+            "reading is unaffected"))
         self.Bind(wx.EVT_MENU, self.on_rename, book_menu.Append(
             wx.ID_ANY, "Re&name...\tF2"))
         self.Bind(wx.EVT_MENU, self.on_delete, book_menu.Append(
@@ -344,6 +348,13 @@ class MainFrame(wx.Frame):
                 "Reprocess entire book in the Book menu.",
                 config.APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
             return
+        if not book.has_page_images():
+            wx.MessageBox(
+                "'%s' has unprocessed pages but its page images were "
+                "removed to free space. Delete the book and import the "
+                "original file to continue." % book.title,
+                config.APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
+            return
         if book.processed_count() == 0:
             # Fresh run: instructions only take effect during processing,
             # so this is the moment to collect them. OK (even with an
@@ -361,9 +372,46 @@ class MainFrame(wx.Frame):
         dialog.Destroy()
         self.refresh_books(select_book=book)
 
+    def on_free_space(self, event):
+        book = self._selected_book()
+        if not book:
+            return
+        if not book.has_page_images():
+            wx.MessageBox(
+                "This book's page images have already been removed.",
+                "Free up space", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        if not book.is_complete():
+            wx.MessageBox(
+                "'%s' is not fully processed yet. The page images are "
+                "needed to finish processing, so finish (or delete the "
+                "book) before removing them." % book.title,
+                "Free up space", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        size_mb = book.page_images_size() / (1024.0 * 1024.0)
+        answer = wx.MessageBox(
+            "Remove the stored page images of '%s' to free about %.1f "
+            "MB? Reading is unaffected -- the text is kept. Processing "
+            "it again later (for example Reprocess after changing "
+            "settings) would require importing the original file again."
+            % (book.title, size_mb),
+            "Free up space", wx.YES_NO | wx.ICON_QUESTION, self)
+        if answer == wx.YES:
+            book.delete_page_images()
+            wx.MessageBox("Removed %.1f MB." % size_mb, "Free up space",
+                          wx.OK | wx.ICON_INFORMATION, self)
+
     def on_reprocess(self, event):
         book = self._selected_book()
         if not book:
+            return
+        if not book.has_page_images():
+            wx.MessageBox(
+                "'%s' has no stored page images (they were removed to "
+                "free space), so it cannot be processed again. Delete "
+                "the book and import the original file to reprocess."
+                % book.title,
+                "Reprocess entire book", wx.OK | wx.ICON_INFORMATION, self)
             return
         if book.processed_count() == 0:
             self.on_process(event)

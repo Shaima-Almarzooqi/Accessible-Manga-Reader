@@ -41,9 +41,21 @@ READING_DIRECTION_TEXT = {
         "left side.\n"
         "- Two-page spreads: from the rightmost panel of the right page "
         "across to the leftmost panel of the left page.\n"
-        "Never reorder anything into left-to-right out of habit. Before "
-        "writing each panel, double-check that every bubble and caption "
-        "is listed in right-to-left, top-to-bottom order."
+        "Before writing anything, silently map the page's panel grid: "
+        "identify the rows from top to bottom, and within each row list "
+        "the panels from RIGHT to LEFT. Only then write, following that "
+        "map exactly.\n"
+        "Worked example: a page has five panels, three across the top "
+        "row and two across the bottom row. The one and only correct "
+        "order is: 1) top right, 2) top center, 3) top left, then drop "
+        "to the next row and RETURN TO ITS RIGHT EDGE: 4) bottom right, "
+        "5) bottom left. The eye returns to the right edge at the start "
+        "of every new row. The same logic applies to any layout: finish "
+        "a row right-to-left, then start the next row at its rightmost "
+        "panel. Never zigzag, and never reorder anything into "
+        "left-to-right out of habit. Before writing each panel, "
+        "double-check that every bubble and caption is listed in "
+        "right-to-left, top-to-bottom order."
     ),
     "ltr": (
         "This is a Western-style comic. Panels read LEFT to RIGHT, TOP to "
@@ -133,6 +145,7 @@ Rules:
 - Translate all text into {output_language}. Keep Japanese honorifics (-san, -kun, -chan, -sensei) and render sound effects as romanized Japanese plus their meaning.
 - Silent panels matter: describe them like any other panel. A wordless close-up or a held beat is storytelling; a line like "Panel 4: Silent. Aiko stares at the empty chair." is perfect.
 - Text visible in the art (signs, phone screens, letters) goes on a "Text:" line with a short location note.
+- COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, write "Text: (illegible)" at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.
 - OBJECTIVITY IS STRICT, AT EVERY VERBOSITY LEVEL: you are a camera, not a critic. Describe only what is visibly drawn on the page. Never add your own interpretation, symbolism, atmosphere poetry, or emotional commentary. Banned: "as if", "seemingly", "a sense of", "one can feel", "beautifully", "hauntingly", "symbolizing", and any sentence about what a moment "means". When emotion is visible, name its visible signs: write "tears well up in her eyes and her hands tremble", never "her heart breaks" or "the weight of loss fills the panel".
 - Do not add commentary, summaries, chapter recaps, or opinions. Only the script.
 - If a page is a cover, title page, table of contents, or author note, still give it a PAGE header and briefly describe/transcribe it.
@@ -240,3 +253,16 @@ def split_panels(script):
     if preamble:
         units[0] = preamble + "\n" + units[0]
     return units
+
+
+PANEL_LABEL_STRIP_RE = re.compile(
+    r"^Panel\s+\d+(?:\s*\([^)\n]*\))?\s*:\s*", re.MULTILINE)
+
+
+def strip_panel_labels(text):
+    """Remove "Panel N (position):" prefixes for continuous narrative
+    reading. The description that follows each prefix is kept, so the
+    story flows without the structural markers. Page markers and all
+    dialogue are untouched.
+    """
+    return PANEL_LABEL_STRIP_RE.sub("", text)

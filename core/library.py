@@ -96,6 +96,36 @@ class Book:
 
     # ----- progress ----------------------------------------------------
 
+    def has_page_images(self):
+        """Whether the extracted page images are still on disk. They are
+        only needed for processing; reading works from the cached
+        scripts alone."""
+        pages_dir = os.path.join(self.workspace, "pages")
+        if not os.path.isdir(pages_dir):
+            return False
+        return any(name.lower().endswith(".jpg")
+                   for name in os.listdir(pages_dir))
+
+    def page_images_size(self):
+        """Total size in bytes of the stored page images."""
+        pages_dir = os.path.join(self.workspace, "pages")
+        if not os.path.isdir(pages_dir):
+            return 0
+        total = 0
+        for name in os.listdir(pages_dir):
+            try:
+                total += os.path.getsize(os.path.join(pages_dir, name))
+            except OSError:
+                pass
+        return total
+
+    def delete_page_images(self):
+        """Remove the stored page images, keeping the scripts. The book
+        stays fully readable; processing again requires re-importing."""
+        import shutil
+        pages_dir = os.path.join(self.workspace, "pages")
+        shutil.rmtree(pages_dir, ignore_errors=True)
+
     def unprocessed_pages(self):
         """Page numbers (1-based) that do not yet have a cached script."""
         return [n for n in range(1, self.page_count + 1) if n not in self.scripts]

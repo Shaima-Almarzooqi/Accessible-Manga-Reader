@@ -22,14 +22,20 @@ Alt+R and Alt+P do not reach in here):
   Alt+G or Ctrl+G               go to a specific page
   Ctrl+F                        find text (book mode)
   Ctrl+E                        save the whole book as a .txt file
+  Ctrl+H                        open the HTML view window
+  Ctrl+Shift+E                  save as an HTML file
   Alt+C or Escape               close the reader (position remembered)
 """
 
+import os
 import re
+import webbrowser
 
 import wx
 
-from core import config, prompts
+from core import config, html_export, prompts
+
+from .html_view import show_html_view
 
 from . import keys as keyhelp
 
@@ -51,7 +57,8 @@ class ReaderFrame(wx.Frame):
         self.view = settings.get("reader_view", VIEW_BOOK)
         if self.view not in (VIEW_BOOK, VIEW_PAGE, VIEW_PANEL):
             self.view = VIEW_BOOK
-        self.full_text = book.full_text()
+        self.show_labels = bool(settings.get("show_panel_labels", True))
+        self.raw_full_text = book.full_text()
 
         # Panel units per page, computed once.
         self.page_panels = {
@@ -77,6 +84,7 @@ class ReaderFrame(wx.Frame):
                 # No Alt mnemonic here on purpose: Ctrl+E (in the Book
                 # menu) is the single shortcut for saving.
                 ("Save as text...", self.on_export),
+                ("&HTML view", self.on_html_view),
                 ("&Close", lambda e: self.Close())]:
             button = wx.Button(panel, label=label)
             button.Bind(wx.EVT_BUTTON, handler)
@@ -85,10 +93,7 @@ class ReaderFrame(wx.Frame):
 
         panel.SetSizer(sizer)
 
-        # Character offsets of page markers for book-mode jumping.
-        self.page_offsets = {}
-        for match in PAGE_MARKER_RE.finditer(self.full_text):
-            self.page_offsets[int(match.group(1))] = match.start()
+        self._rebuild_display_text()
 
         self._build_menu()
         self.text.Bind(wx.EVT_KEY_DOWN, self._on_key)
@@ -124,17 +129,52 @@ class ReaderFrame(wx.Frame):
             self.Bind(wx.EVT_MENU,
                       lambda e, m=mode: self.set_view(m), item)
         self.view_items[self.view].Check()
+        view.AppendSeparator()
+        self.labels_item = view.AppendCheckItem(
+            wx.ID_ANY, "Show panel &labels",
+            "Show Panel N and position markers in the text; off reads "
+            "as a continuous narrative")
+        self.labels_item.Check(self.show_labels)
+        self.Bind(wx.EVT_MENU, self.on_toggle_labels, self.labels_item)
+        self.Bind(wx.EVT_MENU, self.on_html_view, view.Append(
+            wx.ID_ANY, "Open &HTML view\tCtrl+H",
+            "Open the book in an HTML window with pages and panels as "
+            "headings, for browse-mode navigation"))
         menubar.Append(view, "&View")
 
         book_menu = wx.Menu()
         self.Bind(wx.EVT_MENU, self.on_export,
                   book_menu.Append(wx.ID_ANY, "&Save as text file...\tCtrl+E"))
+        self.Bind(wx.EVT_MENU, self.on_save_html, book_menu.Append(
+            wx.ID_ANY, "Save as &HTML file...\tCtrl+Shift+E"))
         self.Bind(wx.EVT_MENU, lambda e: self.Close(),
                   book_menu.Append(wx.ID_ANY, "&Close reader\tEscape"))
         menubar.Append(book_menu, "&Book")
         self.SetMenuBar(menubar)
 
     # ----- rendering ---------------------------------------------------------
+
+    def _rebuild_display_text(self):
+        text = self.raw_full_text
+        if not self.show_labels:
+            text = prompts.strip_panel_labels(text)
+        self.full_text = text
+        self.page_offsets = {}
+        for match in PAGE_MARKER_RE.finditer(text):
+            self.page_offsets[int(match.group(1))] = match.start()
+
+    def _panel_body(self, panel):
+        return panel if self.show_labels else prompts.strip_panel_labels(panel)
+
+    def on_toggle_labels(self, event):
+        self.show_labels = self.labels_item.IsChecked()
+        self.settings["show_panel_labels"] = self.show_labels
+        config.save_settings(self.settings)
+        if self.view == VIEW_BOOK:
+            self.current_page = self._page_at_caret()
+        self._rebuild_display_text()
+        self._render()
+        self.text.SetFocus()
 
     def _panel_count(self, page):
         return len(self.page_panels.get(page, [])) or 1
@@ -165,9 +205,9 @@ class ReaderFrame(wx.Frame):
         panels = self.page_panels[self.current_page]
         self.current_panel = min(self.current_panel, len(panels) - 1)
         if self.view == VIEW_PAGE:
-            body = "\n".join(panels)
+            body = "\n".join(self._panel_body(p) for p in panels)
         else:
-            body = panels[self.current_panel]
+            body = self._panel_body(panels[self.current_panel])
         header = self._position_header()
         self.text.SetValue(header + "\n\n" + body)
         self.text.SetInsertionPoint(0)
@@ -323,6 +363,48 @@ class ReaderFrame(wx.Frame):
                               wx.OK | wx.ICON_INFORMATION, self)
             except OSError as error:
                 wx.MessageBox("Saving failed: %s" % error, "Save as text",
+                              wx.OK | wx.ICON_ERROR, self)
+        dialog.Destroy()
+
+    def _build_html(self):
+        return html_export.build_html(
+            self.book, show_panel_labels=self.show_labels)
+
+    def on_html_view(self, event):
+        html = self._build_html()
+        title = "%s - HTML view" % (self.book.title or "Book")
+        default_name = (self.book.title or "book") + ".html"
+        if show_html_view(self, title, html, default_name):
+            return
+        # No web view backend on this system: open in the browser.
+        path = os.path.join(self.book.workspace, "view.html")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+        except OSError as error:
+            wx.MessageBox("Could not create the HTML view: %s" % error,
+                          "HTML view", wx.OK | wx.ICON_ERROR, self)
+            return
+        webbrowser.open("file:///" + path.replace(os.sep, "/"))
+        wx.MessageBox(
+            "The built-in HTML view is not available on this system, so "
+            "the document was opened in your web browser instead.",
+            "HTML view", wx.OK | wx.ICON_INFORMATION, self)
+
+    def on_save_html(self, event):
+        default_name = (self.book.title or "book") + ".html"
+        dialog = wx.FileDialog(
+            self, "Save as HTML file", defaultFile=default_name,
+            wildcard="HTML files (*.html)|*.html",
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+        if dialog.ShowModal() == wx.ID_OK:
+            try:
+                with open(dialog.GetPath(), "w", encoding="utf-8") as f:
+                    f.write(self._build_html())
+                wx.MessageBox("Saved successfully.", "Save as HTML",
+                              wx.OK | wx.ICON_INFORMATION, self)
+            except OSError as error:
+                wx.MessageBox("Saving failed: %s" % error, "Save as HTML",
                               wx.OK | wx.ICON_ERROR, self)
         dialog.Destroy()
 

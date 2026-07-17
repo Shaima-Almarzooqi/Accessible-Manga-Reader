@@ -15,6 +15,11 @@ Two rules, applied through EVT_CHAR_HOOK in every window:
 
 import wx
 
+try:
+    import wx.html2
+except ImportError:
+    wx.html2 = None
+
 UP_KEYS = frozenset({wx.WXK_UP, wx.WXK_NUMPAD_UP})
 DOWN_KEYS = frozenset({wx.WXK_DOWN, wx.WXK_NUMPAD_DOWN})
 HORIZONTAL_KEYS = frozenset({
@@ -26,7 +31,7 @@ ARROW_KEYS = UP_KEYS | DOWN_KEYS | HORIZONTAL_KEYS
 ARROW_USING_CONTROLS = (
     wx.TextCtrl, wx.ComboBox, wx.Choice, wx.ListBox, wx.CheckListBox,
     wx.Notebook, wx.SpinCtrl, wx.SpinCtrlDouble, wx.Slider, wx.RadioBox,
-)
+) + ((wx.html2.WebView,) if wx.html2 is not None else ())
 
 
 def consume_arrow_navigation(event, focus):

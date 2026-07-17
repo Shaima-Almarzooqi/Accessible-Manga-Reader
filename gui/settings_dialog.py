@@ -152,6 +152,13 @@ class SettingsDialog(wx.Dialog):
         self.reader_view.SetSelection({"book": 0, "page": 1, "panel": 2}.get(
             self.settings["reader_view"], 0))
 
+        self.panel_labels = wx.CheckBox(
+            general_panel,
+            label="Show panel &numbers and positions in the reader text")
+        self.panel_labels.SetValue(
+            bool(self.settings.get("show_panel_labels", True)))
+        general_sizer.Add(self.panel_labels, 0, wx.ALL, 6)
+
         general_panel.SetSizer(general_sizer)
         self.notebook.AddPage(general_panel, "General")
 
@@ -320,4 +327,5 @@ class SettingsDialog(wx.Dialog):
             ["rtl", "ltr", "vertical"][self.direction.GetSelection()])
         self.settings["reader_view"] = (
             ["book", "page", "panel"][self.reader_view.GetSelection()])
+        self.settings["show_panel_labels"] = self.panel_labels.GetValue()
         event.Skip()  # lets the dialog close with wx.ID_OK
