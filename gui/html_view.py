@@ -11,6 +11,8 @@ returns False and the caller falls back to the default browser.
 
 import wx
 
+from . import keys as keyhelp
+
 try:
     import wx.html2
 except ImportError:
@@ -35,6 +37,7 @@ class HtmlViewFrame(wx.Frame):
         super().__init__(parent, title=title, size=(900, 700))
         self.html = html
         self.default_filename = default_filename
+        self._loaded = False
 
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -60,14 +63,38 @@ class HtmlViewFrame(wx.Frame):
 
         panel.SetSizer(sizer)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
-        self.view.SetPage(html, "")
-        self.view.SetFocus()
+
+        # The web view initialises asynchronously. Calling SetPage in the
+        # constructor loads into a control that is not ready yet, and the
+        # content is silently dropped (the window then shows nothing). So
+        # load the page only once the control reports it is ready, and
+        # load it immediately as a fallback in case that event has
+        # already fired before we bound the handler.
+        self.view.Bind(wx.html2.EVT_WEBVIEW_LOADED, self._on_view_ready)
+        wx.CallAfter(self._load_page)
+
+    def _load_page(self):
+        if not self._loaded:
+            self._loaded = True
+            self.view.SetPage(self.html, "")
+            self.view.SetFocus()
+
+    def _on_view_ready(self, event):
+        # First LOADED event fires for the initial blank document; use it
+        # as the signal that the control is ready to receive our HTML.
+        self._load_page()
 
     def _on_char_hook(self, event):
         if event.GetKeyCode() == wx.WXK_ESCAPE:
             self.Close()
-        else:
-            event.Skip()
+            return
+        # Tab moves between the web view and the buttons; arrow keys are
+        # left to whichever control has focus. Inside the web view the
+        # arrows scroll and navigate the content as normal; on the
+        # buttons they do nothing (Tab moves instead).
+        if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
+            return
+        event.Skip()
 
     def on_save(self, event):
         dialog = wx.FileDialog(

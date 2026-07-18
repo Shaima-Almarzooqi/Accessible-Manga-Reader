@@ -3,6 +3,15 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 0.11.1
+
+### Fixed
+
+- The HTML view now shows its content. Previously the window could open
+  empty because the page was loaded before the view was ready.
+- In the HTML view, Tab moves between the content and the buttons, while
+  the arrow keys work inside the content, matching the rest of the app.
+
 ## 0.11.0
 
 ### Added
