@@ -7,8 +7,8 @@ newest version is at the top.
 
 ### Fixed
 
-- The HTML view now shows its content. Previously the window could open
-  empty because the page was loaded before the view was ready.
+- The HTML view now shows its content. The window could previously open
+  empty on some systems.
 - In the HTML view, Tab moves between the content and the buttons, while
   the arrow keys work inside the content, matching the rest of the app.
 

@@ -37,19 +37,22 @@ class HtmlViewFrame(wx.Frame):
         super().__init__(parent, title=title, size=(900, 700))
         self.html = html
         self.default_filename = default_filename
-        self._loaded = False
 
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # The legacy MSHTML backend is preferred: it ships with Windows
-        # and needs no extra DLLs bundled into the executable.
-        backend = wx.html2.WebViewBackendDefault
-        if wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendIE):
-            backend = wx.html2.WebViewBackendIE
-        # The control's default name is a toolkit word that screen
-        # readers may announce; give it the window's own title instead.
-        self.view = wx.html2.WebView.New(panel, backend=backend, name=title)
+        # Create the web view with default arguments. Passing an explicit
+        # backend together with a custom name= was found to leave the
+        # control blank on the Windows (MSHTML) backend; the default
+        # backend already resolves to the system engine, and the
+        # accessible name is set separately below, which is safe.
+        self.view = wx.html2.WebView.New(panel)
+        try:
+            # Give the control the window's own name so screen readers do
+            # not announce a toolkit word.
+            self.view.SetName(title)
+        except Exception:
+            pass
         sizer.Add(self.view, 1, wx.EXPAND)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)
@@ -63,33 +66,15 @@ class HtmlViewFrame(wx.Frame):
 
         panel.SetSizer(sizer)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
-
-        # The web view initialises asynchronously. Calling SetPage in the
-        # constructor loads into a control that is not ready yet, and the
-        # content is silently dropped (the window then shows nothing). So
-        # load the page only once the control reports it is ready, and
-        # load it immediately as a fallback in case that event has
-        # already fired before we bound the handler.
-        self.view.Bind(wx.html2.EVT_WEBVIEW_LOADED, self._on_view_ready)
-        wx.CallAfter(self._load_page)
-
-    def _load_page(self):
-        if not self._loaded:
-            self._loaded = True
-            self.view.SetPage(self.html, "")
-            self.view.SetFocus()
-
-    def _on_view_ready(self, event):
-        # First LOADED event fires for the initial blank document; use it
-        # as the signal that the control is ready to receive our HTML.
-        self._load_page()
+        self.view.SetPage(html, "")
+        self.view.SetFocus()
 
     def _on_char_hook(self, event):
         if event.GetKeyCode() == wx.WXK_ESCAPE:
             self.Close()
             return
-        # Tab moves between the web view and the buttons; arrow keys are
-        # left to whichever control has focus. Inside the web view the
+        # Tab moves between the web view and the buttons; arrow keys stay
+        # with whichever control has focus. Inside the web view the
         # arrows scroll and navigate the content as normal; on the
         # buttons they do nothing (Tab moves instead).
         if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
