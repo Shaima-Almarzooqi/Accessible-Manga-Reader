@@ -21,6 +21,7 @@ Alt+R and Alt+P do not reach in here):
   Alt+P / Alt+N                 previous / next (the reader's buttons)
   Alt+G or Ctrl+G               go to a specific page
   Ctrl+F                        find text (book mode)
+  Ctrl+L                        show or hide panel labels
   Ctrl+E                        save the whole book as a .txt file
   Ctrl+H                        open the HTML view window
   Ctrl+Shift+E                  save as an HTML file
@@ -131,7 +132,7 @@ class ReaderFrame(wx.Frame):
         self.view_items[self.view].Check()
         view.AppendSeparator()
         self.labels_item = view.AppendCheckItem(
-            wx.ID_ANY, "Show panel &labels",
+            wx.ID_ANY, "Show panel &labels\tCtrl+L",
             "Show Panel N and position markers in the text; off reads "
             "as a continuous narrative")
         self.labels_item.Check(self.show_labels)
@@ -167,7 +168,12 @@ class ReaderFrame(wx.Frame):
         return panel if self.show_labels else prompts.strip_panel_labels(panel)
 
     def on_toggle_labels(self, event):
-        self.show_labels = self.labels_item.IsChecked()
+        # Reached from the menu item and from Ctrl+L. The accelerator
+        # does not reliably toggle a check item's state on all
+        # platforms, so flip our own flag and push it back to the item;
+        # this is a no-op difference for ordinary menu clicks.
+        self.show_labels = not self.show_labels
+        self.labels_item.Check(self.show_labels)
         self.settings["show_panel_labels"] = self.show_labels
         config.save_settings(self.settings)
         if self.view == VIEW_BOOK:

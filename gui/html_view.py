@@ -44,7 +44,9 @@ class HtmlViewFrame(wx.Frame):
         backend = wx.html2.WebViewBackendDefault
         if wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendIE):
             backend = wx.html2.WebViewBackendIE
-        self.view = wx.html2.WebView.New(panel, backend=backend)
+        # The control's default name is a toolkit word that screen
+        # readers may announce; give it the window's own title instead.
+        self.view = wx.html2.WebView.New(panel, backend=backend, name=title)
         sizer.Add(self.view, 1, wx.EXPAND)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)

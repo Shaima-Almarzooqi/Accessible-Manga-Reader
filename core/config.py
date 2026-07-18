@@ -4,7 +4,7 @@ import json
 import os
 
 APP_NAME = "Accessible Manga Reader"
-APP_VERSION = "0.10.1"
+APP_VERSION = "0.11.0"
 
 # Folders used by earlier versions, migrated on first run so existing
 # libraries and settings are not lost to a rename.
@@ -49,6 +49,11 @@ DEFAULT_SETTINGS = {
     "show_panel_labels": True,
     "image_max_dimension": 1568,
     "image_jpeg_quality": 85,
+    # Update notifications: checked on a background thread at startup.
+    "check_updates_on_start": True,
+    "include_beta_updates": True,
+    # A version the user asked not to be reminded about again.
+    "dismissed_update_version": "",
 }
 
 # Fallback suggestions shown before the user fetches the live list with

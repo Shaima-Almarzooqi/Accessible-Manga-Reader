@@ -7,14 +7,21 @@ hand-picked batch of image files), process/resume, read, and delete.
 
 import os
 import threading
+import webbrowser
 
 import wx
 
-from core import config, extract, library
+from core import config, extract, library, updates
+from .html_view import show_html_view
 from .processing_dialog import ProcessingDialog
 from .reader_frame import ReaderFrame
 from .settings_dialog import SettingsDialog
 from . import keys as keyhelp
+from . import manual
+
+PROJECT_URL = "https://github.com/Shaima-Almarzooqi/Accessible-Manga-Reader"
+ISSUES_URL = PROJECT_URL + "/issues"
+CONTACT_EMAIL = "sshaima004@gmail.com"
 
 
 class MainFrame(wx.Frame):
@@ -55,6 +62,10 @@ class MainFrame(wx.Frame):
 
         if not self._active_api_keys():
             wx.CallAfter(self._first_run_notice)
+
+        if self.settings.get("check_updates_on_start", True):
+            threading.Thread(target=self._check_updates_worker,
+                             daemon=True).start()
 
     # ----- menu ------------------------------------------------------------
 
@@ -103,6 +114,19 @@ class MainFrame(wx.Frame):
         menubar.Append(book_menu, "&Book")
 
         help_menu = wx.Menu()
+        self.Bind(wx.EVT_MENU, self.on_manual, help_menu.Append(
+            wx.ID_ANY, "&User manual\tF1",
+            "A step-by-step guide to setting up and using the app"))
+        self.Bind(wx.EVT_MENU, self.on_visit_project, help_menu.Append(
+            wx.ID_ANY, "&Visit project page on GitHub",
+            "Open the project's page in your web browser"))
+        self.Bind(wx.EVT_MENU, self.on_report_problem, help_menu.Append(
+            wx.ID_ANY, "&Report a problem",
+            "Open the page for reporting an issue or suggestion"))
+        self.Bind(wx.EVT_MENU, self.on_contact, help_menu.Append(
+            wx.ID_ANY, "&Contact developer by email...",
+            "Show the developer's email address"))
+        help_menu.AppendSeparator()
         self.Bind(wx.EVT_MENU, self.on_about, help_menu.Append(
             wx.ID_ABOUT, "&About %s" % config.APP_NAME))
         menubar.Append(help_menu, "&Help")
@@ -541,6 +565,64 @@ class MainFrame(wx.Frame):
             "About %s" % config.APP_NAME, wx.OK | wx.ICON_INFORMATION,
             self)
 
+    # ----- help menu ---------------------------------------------------------
+
+    def on_manual(self, event):
+        html = manual.manual_html()
+        title = "%s - User Manual" % config.APP_NAME
+        if show_html_view(self, title, html, "manual.html"):
+            return
+        # No web view backend on this system: open in the browser.
+        path = os.path.join(config.data_dir(), "manual.html")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+        except OSError as error:
+            wx.MessageBox("Could not open the manual: %s" % error,
+                          "User manual", wx.OK | wx.ICON_ERROR, self)
+            return
+        webbrowser.open("file:///" + path.replace(os.sep, "/"))
+        wx.MessageBox(
+            "The built-in view is not available on this system, so the "
+            "manual was opened in your web browser instead.",
+            "User manual", wx.OK | wx.ICON_INFORMATION, self)
+
+    def on_visit_project(self, event):
+        webbrowser.open(PROJECT_URL)
+
+    def on_report_problem(self, event):
+        webbrowser.open(ISSUES_URL)
+
+    def on_contact(self, event):
+        dialog = ContactDialog(self)
+        dialog.ShowModal()
+        dialog.Destroy()
+
+    # ----- update notifications ---------------------------------------------
+
+    def _check_updates_worker(self):
+        """Runs on a background thread; must never raise."""
+        update = updates.check_for_update(
+            config.APP_VERSION,
+            include_betas=bool(
+                self.settings.get("include_beta_updates", True)))
+        if update is None:
+            return
+        if update.version == self.settings.get(
+                "dismissed_update_version", ""):
+            return
+        wx.CallAfter(self._offer_update, update)
+
+    def _offer_update(self, update):
+        dialog = UpdateDialog(self, update)
+        answer = dialog.ShowModal()
+        if dialog.dismissed():
+            self.settings["dismissed_update_version"] = update.version
+            config.save_settings(self.settings)
+        if answer == wx.ID_YES:
+            webbrowser.open(update.url)
+        dialog.Destroy()
+
 
     def on_context_menu(self, event):
         selected = self._selected_books()
@@ -570,6 +652,121 @@ class MainFrame(wx.Frame):
                 wx.ID_ANY, "&Delete these %d items..." % len(selected)))
         self.book_list.PopupMenu(menu)
         menu.Destroy()
+
+
+class ContactDialog(wx.Dialog):
+    """Shows the developer's email address as selectable text with a
+    button to copy it and a button to open the default email program.
+    Focus starts on the address so a screen reader reads it immediately;
+    Escape closes.
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent, title="Contact developer by email")
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        self.address = wx.TextCtrl(
+            self, value="Email: %s" % CONTACT_EMAIL,
+            style=wx.TE_READONLY)
+        sizer.Add(self.address, 0, wx.EXPAND | wx.ALL, 8)
+
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        copy_button = wx.Button(self, label="&Copy email address")
+        copy_button.Bind(wx.EVT_BUTTON, self.on_copy)
+        buttons.Add(copy_button, 0, wx.RIGHT, 6)
+        mail_button = wx.Button(self, label="&Open in email program")
+        mail_button.Bind(wx.EVT_BUTTON, self.on_mail)
+        buttons.Add(mail_button, 0, wx.RIGHT, 6)
+        close_button = wx.Button(self, wx.ID_CANCEL, "Close")
+        buttons.Add(close_button, 0)
+        sizer.Add(buttons, 0, wx.ALL, 8)
+
+        self.SetEscapeId(wx.ID_CANCEL)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        self.SetSizerAndFit(sizer)
+        self.address.SetFocus()
+
+    def on_char_hook(self, event):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
+            return
+        event.Skip()
+
+    def on_copy(self, event):
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.SetData(wx.TextDataObject(CONTACT_EMAIL))
+            wx.TheClipboard.Close()
+            wx.MessageBox("Email address copied.", "Contact developer",
+                          wx.OK | wx.ICON_INFORMATION, self)
+        else:
+            wx.MessageBox("Could not access the clipboard.",
+                          "Contact developer", wx.OK | wx.ICON_ERROR, self)
+
+    def on_mail(self, event):
+        webbrowser.open("mailto:%s" % CONTACT_EMAIL)
+
+
+class UpdateDialog(wx.Dialog):
+    """Tells the reader a newer version exists and offers the download
+    page. Standard modal dialog: Escape closes it (as No), and the
+    release notes are in a read-only text area so they can be read and
+    reviewed with a screen reader.
+    """
+
+    def __init__(self, parent, update):
+        super().__init__(parent, title="Update available",
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        intro = wx.StaticText(self, label=(
+            "Version %s of %s is available. You are using version %s."
+            % (update.version, config.APP_NAME, config.APP_VERSION)))
+        intro.Wrap(520)
+        sizer.Add(intro, 0, wx.ALL, 8)
+
+        notes_label = wx.StaticText(self, label="What changed:")
+        sizer.Add(notes_label, 0, wx.LEFT, 8)
+        self.notes = wx.TextCtrl(
+            self, value=update.notes or "(No release notes.)",
+            style=wx.TE_MULTILINE | wx.TE_READONLY, size=(540, 200))
+        sizer.Add(self.notes, 1, wx.EXPAND | wx.ALL, 8)
+
+        question = wx.StaticText(
+            self, label="Open the download page in your web browser?")
+        sizer.Add(question, 0, wx.LEFT | wx.BOTTOM, 8)
+
+        self.dismiss_box = wx.CheckBox(
+            self, label="&Do not remind me about this version again")
+        sizer.Add(self.dismiss_box, 0, wx.LEFT | wx.BOTTOM, 8)
+
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        yes_button = wx.Button(self, wx.ID_YES, "&Yes")
+        yes_button.Bind(wx.EVT_BUTTON,
+                        lambda e: self.EndModal(wx.ID_YES))
+        no_button = wx.Button(self, wx.ID_NO, "&No")
+        no_button.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_NO))
+        buttons.AddStretchSpacer()
+        buttons.Add(yes_button, 0, wx.RIGHT, 6)
+        buttons.Add(no_button, 0)
+        sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 8)
+
+        yes_button.SetDefault()
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        self.SetSizerAndFit(sizer)
+        yes_button.SetFocus()
+
+    def dismissed(self):
+        return self.dismiss_box.GetValue()
+
+    def on_char_hook(self, event):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_NO)
+            return
+        if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
+            return
+        event.Skip()
 
 
 class InstructionsDialog(wx.Dialog):

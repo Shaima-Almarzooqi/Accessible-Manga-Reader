@@ -3,6 +3,26 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 0.11.0
+
+### Added
+
+- User manual: a step-by-step guide is now in the Help menu, covering how
+  to get an API key, add and process a book, read it, and every feature
+  and shortcut.
+- Update notifications: the app can check for a new version when it
+  starts and tell you what has changed, with the option to open the
+  download page. You can turn this off, or skip beta versions, in
+  Settings.
+- A shortcut, Ctrl plus L, to show or hide panel labels in the reader.
+- Help menu links to the project page, problem reporting, and developer
+  contact.
+
+### Fixed
+
+- The HTML view window is now announced with the book title, without
+  extra technical words.
+
 ## 0.10.1
 
 ### Changed

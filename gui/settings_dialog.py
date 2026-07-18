@@ -159,6 +159,19 @@ class SettingsDialog(wx.Dialog):
             bool(self.settings.get("show_panel_labels", True)))
         general_sizer.Add(self.panel_labels, 0, wx.ALL, 6)
 
+        self.check_updates = wx.CheckBox(
+            general_panel,
+            label="Check for &updates when the app starts")
+        self.check_updates.SetValue(
+            bool(self.settings.get("check_updates_on_start", True)))
+        general_sizer.Add(self.check_updates, 0, wx.ALL, 6)
+
+        self.include_betas = wx.CheckBox(
+            general_panel, label="Include &beta versions")
+        self.include_betas.SetValue(
+            bool(self.settings.get("include_beta_updates", True)))
+        general_sizer.Add(self.include_betas, 0, wx.ALL, 6)
+
         general_panel.SetSizer(general_sizer)
         self.notebook.AddPage(general_panel, "General")
 
@@ -328,4 +341,6 @@ class SettingsDialog(wx.Dialog):
         self.settings["reader_view"] = (
             ["book", "page", "panel"][self.reader_view.GetSelection()])
         self.settings["show_panel_labels"] = self.panel_labels.GetValue()
+        self.settings["check_updates_on_start"] = self.check_updates.GetValue()
+        self.settings["include_beta_updates"] = self.include_betas.GetValue()
         event.Skip()  # lets the dialog close with wx.ID_OK

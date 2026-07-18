@@ -583,6 +583,72 @@ class TestModelListParsers(unittest.TestCase):
         self.assertEqual(models, ["claude-sonnet-4-6", "claude-opus-4-8"])
 
 
+class TestUpdateCheck(unittest.TestCase):
+    """The version comparison behind update notifications. Fed sample
+    release JSON directly; no network access."""
+
+    @staticmethod
+    def _release(tag, prerelease=False, **extra):
+        release = {"tag_name": tag, "prerelease": prerelease,
+                   "body": "notes for %s" % tag,
+                   "html_url": "https://example.invalid/%s" % tag}
+        release.update(extra)
+        return release
+
+    def test_newer_stable_version_is_offered(self):
+        from core import updates
+        releases = [self._release("v0.9.0"), self._release("v0.11.0")]
+        update = updates.newest_release(releases, "0.10.1")
+        self.assertEqual(update.version, "0.11.0")
+        self.assertEqual(update.notes, "notes for v0.11.0")
+        self.assertEqual(update.url, "https://example.invalid/v0.11.0")
+
+    def test_equal_or_older_version_is_not_offered(self):
+        from core import updates
+        self.assertIsNone(updates.newest_release(
+            [self._release("v0.10.1")], "0.10.1"))
+        self.assertIsNone(updates.newest_release(
+            [self._release("v0.9.0")], "0.10.1"))
+
+    def test_comparison_is_numeric_not_string(self):
+        from core import updates
+        # As strings "0.9.0" > "0.10.0"; numerically it is older.
+        update = updates.newest_release(
+            [self._release("v0.10.0")], "0.9.0")
+        self.assertIsNotNone(update)
+        self.assertEqual(update.version, "0.10.0")
+        self.assertIsNone(updates.newest_release(
+            [self._release("v0.9.0")], "0.10.0"))
+
+    def test_prereleases_ignored_when_betas_off(self):
+        from core import updates
+        releases = [self._release("v0.12.0", prerelease=True),
+                    self._release("v0.11.0")]
+        update = updates.newest_release(
+            releases, "0.10.1", include_betas=False)
+        self.assertEqual(update.version, "0.11.0")
+        update = updates.newest_release(
+            releases, "0.10.1", include_betas=True)
+        self.assertEqual(update.version, "0.12.0")
+
+    def test_drafts_are_ignored(self):
+        from core import updates
+        self.assertIsNone(updates.newest_release(
+            [self._release("v9.9.9", draft=True)], "0.10.1"))
+
+    def test_malformed_data_returns_none_without_raising(self):
+        from core import updates
+        for data in (None, {}, "nonsense", 42,
+                     [None, 42, "text"],
+                     [{"tag_name": "not-a-version"}],
+                     [{"no_tag": "at all"}],
+                     [{"tag_name": ""}]):
+            self.assertIsNone(updates.newest_release(data, "0.10.1"))
+        # A malformed current version is also survived.
+        self.assertIsNone(updates.newest_release(
+            [self._release("v0.11.0")], "garbage"))
+
+
 class TestBookKindAndPositions(unittest.TestCase):
     def test_source_kind_and_panel_position_round_trip(self):
         tmp = tempfile.mkdtemp(prefix="amr_kind_")
