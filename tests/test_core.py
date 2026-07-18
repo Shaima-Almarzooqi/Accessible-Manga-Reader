@@ -522,6 +522,27 @@ class TestModelListParsers(unittest.TestCase):
         self.assertEqual(api_client.parse_gemini_model_list(data),
                          ["gemini-3-flash-preview"])
 
+    def test_gemini_parser_excludes_non_vision_families(self):
+        """Families that cannot read pages are hidden from the dropdown
+        even when they support generateContent."""
+        from core import api_client
+        data = {"models": [
+            {"name": "models/gemini-2.5-flash",
+             "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-2.5-pro",
+             "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-2.5-flash-preview-tts",
+             "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-2.0-flash-preview-image-generation",
+             "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-2.5-flash-native-audio-dialog",
+             "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-embedding-exp",
+             "supportedGenerationMethods": ["generateContent"]},
+        ]}
+        self.assertEqual(api_client.parse_gemini_model_list(data),
+                         ["gemini-2.5-pro", "gemini-2.5-flash"])
+
     def test_openai_parser_excludes_non_chat(self):
         from core import api_client
         data = {"data": [
@@ -536,6 +557,23 @@ class TestModelListParsers(unittest.TestCase):
         self.assertIn("gpt-4o", models)
         self.assertNotIn("whisper-1", models)
         self.assertNotIn("dall-e-3", models)
+
+    def test_openai_parser_excludes_non_vision_families(self):
+        """Audio, TTS, image-generation and moderation variants are
+        hidden; ordinary chat/vision models remain."""
+        from core import api_client
+        data = {"data": [
+            {"id": "gpt-4o"},
+            {"id": "gpt-4o-audio-preview"},
+            {"id": "gpt-4o-mini-tts"},
+            {"id": "gpt-4o-transcribe"},
+            {"id": "gpt-image-1"},
+            {"id": "gpt-4o-realtime-preview"},
+            {"id": "omni-moderation-latest"},
+            {"id": "o3"},
+        ]}
+        models = api_client.parse_openai_model_list(data)
+        self.assertEqual(sorted(models), ["gpt-4o", "o3"])
 
     def test_anthropic_parser(self):
         from core import api_client

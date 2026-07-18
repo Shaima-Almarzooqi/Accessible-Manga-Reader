@@ -656,6 +656,13 @@ class RotatingClient:
 # are pure functions so they can be tested without network access.
 # ---------------------------------------------------------------------------
 
+# Families that clearly cannot read manga pages. Exclusion rather than
+# positive vision detection, so a capable model is never hidden. The
+# settings box stays editable, so an excluded model can still be typed.
+_GEMINI_EXCLUDE = ("embedding", "tts", "image-generation", "audio",
+                   "moderation")
+
+
 def parse_gemini_model_list(data):
     models = []
     for entry in data.get("models", []):
@@ -664,6 +671,9 @@ def parse_gemini_model_list(data):
         name = entry.get("name", "")
         if name.startswith("models/"):
             name = name[len("models/"):]
+        lowered = name.lower()
+        if any(word in lowered for word in _GEMINI_EXCLUDE):
+            continue
         if name.startswith("gemini"):
             models.append(name)
     return sorted(set(models), reverse=True)

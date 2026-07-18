@@ -1,9 +1,9 @@
 """Internal HTML view window.
 
-Displays the book's HTML document in an embedded web view (the Edge
-WebView2 engine on Windows). Screen readers treat the content as a web
-document, so browse mode heading navigation works: H for the next
-heading, 2 for the next page, 3 for the next panel.
+Displays the book's HTML document in an embedded web view. Screen
+readers treat the content as a web document, so browse mode heading
+navigation works: H for the next heading, 2 for the next page, 3 for
+the next panel.
 
 If no web view backend is available on the system, show_html_view
 returns False and the caller falls back to the default browser.
@@ -39,9 +39,11 @@ class HtmlViewFrame(wx.Frame):
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
+        # The legacy MSHTML backend is preferred: it ships with Windows
+        # and needs no extra DLLs bundled into the executable.
         backend = wx.html2.WebViewBackendDefault
-        if wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendEdge):
-            backend = wx.html2.WebViewBackendEdge
+        if wx.html2.WebView.IsBackendAvailable(wx.html2.WebViewBackendIE):
+            backend = wx.html2.WebViewBackendIE
         self.view = wx.html2.WebView.New(panel, backend=backend)
         sizer.Add(self.view, 1, wx.EXPAND)
 
