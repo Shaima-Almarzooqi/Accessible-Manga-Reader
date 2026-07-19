@@ -91,7 +91,6 @@ Verbosity and AI instructions apply to pages processed from then on. To apply th
 
 * **Speaker attribution** is good but not perfect on crowded pages; the AI is told to say "Unknown" rather than guess.
 * **Your keys stay on your computer**, in a settings file in your app data folder. They are never sent anywhere except to the service you chose.
-* **PDF import** is unavailable in the ARM64 build, because the PDF library publishes no ARM64 package. Convert to CBZ, or import the pages as images.
 * **Interface language** is English regardless of the output language setting; only the AI's script is translated.
 * **`.cbr` (RAR) archives** are not supported — convert to `.cbz` first.
 
@@ -108,4 +107,4 @@ Run the tests before changing anything:
 
 GNU General Public License, version 3 or later. See LICENSE.
 
-The Windows x64 build bundles PyMuPDF (for PDF import), which is licensed under the GNU AGPL v3 by Artifex; that component keeps its own licence. The ARM64 build does not include it.
+PDF import uses pypdfium2, which is licensed permissively (Apache/BSD) by its authors; it keeps its own licence.

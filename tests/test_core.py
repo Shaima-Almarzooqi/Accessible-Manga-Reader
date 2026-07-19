@@ -96,23 +96,36 @@ class TestArchiveExtraction(WorkspaceTestCase):
 
 
 try:
-    import fitz  # noqa: F401  (PyMuPDF: absent on Windows ARM64)
+    import pypdfium2  # noqa: F401
     PDF_SUPPORT = True
 except ImportError:
     PDF_SUPPORT = False
 
 
+# A minimal valid two-page PDF, written by hand so the test needs no PDF
+# authoring library (pypdfium2 only reads PDFs, it does not create them).
+_TWO_PAGE_PDF = (
+    b"%PDF-1.4\n"
+    b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+    b"2 0 obj\n<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>\nendobj\n"
+    b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 600] "
+    b"/Contents 4 0 R >>\nendobj\n"
+    b"4 0 obj\n<< /Length 44 >>\nstream\n"
+    b"BT /F1 24 Tf 50 500 Td (Page One) Tj ET\nendstream\nendobj\n"
+    b"5 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 600] "
+    b"/Contents 6 0 R >>\nendobj\n"
+    b"6 0 obj\n<< /Length 44 >>\nstream\n"
+    b"BT /F1 24 Tf 50 500 Td (Page Two) Tj ET\nendstream\nendobj\n"
+    b"trailer\n<< /Size 7 /Root 1 0 R >>\n%%EOF"
+)
+
+
 class TestPdfExtraction(WorkspaceTestCase):
-    @unittest.skipUnless(PDF_SUPPORT, "PyMuPDF is not installed")
+    @unittest.skipUnless(PDF_SUPPORT, "pypdfium2 is not installed")
     def test_pdf_pages_render(self):
-        import fitz
         pdf_path = os.path.join(self.tmp, "book.pdf")
-        doc = fitz.open()
-        for _ in range(2):
-            page = doc.new_page(width=400, height=600)
-            page.insert_text((50, 50), "test")
-        doc.save(pdf_path)
-        doc.close()
+        with open(pdf_path, "wb") as f:
+            f.write(_TWO_PAGE_PDF)
         count = extract.extract_pdf(pdf_path, self.workspace)
         self.assertEqual(count, 2)
         pages = sorted(os.listdir(os.path.join(self.workspace, "pages")))

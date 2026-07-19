@@ -95,28 +95,30 @@ def extract_pdf(pdf_path, workspace, max_dim=1568, quality=85, progress=None):
     composites, and vector overlays all come out correctly.
     """
     try:
-        import fitz  # PyMuPDF
+        import pypdfium2 as pdfium
     except ImportError:
         raise RuntimeError(
-            "PDF import needs the PyMuPDF library, which is not "
-            "available in this build (it publishes no Windows ARM64 "
-            "package). Everything else works normally. To read a PDF, "
+            "PDF import needs the pypdfium2 library, which is not "
+            "available. Everything else works normally. To read a PDF, "
             "convert it to a CBZ or ZIP of page images first, or import "
             "the pages as image files.")
 
     pages = _pages_dir(workspace)
-    doc = fitz.open(pdf_path)
+    doc = pdfium.PdfDocument(pdf_path)
     try:
-        total = doc.page_count
+        total = len(doc)
         for index in range(total):
-            page = doc.load_page(index)
-            # Scale so the longest edge lands near max_dim.
-            rect = page.rect
-            longest = max(rect.width, rect.height)
-            zoom = (max_dim / longest) if longest > 0 else 1.0
-            zoom = max(0.5, min(zoom, 4.0))
-            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-            image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            page = doc[index]
+            # Scale so the longest edge lands near max_dim. PDF page size
+            # is in points; render scale is a multiplier on that.
+            width_pt, height_pt = page.get_size()
+            longest = max(width_pt, height_pt)
+            scale = (max_dim / longest) if longest > 0 else 1.0
+            scale = max(0.5, min(scale, 4.0))
+            bitmap = page.render(scale=scale)
+            image = bitmap.to_pil()
+            if image.mode not in ("RGB", "L"):
+                image = image.convert("RGB")
             out_path = os.path.join(pages, "%04d.jpg" % (index + 1))
             _normalize_and_save(image, out_path, max_dim, quality)
             if progress:

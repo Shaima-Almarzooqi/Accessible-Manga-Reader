@@ -3,6 +3,14 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 0.12.0
+
+### Changed
+
+- PDF import now works on all versions of the app, including Windows on
+  ARM (Snapdragon). PDF files were previously not supported on the ARM
+  version.
+
 ## 0.11.1
 
 ### Fixed
