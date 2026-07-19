@@ -160,8 +160,28 @@ drawn, without adding its own opinions.</p>
 <h3>Read in another language</h3>
 <p>Also on the General tab, Output language sets the language of the
 descriptions and dialogue. Choose from the list or type any language.
-The dialogue is translated into it, while Japanese honorifics such as
--san are kept.</p>
+The text is translated into it and transcribed as it appears.</p>
+
+<h3>Choose the comic type</h3>
+<p>On the General tab, Comic type tells the app how the pages should be
+read, which affects the order of panels and text:</p>
+<ul>
+<li>Manga, for Japanese comics, read right to left.</li>
+<li>Manhwa or Manhua, for Korean or Chinese comics, read left to right,
+usually as a vertical scroll in colour.</li>
+<li>Webtoon, for vertical-scroll comics read top to bottom.</li>
+<li>Western comic, read left to right.</li>
+</ul>
+<p>Set this to match what you are reading before you process a book, so
+the panels come out in the right order.</p>
+
+<h3>Add your own instructions for a comic type</h3>
+<p>Below the comic type is a box for your own instructions for that
+type. Anything you put there is applied to every book you read as that
+type, so it is useful for a preference you always want, such as how much
+to describe backgrounds. Each comic type has its own box. This is
+separate from the notes you can give a single book, described below; if
+both are set, the book's own notes take priority.</p>
 
 <h3>Give the AI notes about a book</h3>
 <p>To add or change the notes for a book, such as character names,

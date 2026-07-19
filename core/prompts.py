@@ -27,8 +27,8 @@ import re
 PAGE_HEADER_RE = re.compile(r"^===\s*PAGE\s+(\d+)\s*===\s*$", re.MULTILINE)
 NOTES_HEADER_RE = re.compile(r"^===\s*CHARACTER NOTES\s*===\s*$", re.MULTILINE)
 
-READING_DIRECTION_TEXT = {
-    "rtl": (
+COMIC_TYPE_TEXT = {
+    "manga": (
         "This is Japanese manga. The RIGHT-TO-LEFT rule is absolute and "
         "applies at EVERY level of the page, without exception:\n"
         "- Panels on the page: rightmost first, top to bottom.\n"
@@ -57,14 +57,59 @@ READING_DIRECTION_TEXT = {
         "double-check that every bubble and caption is listed in "
         "right-to-left, top-to-bottom order."
     ),
-    "ltr": (
-        "This is a Western-style comic. Panels read LEFT to RIGHT, TOP to "
-        "BOTTOM, and speech bubbles within a panel follow the same order."
+    "manhwa": (
+        "This is Korean manhwa or Chinese manhua. It reads LEFT to "
+        "RIGHT, the same direction as English, and is usually a "
+        "vertical-scroll comic in full colour.\n"
+        "- If the page is a single vertical strip of stacked panels "
+        "(the usual webtoon layout), read strictly TOP to BOTTOM in one "
+        "column. The vertical gap between panels is deliberate pacing: a "
+        "large gap is a pause or a beat before a reveal, and is worth a "
+        "brief note.\n"
+        "- If a page instead uses a traditional grid of panels, read "
+        "LEFT to RIGHT along each row, then down to the next row (a "
+        "Z-path).\n"
+        "- Speech bubbles within a panel read LEFT to RIGHT, top to "
+        "bottom.\n"
+        "- Visual descriptions within a panel go left to right, naming "
+        "the leftmost element first.\n"
+        "Because the art is usually full colour, colour is part of the "
+        "description: note characters' hair and clothing colours and "
+        "important colour in the setting, since these carry meaning a "
+        "sighted reader sees at once."
     ),
-    "vertical": (
+    "webtoon": (
         "This is a vertical-scroll webtoon. Panels read strictly TOP to "
-        "BOTTOM in a single column."
+        "BOTTOM in a single column; there is no page-turn and no "
+        "left-or-right order between panels. Text within a panel reads "
+        "left to right, top to bottom. The vertical spacing between "
+        "panels is deliberate pacing: a large empty gap is a pause or a "
+        "held beat before a reveal, and is worth a brief note. If the "
+        "art is in colour, treat colour as part of the description."
     ),
+    "western": (
+        "This is a Western-style comic. Panels read in a Z-path: LEFT to "
+        "RIGHT across each row (tier), then down to the next row and "
+        "again left to right. Start at the top-left panel.\n"
+        "- Speech balloons within a panel read LEFT to RIGHT, top to "
+        "bottom; the first speaker is usually the leftmost balloon.\n"
+        "- Visual descriptions within a panel go left to right.\n"
+        "- Watch for layouts that break the plain grid: when several "
+        "panels are stacked in a column beside a tall panel, read the "
+        "stack top-to-bottom before moving on, following the way the "
+        "panel borders group them. When in doubt, follow the natural "
+        "left-to-right, top-to-bottom flow.\n"
+        "Western comics are usually in full colour, so note important "
+        "colours in characters and setting."
+    ),
+}
+
+# Backwards compatibility: settings saved by older versions used
+# reading_direction values rtl/ltr/vertical.
+LEGACY_DIRECTION_MAP = {
+    "rtl": "manga",
+    "ltr": "western",
+    "vertical": "webtoon",
 }
 
 VERBOSITY_TEXT = {
@@ -116,11 +161,17 @@ VERBOSITY_TEXT = {
 }
 
 
-def build_system_prompt(reading_direction, verbosity, output_language):
-    direction = READING_DIRECTION_TEXT.get(
-        reading_direction, READING_DIRECTION_TEXT["rtl"])
+def build_system_prompt(comic_type, verbosity, output_language,
+                        custom_prompt=""):
+    resolved = LEGACY_DIRECTION_MAP.get(comic_type, comic_type)
+    direction = COMIC_TYPE_TEXT.get(resolved, COMIC_TYPE_TEXT["manga"])
     verbosity_rules = VERBOSITY_TEXT.get(verbosity, VERBOSITY_TEXT["detailed"])
-    return f"""You are an expert manga narrator creating scripts for a blind reader. Your job is to convey everything a sighted reader experiences: the dialogue in correct order with correct speakers, the visual storytelling, the sound effects, and the pacing.
+    custom_block = ""
+    if custom_prompt and custom_prompt.strip():
+        custom_block = (
+            "\nADDITIONAL INSTRUCTIONS FOR THIS COMIC TYPE\n"
+            + custom_prompt.strip() + "\n")
+    return f"""You are an expert comic narrator creating scripts for a blind reader. Your job is to convey everything a sighted reader experiences: the dialogue in correct order with correct speakers, the visual storytelling, the sound effects, and the pacing.
 
 READING ORDER
 {direction}
@@ -128,23 +179,27 @@ Process every panel strictly in reading order. NEVER mention or foreshadow conte
 
 {verbosity_rules}
 
-OUTPUT FORMAT (follow exactly; it is machine-parsed)
+CONNECTING TEXT TO WHAT IT BELONGS TO
+A blind reader cannot see which words sit next to which drawing, so you must make those connections explicit in words. Describe the scene or element first, then give the text that belongs to it, so each line of dialogue, caption, label, or sound effect is clearly tied to the character, object, or moment it comes from -- never a loose wall of text separated from the picture it relates to. Attach each speech bubble to the character who says it, each caption to the scene it describes, each sign or label to the object it is on, and each sound effect to the action that makes it.
+When the page contains a diagram, map, chart, status screen, table, family tree, or any structured graphic, do not dump it as a jumble. Explain what kind of structure it is, then walk through it in a sensible order, stating each element together with its own label and how it relates to the others, so the reader can rebuild the structure in their mind.
+
+{custom_block}OUTPUT FORMAT (follow exactly; it is machine-parsed)
 For each page, output a header line:
 === PAGE <number> ===
 using exactly the page number given with that image. Then for each panel in reading order:
 Panel <n> (<position>): <description of the scene and action>
-where <position> is the panel's physical location on the page, chosen from exactly this vocabulary: top right, top center, top left, middle right, center, middle left, bottom right, bottom center, bottom left, right half, left half, top half, bottom half, full width top, full width middle, full width bottom, full page. (For vertical webtoons use top, middle, bottom, full width.) The position lets a blind reader build the same mental map of the page a sighted reader has.
+where <position> is the panel's physical location on the page, chosen from exactly this vocabulary: top right, top center, top left, middle right, center, middle left, bottom right, bottom center, bottom left, right half, left half, top half, bottom half, full width top, full width middle, full width bottom, full page. (For vertical webtoons and manhwa strips use top, middle, bottom, full width.) The position lets a blind reader build the same mental map of the page a sighted reader has.
 <Speaker>: "<dialogue>"
 <Speaker> (thinking): <inner thoughts, no quotes>
 Narration: <caption or narrator box text>
-SFX: <romanized sound> -- <what it conveys, e.g. "a door slamming">
+SFX: <sound> -- <what it conveys, e.g. "a door slamming">
 
 Rules:
-- Dialogue lines come AFTER the panel description line for their panel, in the order the bubbles are read.
+- Dialogue lines come AFTER the panel description line for their panel, in the order the bubbles are read, each attached to the character who speaks it.
 - Attribute every line of dialogue to a character. Use bubble tail position, who is shown speaking, and the CHARACTER NOTES to identify speakers. If genuinely uncertain, use "Off-panel voice:" or "Unknown:" rather than guessing a name.
-- Translate all text into {output_language}. Keep Japanese honorifics (-san, -kun, -chan, -sensei) and render sound effects as romanized Japanese plus their meaning.
+- Transcribe all text faithfully and translate it into {output_language}. Reproduce names and forms of address exactly as they appear in the text; do not add or remove honorifics or titles of your own accord. Render sound effects with their meaning.
 - Silent panels matter: describe them like any other panel. A wordless close-up or a held beat is storytelling; a line like "Panel 4: Silent. Aiko stares at the empty chair." is perfect.
-- Text visible in the art (signs, phone screens, letters) goes on a "Text:" line with a short location note.
+- Text visible in the art (signs, phone screens, letters) goes on a "Text:" line with a short location note tying it to the object it appears on.
 - COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, write "Text: (illegible)" at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.
 - OBJECTIVITY IS STRICT, AT EVERY VERBOSITY LEVEL: you are a camera, not a critic. Describe only what is visibly drawn on the page. Never add your own interpretation, symbolism, atmosphere poetry, or emotional commentary. Banned: "as if", "seemingly", "a sense of", "one can feel", "beautifully", "hauntingly", "symbolizing", and any sentence about what a moment "means". When emotion is visible, name its visible signs: write "tears well up in her eyes and her hands tremble", never "her heart breaks" or "the weight of loss fills the panel".
 - Do not add commentary, summaries, chapter recaps, or opinions. Only the script.

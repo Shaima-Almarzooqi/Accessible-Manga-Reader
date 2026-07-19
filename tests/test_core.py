@@ -1304,11 +1304,11 @@ class TestLanguageSetting(unittest.TestCase):
         # The box stays editable, so a language not on the list must
         # still be honoured.
         prompt = prompts.build_system_prompt("rtl", "detailed", "Swahili")
-        self.assertIn("Translate all text into Swahili", prompt)
+        self.assertIn("translate it into Swahili", prompt)
 
     def test_listed_language_reaches_the_prompt(self):
         prompt = prompts.build_system_prompt("rtl", "detailed", "Arabic")
-        self.assertIn("Translate all text into Arabic", prompt)
+        self.assertIn("translate it into Arabic", prompt)
 
 
 
@@ -1498,6 +1498,104 @@ class TestPageImageCleanup(WorkspaceTestCase):
         self.assertEqual(loaded.page_count, 2)
         self.assertIn("Panel 1 (top right): x.", loaded.full_text())
         self.assertTrue(loaded.is_complete())
+
+
+
+
+class TestComicTypes(unittest.TestCase):
+    def test_all_four_types_have_rules(self):
+        for ctype in ("manga", "manhwa", "webtoon", "western"):
+            prompt = prompts.build_system_prompt(ctype, "detailed", "English")
+            self.assertIn("READING ORDER", prompt)
+
+    def test_manga_is_right_to_left(self):
+        p = prompts.build_system_prompt("manga", "detailed", "English")
+        self.assertIn("RIGHT-TO-LEFT", p)
+        self.assertIn("top right, 2) top center", p)
+
+    def test_manhwa_is_left_to_right_and_colour(self):
+        p = prompts.build_system_prompt("manhwa", "detailed", "English")
+        self.assertIn("LEFT to RIGHT", p)
+        self.assertIn("manhua", p)
+        self.assertIn("colour", p)
+        self.assertNotIn("RIGHT-TO-LEFT rule is absolute", p)
+
+    def test_webtoon_is_vertical(self):
+        p = prompts.build_system_prompt("webtoon", "detailed", "English")
+        self.assertIn("TOP to BOTTOM", p)
+        self.assertIn("vertical-scroll", p)
+
+    def test_western_is_z_path(self):
+        p = prompts.build_system_prompt("western", "detailed", "English")
+        self.assertIn("Z-path", p)
+        self.assertIn("LEFT to RIGHT", p)
+
+    def test_legacy_direction_values_still_work(self):
+        # Old settings saved rtl/ltr/vertical; these must still resolve.
+        self.assertIn("RIGHT-TO-LEFT",
+                      prompts.build_system_prompt("rtl", "detailed", "English"))
+        self.assertIn("Z-path",
+                      prompts.build_system_prompt("ltr", "detailed", "English"))
+        self.assertIn("vertical-scroll",
+                      prompts.build_system_prompt("vertical", "detailed",
+                                                  "English"))
+
+    def test_unknown_type_falls_back_to_manga(self):
+        p = prompts.build_system_prompt("nonsense", "detailed", "English")
+        self.assertIn("RIGHT-TO-LEFT", p)
+
+
+class TestPromptEnhancements(unittest.TestCase):
+    def test_text_association_rule_present(self):
+        p = prompts.build_system_prompt("manga", "detailed", "English")
+        self.assertIn("CONNECTING TEXT TO WHAT IT BELONGS TO", p)
+        self.assertIn("diagram", p)
+
+    def test_no_honorific_instruction(self):
+        # The AI must not be told to add or keep Japanese honorifics; it
+        # transcribes whatever the text shows.
+        for ctype in ("manga", "manhwa", "webtoon", "western"):
+            p = prompts.build_system_prompt(ctype, "detailed", "English")
+            self.assertNotIn("-san", p)
+            self.assertNotIn("-kun", p)
+            self.assertIn("do not add or remove honorifics", p)
+
+    def test_custom_prompt_included_when_present(self):
+        p = prompts.build_system_prompt(
+            "manga", "detailed", "English",
+            custom_prompt="Always name the weather in each outdoor scene.")
+        self.assertIn("ADDITIONAL INSTRUCTIONS FOR THIS COMIC TYPE", p)
+        self.assertIn("name the weather", p)
+
+    def test_custom_prompt_absent_when_empty(self):
+        p = prompts.build_system_prompt("manga", "detailed", "English",
+                                        custom_prompt="   ")
+        self.assertNotIn("ADDITIONAL INSTRUCTIONS FOR THIS COMIC TYPE", p)
+
+
+class TestComicTypeSettings(unittest.TestCase):
+    def test_default_comic_type_and_custom_prompts(self):
+        self.assertEqual(config.DEFAULT_SETTINGS["comic_type"], "manga")
+        cp = config.DEFAULT_SETTINGS["custom_prompts"]
+        for key in ("manga", "manhwa", "webtoon", "western"):
+            self.assertEqual(cp[key], "")
+
+    def test_migration_from_reading_direction(self):
+        tmp = tempfile.mkdtemp(prefix="amr_ctype_")
+        original = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = tmp
+        try:
+            with open(config.settings_path(), "w", encoding="utf-8") as f:
+                json.dump({"reading_direction": "ltr"}, f)
+            settings = config.load_settings()
+            self.assertEqual(settings["comic_type"], "western")
+            self.assertNotIn("reading_direction", settings)
+        finally:
+            if original is None:
+                os.environ.pop("APPDATA", None)
+            else:
+                os.environ["APPDATA"] = original
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,26 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 0.13.0
+
+### Added
+
+- Comic type setting with correct reading rules for each: Manga
+  (Japanese, right to left), Manhwa or Manhua (Korean or Chinese, left
+  to right), Webtoon (vertical scroll), and Western comic (left to
+  right). This replaces the old reading-direction setting; your previous
+  choice is carried over.
+- Custom instructions for each comic type, in Settings, applied to every
+  book of that type. A book's own instructions still take priority.
+
+### Changed
+
+- Descriptions now tie each piece of text to the character, object, or
+  moment it belongs to, instead of listing text on its own, and explain
+  diagrams and other structured graphics in a clear order.
+- The reader no longer adds or changes honorifics on its own; text is
+  transcribed exactly as it appears.
+
 ## 0.12.0
 
 ### Changed

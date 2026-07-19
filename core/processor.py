@@ -55,9 +55,17 @@ def process_book(book, settings, on_progress=None, cancel_check=None):
     if not pending:
         return result
 
+    comic_type = settings.get("comic_type") or settings.get(
+        "reading_direction", "manga")
+    custom_prompt = ""
+    custom_map = settings.get("custom_prompts")
+    if isinstance(custom_map, dict):
+        resolved = {"rtl": "manga", "ltr": "western",
+                    "vertical": "webtoon"}.get(comic_type, comic_type)
+        custom_prompt = custom_map.get(resolved, "")
     system_prompt = prompts.build_system_prompt(
-        settings["reading_direction"], settings["verbosity"],
-        settings["output_language"])
+        comic_type, settings["verbosity"],
+        settings["output_language"], custom_prompt=custom_prompt)
 
     # Exhaustive scripts are long: scale the response budget with
     # verbosity and batch size so scripts are never cut off mid-page.

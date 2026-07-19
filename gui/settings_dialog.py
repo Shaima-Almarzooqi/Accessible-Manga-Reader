@@ -134,14 +134,34 @@ class SettingsDialog(wx.Dialog):
             {"concise": 0, "detailed": 1, "extensive": 2}.get(
                 self.settings["verbosity"], 1))
 
-        self.direction = add_labeled(
-            general_panel, general_sizer, "&Reading direction:",
+        self.comic_types = ["manga", "manhwa", "webtoon", "western"]
+        self.comic_type = add_labeled(
+            general_panel, general_sizer, "&Comic type:",
             lambda p: wx.Choice(p, choices=[
-                "Right to left (Japanese manga)",
-                "Left to right (Western comics)",
-                "Vertical scroll (webtoon)"]))
-        self.direction.SetSelection({"rtl": 0, "ltr": 1, "vertical": 2}.get(
-            self.settings["reading_direction"], 0))
+                "Manga (Japanese, right to left)",
+                "Manhwa or Manhua (Korean/Chinese, left to right)",
+                "Webtoon (vertical scroll)",
+                "Western comic (left to right)"]))
+        current_type = self.settings.get("comic_type") or {
+            "rtl": "manga", "ltr": "western", "vertical": "webtoon"}.get(
+            self.settings.get("reading_direction", "manga"), "manga")
+        if current_type not in self.comic_types:
+            current_type = "manga"
+        self._current_comic_type = current_type
+        self.comic_type.SetSelection(self.comic_types.index(current_type))
+        self.comic_type.Bind(wx.EVT_CHOICE, self._on_comic_type_change)
+
+        # Per-type custom instructions. The field shows the instructions
+        # for the currently selected comic type; each type keeps its own.
+        self._custom_prompts = dict(self.settings.get("custom_prompts") or {})
+        for key in self.comic_types:
+            self._custom_prompts.setdefault(key, "")
+        self.custom_prompt = add_labeled(
+            general_panel, general_sizer,
+            "Custom &instructions for this comic type (optional, applied "
+            "to every book of this type):",
+            lambda p: wx.TextCtrl(p, style=wx.TE_MULTILINE, size=(-1, 70)))
+        self.custom_prompt.SetValue(self._custom_prompts[current_type])
 
         self.reader_view = add_labeled(
             general_panel, general_sizer, "Reader displays:",
@@ -202,6 +222,18 @@ class SettingsDialog(wx.Dialog):
 
     def _needs_base_url(self):
         return self.current_service in config.SERVICES_NEEDING_BASE_URL
+
+    def _stash_custom_prompt(self):
+        """Save the visible custom-prompt text into the type it belongs to."""
+        self._custom_prompts[self._current_comic_type] = (
+            self.custom_prompt.GetValue().strip())
+
+    def _on_comic_type_change(self, event):
+        # Keep what was typed for the old type, then show the new type's.
+        self._stash_custom_prompt()
+        new_type = self.comic_types[self.comic_type.GetSelection()]
+        self._current_comic_type = new_type
+        self.custom_prompt.SetValue(self._custom_prompts.get(new_type, ""))
 
     def _stash_service_fields(self):
         state = self.service_state[self.current_service]
@@ -336,8 +368,11 @@ class SettingsDialog(wx.Dialog):
         self.settings["verbosity"] = (
             ["concise", "detailed", "extensive"]
             [self.verbosity.GetSelection()])
-        self.settings["reading_direction"] = (
-            ["rtl", "ltr", "vertical"][self.direction.GetSelection()])
+        self._stash_custom_prompt()
+        self.settings["comic_type"] = self.comic_types[
+            self.comic_type.GetSelection()]
+        self.settings["custom_prompts"] = self._custom_prompts
+        self.settings.pop("reading_direction", None)
         self.settings["reader_view"] = (
             ["book", "page", "panel"][self.reader_view.GetSelection()])
         self.settings["show_panel_labels"] = self.panel_labels.GetValue()

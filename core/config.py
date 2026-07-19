@@ -4,7 +4,7 @@ import json
 import os
 
 APP_NAME = "Accessible Manga Reader"
-APP_VERSION = "0.12.0"
+APP_VERSION = "0.13.0"
 
 # Folders used by earlier versions, migrated on first run so existing
 # libraries and settings are not lost to a rename.
@@ -40,7 +40,16 @@ DEFAULT_SETTINGS = {
     "request_delay_seconds": 7.0,
     "output_language": "English",
     "verbosity": "detailed",  # "concise", "detailed", or "extensive"
-    "reading_direction": "rtl",  # "rtl" (manga), "ltr" (western), "vertical"
+    "comic_type": "manga",  # manga, manhwa, webtoon, western
+    # A user's own extra instructions, one set per comic type, applied to
+    # every book read as that type. Kept separate from a book's own
+    # per-book instructions.
+    "custom_prompts": {
+        "manga": "",
+        "manhwa": "",
+        "webtoon": "",
+        "western": "",
+    },
     # Reader display mode: "book" (whole book as one document),
     # "page" (one page at a time), "panel" (one panel at a time).
     "reader_view": "book",
@@ -220,6 +229,11 @@ def _migrate(saved):
         if single in saved and plural not in saved:
             value = saved.pop(single)
             saved[plural] = [value] if isinstance(value, str) and value else []
+    # reading_direction (rtl/ltr/vertical) -> comic_type.
+    if "reading_direction" in saved and "comic_type" not in saved:
+        legacy = {"rtl": "manga", "ltr": "western", "vertical": "webtoon"}
+        saved["comic_type"] = legacy.get(saved.pop("reading_direction"),
+                                         "manga")
     return saved
 
 
