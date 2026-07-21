@@ -1715,5 +1715,49 @@ class TestAskFeature(WorkspaceTestCase):
         self.assertLessEqual(len(fake.seen_pages), ask.MAX_ASK_PAGES)
 
 
+
+
+class TestAskAnswerFormatting(unittest.TestCase):
+    SAMPLE = ("Based on **Page 2**, a detective explains.\n"
+              "### **Row 1 (Top of the page)**\n"
+              "*   **Panel 1:** The mansion.\n"
+              "*   **Panel 2:** The room.\n"
+              "---\n"
+              "He begins: *\"IT WAS...\"*")
+
+    def test_markdown_symbols_never_reach_the_reader(self):
+        from core import ask
+        html_out = ask.answer_to_html(self.SAMPLE)
+        for symbol in ("**", "###", "---", "* "):
+            self.assertNotIn(symbol, html_out)
+        self.assertIn("<h4>", html_out)
+        self.assertIn("<ul>", html_out)
+        self.assertIn("<strong>Page 2</strong>", html_out)
+
+    def test_plain_prose_becomes_paragraphs(self):
+        from core import ask
+        html_out = ask.answer_to_html("First line.\n\nSecond line.")
+        self.assertEqual(html_out.count("<p>"), 2)
+
+    def test_content_is_escaped(self):
+        from core import ask
+        html_out = ask.answer_to_html("A <script> tag & more")
+        self.assertNotIn("<script>", html_out)
+        self.assertIn("&lt;script&gt;", html_out)
+        self.assertIn("&amp;", html_out)
+
+    def test_conversation_headings_per_question(self):
+        from core import ask
+        doc = ask.conversation_html(
+            "Book", [("Q one?", "Answer one."), ("Q two?", "Answer two.")])
+        self.assertIn("<h2>Question 1: Q one?</h2>", doc)
+        self.assertIn("<h2>Question 2: Q two?</h2>", doc)
+
+    def test_ask_prompt_forbids_markdown(self):
+        from core import ask
+        prompt = ask.build_ask_system_prompt(dict(config.DEFAULT_SETTINGS))
+        self.assertIn("do not use Markdown", prompt)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

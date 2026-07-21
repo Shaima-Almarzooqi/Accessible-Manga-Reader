@@ -27,7 +27,12 @@ def build_ask_system_prompt(settings):
         "Describe visual details in concrete terms a blind reader can "
         "use, and tie each detail to where it appears (which page, which "
         "panel, which character or object). Do not add interpretation or "
-        "commentary beyond what is asked. Answer in %s.\n\n"
+        "commentary beyond what is asked. Write your answer as clear "
+        "flowing prose for a screen reader: do not use Markdown "
+        "formatting symbols such as asterisks, hash signs, pipes, or "
+        "horizontal rules. When walking through several panels, start "
+        "each panel on its own line with a short lead-in like 'Panel 2, "
+        "middle right:' in words. Answer in %s.\n\n"
         "For reference, the pages follow these reading conventions:\n%s"
         % (language, direction))
 
@@ -70,3 +75,71 @@ def ask_question(book, settings, question, page_numbers, history=None,
     content = build_ask_content(book, page_numbers, question, history)
     return client.request_scripts(system_prompt, content,
                                   cancel_check=cancel_check).strip()
+
+
+import html as _html
+import re as _re
+
+
+def _inline_html(text):
+    """Escape, then convert the inline markdown that models emit."""
+    escaped = _html.escape(text)
+    escaped = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    escaped = _re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)",
+                      r"<em>\1</em>", escaped)
+    return escaped
+
+
+def answer_to_html(text):
+    """Turn an answer (plain prose, or markdown that slipped through the
+    instructions) into clean HTML: headings become h4, bullets become
+    lists, everything else becomes paragraphs. Never shows raw symbols.
+    """
+    blocks = []
+    bullets = []
+
+    def flush_bullets():
+        if bullets:
+            blocks.append("<ul>%s</ul>"
+                          % "".join("<li>%s</li>" % b for b in bullets))
+            bullets.clear()
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or _re.fullmatch(r"[-_*]{3,}", line):
+            flush_bullets()
+            continue
+        heading = _re.fullmatch(r"#{1,6}\s*(.+?)\s*#*", line)
+        if heading:
+            flush_bullets()
+            blocks.append("<h4>%s</h4>" % _inline_html(heading.group(1)))
+            continue
+        bullet = _re.fullmatch(r"[*+-]\s+(.+)", line)
+        if bullet:
+            bullets.append(_inline_html(bullet.group(1)))
+            continue
+        flush_bullets()
+        blocks.append("<p>%s</p>" % _inline_html(line))
+    flush_bullets()
+    return "\n".join(blocks)
+
+
+def conversation_html(book_title, history):
+    """The whole Ask session as an HTML document: each question is a
+    level-2 heading, so browse mode jumps between exchanges with H or 2.
+    """
+    parts = [
+        "<!DOCTYPE html>",
+        '<html lang="en"><head><meta charset="utf-8">',
+        "<title>%s</title>" % _html.escape("Ask - %s" % book_title),
+        "<style>body{font-family:sans-serif;max-width:46em;margin:0.5em "
+        "auto;padding:0 1em;line-height:1.6}h2{font-size:1.15em;"
+        "margin-top:1.2em}h4{font-size:1em;margin:0.8em 0 0.2em}"
+        "p{margin:0.4em 0}</style></head><body>",
+    ]
+    for index, (question, answer) in enumerate(history, start=1):
+        parts.append("<h2>Question %d: %s</h2>"
+                     % (index, _inline_html(question)))
+        parts.append(answer_to_html(answer))
+    parts.append("</body></html>")
+    return "\n".join(parts)

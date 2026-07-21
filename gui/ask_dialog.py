@@ -11,6 +11,11 @@ import threading
 
 import wx
 
+try:
+    import wx.html2
+except ImportError:
+    wx.html2 = None
+
 from core import ask, api_client
 
 from . import keys as keyhelp
@@ -68,9 +73,26 @@ class AskDialog(wx.Dialog):
 
         sizer.Add(wx.StaticText(self, label="A&nswers:"), 0,
                   wx.LEFT | wx.RIGHT, 6)
-        self.answers = wx.TextCtrl(
-            self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
-        sizer.Add(self.answers, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
+        # The conversation renders as an HTML document: each question is
+        # a heading, so browse mode moves between exchanges with H, and
+        # the AI's structure reads cleanly instead of as symbols. Falls
+        # back to a plain text control if no web view is available.
+        self.answers_text = None
+        self.answers_view = None
+        if wx.html2 is not None:
+            try:
+                self.answers_view = wx.html2.WebView.New(self)
+                self.answers_view.SetName("Answers")
+            except Exception:
+                self.answers_view = None
+        if self.answers_view is not None:
+            sizer.Add(self.answers_view, 1,
+                      wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
+        else:
+            self.answers_text = wx.TextCtrl(
+                self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+            sizer.Add(self.answers_text, 1,
+                      wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         copy_button = wx.Button(self, label="&Copy answer")
@@ -150,13 +172,20 @@ class AskDialog(wx.Dialog):
                           wx.OK | wx.ICON_ERROR, self)
             return
         self.history.append((question, answer))
-        block = "You: %s\nAnswer: %s\n\n" % (question, answer)
-        self.answers.AppendText(block)
         self.question.SetValue("")
-        # Land focus on the answers so the screen reader reads the reply.
-        self.answers.SetFocus()
-        self.answers.SetInsertionPoint(
-            max(0, self.answers.GetLastPosition() - len(block)))
+        if self.answers_view is not None:
+            self.answers_view.SetPage(
+                ask.conversation_html(self.book.title or "Book",
+                                      self.history), "")
+            # Land focus on the document so the screen reader reads it;
+            # H jumps between questions in browse mode.
+            self.answers_view.SetFocus()
+        else:
+            block = "You: %s\nAnswer: %s\n\n" % (question, answer)
+            self.answers_text.AppendText(block)
+            self.answers_text.SetFocus()
+            self.answers_text.SetInsertionPoint(
+                max(0, self.answers_text.GetLastPosition() - len(block)))
 
     def on_copy(self, event):
         if not self.history:

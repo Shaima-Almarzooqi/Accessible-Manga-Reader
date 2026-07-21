@@ -144,7 +144,9 @@ the current page, the surrounding pages, or a small range, then select
 Ask. The AI looks at the original page images again, not just the
 text, so it can clarify details the description missed, and it knows
 the characters from the book's notes. You can ask follow-up questions
-in the same window, and copy the latest answer.</p>
+in the same window, and copy the latest answer. The answers appear as a
+formatted document: each of your questions is a heading, so in browse
+mode you can jump between them with the H key.</p>
 <p>Two things to know: each question uses your AI service the same way
 processing does, so it counts toward your allowance; and it needs the
 book's page images, so it is unavailable for a book whose images were
