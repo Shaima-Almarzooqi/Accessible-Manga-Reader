@@ -145,8 +145,15 @@ Ask. The AI looks at the original page images again, not just the
 text, so it can clarify details the description missed, and it knows
 the characters from the book's notes. You can ask follow-up questions
 in the same window, and copy the latest answer. The answers appear as a
-formatted document: each of your questions is a heading, so in browse
-mode you can jump between them with the H key.</p>
+formatted document: each question is a heading and each answer is a
+heading under it, so in browse mode H moves through everything, 2 moves
+from question to question, and 3 from answer to answer. The newest
+exchange is at the end, so Control plus End jumps straight to it.</p>
+<p>Your question appears in the document as soon as you send it, with a
+note under its Answer heading saying the AI is working. While it works,
+the Ask button becomes Stop; choosing Stop abandons that question right
+away and gives you the Ask button back, leaving your question in the box
+so you can ask it again.</p>
 <p>Two things to know: each question uses your AI service the same way
 processing does, so it counts toward your allowance; and it needs the
 book's page images, so it is unavailable for a book whose images were

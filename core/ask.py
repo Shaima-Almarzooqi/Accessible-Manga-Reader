@@ -124,9 +124,30 @@ def answer_to_html(text):
     return "\n".join(blocks)
 
 
-def conversation_html(book_title, history):
-    """The whole Ask session as an HTML document: each question is a
-    level-2 heading, so browse mode jumps between exchanges with H or 2.
+# Shown in place of an answer while one is on its way, after stopping,
+# and before the first question, so the window is never blank.
+WAITING_TEXT = ("Waiting for the AI to answer. It is looking at the page "
+                "images now; this usually takes a few seconds.")
+
+STOPPED_TEXT = ("Stopped before the AI answered. Your question is still in "
+                "the question box, so you can ask it again.")
+
+EMPTY_TEXT = ("No questions yet. Type a question in the box above, choose "
+              "which pages the AI should look at, then select Ask.")
+
+
+def conversation_html(book_title, history, pending=None):
+    """The whole Ask session as an HTML document.
+
+    Each question is a level-2 heading and each answer a level-3
+    heading, so browse mode moves between questions with 2, between
+    answers with 3, and through everything with H.
+
+    `pending` is an optional (question, status text) pair for a question
+    that has been sent but not answered yet. It is rendered like any
+    other exchange so the question and a progress note appear
+    immediately, but the caller keeps it out of the history sent to the
+    AI, since it has no real answer.
     """
     parts = [
         "<!DOCTYPE html>",
@@ -134,12 +155,19 @@ def conversation_html(book_title, history):
         "<title>%s</title>" % _html.escape("Ask - %s" % book_title),
         "<style>body{font-family:sans-serif;max-width:46em;margin:0.5em "
         "auto;padding:0 1em;line-height:1.6}h2{font-size:1.15em;"
-        "margin-top:1.2em}h4{font-size:1em;margin:0.8em 0 0.2em}"
+        "margin-top:1.2em}h3{font-size:1.05em;margin:0.7em 0 0.2em}"
+        "h4{font-size:1em;margin:0.8em 0 0.2em}"
         "p{margin:0.4em 0}</style></head><body>",
     ]
-    for index, (question, answer) in enumerate(history, start=1):
+    exchanges = list(history)
+    if pending is not None:
+        exchanges.append(pending)
+    if not exchanges:
+        parts.append("<p>%s</p>" % _html.escape(EMPTY_TEXT))
+    for index, (question, answer) in enumerate(exchanges, start=1):
         parts.append("<h2>Question %d: %s</h2>"
                      % (index, _inline_html(question)))
+        parts.append("<h3>Answer</h3>")
         parts.append(answer_to_html(answer))
     parts.append("</body></html>")
     return "\n".join(parts)

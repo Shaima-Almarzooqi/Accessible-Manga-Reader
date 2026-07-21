@@ -5,6 +5,11 @@ and the AI answers by looking at the raw page images again, with the
 existing script and character notes as context. Follow-up questions in
 the same session include the earlier exchanges. The conversation is not
 saved; Copy answer puts the latest answer on the clipboard.
+
+The question appears in the conversation the moment it is sent, with a
+progress note under its Answer heading, so the window is never blank
+while the AI works. Ask becomes Stop for the duration: stopping takes
+effect at once, and the reply is discarded if it arrives afterwards.
 """
 
 import threading
@@ -29,8 +34,18 @@ class AskDialog(wx.Dialog):
         self.book = book
         self.settings = settings
         self.current_page = current_page
+        # Completed exchanges, which double as the context sent with the
+        # next question. `pending` holds the question being asked now (or
+        # the last stopped or failed one): it is shown in the
+        # conversation but never sent as context, having no real answer.
         self.history = []
+        self.pending = None
         self._busy = False
+        self._cancel = threading.Event()
+        # Bumped for every request, and again when one is abandoned, so a
+        # reply that arrives after Stop is recognised and discarded.
+        self._request_id = 0
+        self._focus_after_load = False
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -66,8 +81,11 @@ class AskDialog(wx.Dialog):
         self.range_from.Enable(False)
         self.range_to.Enable(False)
 
+        # One button for both actions: it never leaves the tab order, and
+        # its label doubles as a status ("Stop" means a question is in
+        # flight). Disabling it would hide it from keyboard users.
         self.ask_button = wx.Button(self, label="&Ask")
-        self.ask_button.Bind(wx.EVT_BUTTON, self.on_ask)
+        self.ask_button.Bind(wx.EVT_BUTTON, self.on_ask_or_stop)
         self.ask_button.SetDefault()
         sizer.Add(self.ask_button, 0, wx.LEFT | wx.BOTTOM, 6)
 
@@ -86,6 +104,8 @@ class AskDialog(wx.Dialog):
             except Exception:
                 self.answers_view = None
         if self.answers_view is not None:
+            self.answers_view.Bind(wx.html2.EVT_WEBVIEW_LOADED,
+                                   self._on_view_loaded)
             sizer.Add(self.answers_view, 1,
                       wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
         else:
@@ -99,12 +119,58 @@ class AskDialog(wx.Dialog):
         copy_button.Bind(wx.EVT_BUTTON, self.on_copy)
         buttons.Add(copy_button, 0, wx.RIGHT, 6)
         close_button = wx.Button(self, wx.ID_CANCEL, "Cl&ose")
+        close_button.Bind(wx.EVT_BUTTON, self.on_close_button)
         buttons.Add(close_button, 0)
         sizer.Add(buttons, 0, wx.ALL, 6)
 
         self.SetSizer(sizer)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.question.SetFocus()
+        # Give the view a document straight away. An empty web view is
+        # announced by its underlying window class rather than a document
+        # title, and it would show nothing until the first answer landed.
+        wx.CallAfter(self._render)
+
+    # ----- display ---------------------------------------------------------
+
+    def _exchanges(self):
+        exchanges = list(self.history)
+        if self.pending is not None:
+            exchanges.append(self.pending)
+        return exchanges
+
+    def _render(self, focus_answers=False):
+        if not self:
+            return
+        if self.answers_view is not None:
+            self._focus_after_load = focus_answers
+            self.answers_view.SetPage(
+                ask.conversation_html(self.book.title or "Book",
+                                      self.history, self.pending), "")
+            return
+        exchanges = self._exchanges()
+        if not exchanges:
+            self.answers_text.SetValue(ask.EMPTY_TEXT)
+            return
+        text = ""
+        last_offset = 0
+        for index, (question, answer) in enumerate(exchanges, start=1):
+            last_offset = len(text)
+            text += "Question %d: %s\nAnswer: %s\n\n" % (
+                index, question, answer)
+        self.answers_text.SetValue(text)
+        if focus_answers:
+            self.answers_text.SetFocus()
+            self.answers_text.SetInsertionPoint(last_offset)
+
+    def _on_view_loaded(self, event):
+        # Focus only once the document exists, so the screen reader
+        # announces the document instead of an empty control.
+        if self._focus_after_load:
+            self._focus_after_load = False
+            self.answers_view.SetFocus()
+
+    # ----- asking ----------------------------------------------------------
 
     def _on_scope(self, event):
         custom = self.scope.GetSelection() == 2
@@ -113,6 +179,7 @@ class AskDialog(wx.Dialog):
 
     def _on_char_hook(self, event):
         if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self._abandon_request()
             self.EndModal(wx.ID_CANCEL)
             return
         if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
@@ -134,58 +201,84 @@ class AskDialog(wx.Dialog):
         pages = list(range(start, end + 1))
         return pages[:ask.MAX_ASK_PAGES]
 
-    def on_ask(self, event):
+    def _abandon_request(self):
+        """Stop caring about the request in flight, if there is one."""
+        if not self._busy:
+            return
+        self._cancel.set()
+        self._request_id += 1  # its reply is no longer ours
+        self._busy = False
+
+    def on_ask_or_stop(self, event):
         if self._busy:
+            self.on_stop()
             return
         question = self.question.GetValue().strip()
         if not question:
             self.question.SetFocus()
             return
         pages = self._pages_for_scope()
+
         self._busy = True
-        self.ask_button.SetLabel("Asking...")
-        self.ask_button.Enable(False)
+        self._cancel = threading.Event()
+        self._request_id += 1
+        request_id = self._request_id
+        cancel = self._cancel
+        # A copy: the real list keeps changing on the main thread while
+        # the worker runs.
+        history = list(self.history)
+
+        self.pending = (question, ask.WAITING_TEXT)
+        self._render()
+        self.ask_button.SetLabel("&Stop")
 
         def worker():
             try:
                 answer = ask.ask_question(
                     self.book, self.settings, question, pages,
-                    history=self.history)
+                    history=history, cancel_check=cancel.is_set)
             except api_client.ApiError as error:
-                wx.CallAfter(self._show_result, question, None, str(error))
+                wx.CallAfter(self._show_result, request_id, question,
+                             None, str(error))
             except Exception as error:
-                wx.CallAfter(self._show_result, question, None,
-                             "Unexpected error: %s" % error)
+                wx.CallAfter(self._show_result, request_id, question,
+                             None, "Unexpected error: %s" % error)
             else:
-                wx.CallAfter(self._show_result, question, answer, None)
+                wx.CallAfter(self._show_result, request_id, question,
+                             answer, None)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _show_result(self, question, answer, error):
+    def on_stop(self):
+        if not self._busy:
+            return
+        self._abandon_request()
+        self.ask_button.SetLabel("&Ask")
+        if self.pending is not None:
+            self.pending = (self.pending[0], ask.STOPPED_TEXT)
+        self._render()
+        self.question.SetFocus()
+
+    def _show_result(self, request_id, question, answer, error):
         if not self:
             return
+        if request_id != self._request_id:
+            return  # stopped or superseded: this reply is no longer wanted
         self._busy = False
         self.ask_button.SetLabel("&Ask")
-        self.ask_button.Enable(True)
         if error:
+            self.pending = (question, "This question could not be "
+                                      "answered. %s" % error)
+            self._render()
             wx.MessageBox(error, "Ask about this page",
                           wx.OK | wx.ICON_ERROR, self)
             return
         self.history.append((question, answer))
+        self.pending = None
         self.question.SetValue("")
-        if self.answers_view is not None:
-            self.answers_view.SetPage(
-                ask.conversation_html(self.book.title or "Book",
-                                      self.history), "")
-            # Land focus on the document so the screen reader reads it;
-            # H jumps between questions in browse mode.
-            self.answers_view.SetFocus()
-        else:
-            block = "You: %s\nAnswer: %s\n\n" % (question, answer)
-            self.answers_text.AppendText(block)
-            self.answers_text.SetFocus()
-            self.answers_text.SetInsertionPoint(
-                max(0, self.answers_text.GetLastPosition() - len(block)))
+        self._render(focus_answers=True)
+
+    # ----- closing ---------------------------------------------------------
 
     def on_copy(self, event):
         if not self.history:
@@ -194,3 +287,7 @@ class AskDialog(wx.Dialog):
             wx.TheClipboard.SetData(
                 wx.TextDataObject(self.history[-1][1]))
             wx.TheClipboard.Close()
+
+    def on_close_button(self, event):
+        self._abandon_request()
+        self.EndModal(wx.ID_CANCEL)

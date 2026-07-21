@@ -1759,5 +1759,41 @@ class TestAskAnswerFormatting(unittest.TestCase):
         self.assertIn("do not use Markdown", prompt)
 
 
+class TestAskConversationDocument(unittest.TestCase):
+    """The document the Ask window shows: questions and answers are both
+    headings, and it is never blank."""
+
+    def test_question_and_answer_are_both_headings(self):
+        from core import ask
+        doc = ask.conversation_html("Book", [("Q?", "A.")])
+        self.assertIn("<h2>Question 1: Q?</h2>", doc)
+        self.assertIn("<h3>Answer</h3>", doc)
+
+    def test_empty_conversation_still_has_a_document(self):
+        from core import ask
+        doc = ask.conversation_html("Book", [])
+        self.assertIn("<title>", doc)
+        self.assertIn("No questions yet", doc)
+
+    def test_pending_question_is_shown_with_progress_note(self):
+        from core import ask
+        doc = ask.conversation_html(
+            "Book", [], pending=("Why is she running?", ask.WAITING_TEXT))
+        self.assertIn("<h2>Question 1: Why is she running?</h2>", doc)
+        self.assertIn("<h3>Answer</h3>", doc)
+        self.assertIn("Waiting for the AI", doc)
+        self.assertNotIn("No questions yet", doc)
+
+    def test_pending_question_follows_completed_ones(self):
+        from core import ask
+        doc = ask.conversation_html(
+            "Book", [("First?", "Done.")],
+            pending=("Second?", ask.STOPPED_TEXT))
+        self.assertIn("<h2>Question 1: First?</h2>", doc)
+        self.assertIn("<h2>Question 2: Second?</h2>", doc)
+        self.assertLess(doc.index("First?"), doc.index("Second?"))
+        self.assertIn("Stopped before the AI answered", doc)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
