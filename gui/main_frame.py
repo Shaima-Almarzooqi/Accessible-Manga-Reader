@@ -474,16 +474,22 @@ class MainFrame(wx.Frame):
                 self.on_process(event)
             return
         if not book.is_complete():
-            answer = wx.MessageBox(
-                "'%s' has %d of %d pages processed. Read it now? Choose "
-                "No to resume processing first, or Cancel to do "
-                "nothing." % (book.title, done, book.page_count),
+            dialog = wx.MessageDialog(
+                self,
+                "'%s' has %d of %d pages processed. What would you like "
+                "to do?" % (book.title, done, book.page_count),
                 "Partially processed",
-                wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION, self)
-            if answer == wx.NO:
+                wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION)
+            # Named buttons instead of Yes/No: the choice reads as the
+            # action itself.
+            dialog.SetYesNoCancelLabels(
+                "&Read now", "Resume &processing", "Cancel")
+            answer = dialog.ShowModal()
+            dialog.Destroy()
+            if answer == wx.ID_NO:
                 self.on_process(event)
                 return
-            if answer != wx.YES:
+            if answer != wx.ID_YES:
                 return
         reader = ReaderFrame(self, book, self.settings)
         reader.Show()
@@ -820,8 +826,9 @@ class InstructionsDialog(wx.Dialog):
         ok_label = ("Save and &process" if before_processing else "&Save")
         cancel_label = ("Cancel processing" if before_processing
                         else "Cancel")
+        # Buttons are created in display order, so keyboard Tab order
+        # matches what the layout shows: Save, Save and reprocess, Cancel.
         ok_button = wx.Button(self, wx.ID_OK, ok_label)
-        cancel_button = wx.Button(self, wx.ID_CANCEL, cancel_label)
         button_sizer.AddStretchSpacer()
         button_sizer.Add(ok_button, 0, wx.RIGHT, 6)
         if not before_processing:
@@ -831,6 +838,7 @@ class InstructionsDialog(wx.Dialog):
                 self, wx.ID_APPLY, "Save and &reprocess...")
             reprocess_button.Bind(wx.EVT_BUTTON, self.on_reprocess_clicked)
             button_sizer.Add(reprocess_button, 0, wx.RIGHT, 6)
+        cancel_button = wx.Button(self, wx.ID_CANCEL, cancel_label)
         button_sizer.Add(cancel_button, 0)
         main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 8)
 

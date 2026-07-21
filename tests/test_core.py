@@ -1618,5 +1618,32 @@ class TestModelDefaultsAndLists(unittest.TestCase):
             config.DEFAULT_SETTINGS["ask_instructions_before_processing"])
 
 
+
+
+class TestErrorHints(unittest.TestCase):
+    def test_server_errors_explained(self):
+        from core import api_client
+        for code in (500, 502, 503, 504):
+            hint = api_client.http_hint(code)
+            self.assertIn("overloaded", hint)
+            self.assertIn("not caused by your key", hint)
+
+    def test_quota_error_explained(self):
+        from core import api_client
+        hint = api_client.http_hint(429)
+        self.assertIn("delay between requests", hint)
+        self.assertIn("resets", hint)
+
+    def test_key_model_and_size_errors_explained(self):
+        from core import api_client
+        self.assertIn("API key", api_client.http_hint(401))
+        self.assertIn("Refresh model list", api_client.http_hint(404))
+        self.assertIn("Pages per request", api_client.http_hint(400))
+
+    def test_unknown_status_adds_nothing(self):
+        from core import api_client
+        self.assertEqual(api_client.http_hint(418), "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

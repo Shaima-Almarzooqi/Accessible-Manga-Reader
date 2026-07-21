@@ -26,6 +26,45 @@ import time
 from . import config
 
 
+def http_hint(status):
+    """A plain-language line explaining what an HTTP status means for
+    the user and what to do about it. Appended to error messages so
+    nobody has to look up what a number like 503 indicates."""
+    if status in (500, 502, 503, 504):
+        return ("This means the service's servers are temporarily "
+                "overloaded or having a problem. It is not caused by "
+                "your key or settings. Wait a few minutes and use "
+                "Process again to resume; if it keeps happening, try "
+                "again later or switch to another model or service in "
+                "Settings.")
+    if status == 429:
+        return ("This means the service received more requests than "
+                "your allowance permits. If it is a per-minute limit, "
+                "increasing the delay between requests in Settings "
+                "helps; if the daily allowance is used up, it resets "
+                "later (Gemini's at midnight Pacific time) and Process "
+                "will resume where it stopped.")
+    if status in (401, 403):
+        return ("This means the service did not accept the API key. "
+                "Check the key in Settings for missing characters, or "
+                "create a new key and paste it in.")
+    if status == 404:
+        return ("This usually means the model name does not exist for "
+                "your key. Use Refresh model list in Settings and pick "
+                "one from the list.")
+    if status in (400, 413, 422):
+        return ("This usually means the request was too large or not "
+                "accepted. Lowering Pages per request in Settings "
+                "often fixes it.")
+    return ""
+
+
+NETWORK_HINT = ("This means the service could not be reached at all. "
+                "Check your internet connection; if it is working, the "
+                "service may be briefly unreachable, so try again in a "
+                "few minutes.")
+
+
 class ApiError(Exception):
     """Raised with a user-presentable message when a request finally fails.
 
@@ -246,7 +285,7 @@ class GeminiClient(_RetryMixin):
                 response = requests.post(
                     url, headers=headers, json=payload, timeout=600)
             except requests.RequestException as error:
-                last_error = "network error: %s" % error
+                last_error = "network error: %s. %s" % (error, NETWORK_HINT)
                 if attempt == self.MAX_ATTEMPTS:
                     break
                 self._wait(delay, cancel_check)
@@ -285,7 +324,7 @@ class GeminiClient(_RetryMixin):
                         "reset (or switch to a model with a higher daily "
                         "limit, like a flash-lite model). Google's "
                         "explanation: %s" % message, key_exhausted=True)
-                last_error = "rate limit: %s" % message
+                last_error = "rate limit: %s. %s" % (message, http_hint(429))
                 if attempt == self.MAX_ATTEMPTS:
                     break
                 wait = max(delay, retry_seconds or 0)
@@ -293,15 +332,18 @@ class GeminiClient(_RetryMixin):
                 delay *= 2
                 continue
             if response.status_code in (500, 502, 503, 504):
-                last_error = "HTTP %d" % response.status_code
+                last_error = ("HTTP %d. %s" % (
+                    response.status_code,
+                    http_hint(response.status_code)))
                 if attempt == self.MAX_ATTEMPTS:
                     break
                 self._wait(delay, cancel_check)
                 delay *= 2
                 continue
-            raise ApiError("Gemini request failed: HTTP %d. %s"
+            raise ApiError("Gemini request failed: HTTP %d. %s %s"
                            % (response.status_code,
-                              readable_error(response)))
+                              readable_error(response),
+                              http_hint(response.status_code)))
 
         raise ApiError(
             "Request failed after %d attempts. Last error: %s. Your "
@@ -374,7 +416,7 @@ class AnthropicClient(_RetryMixin):
                 response = requests.post(
                     self.URL, headers=headers, json=payload, timeout=600)
             except requests.RequestException as error:
-                last_error = "network error: %s" % error
+                last_error = "network error: %s. %s" % (error, NETWORK_HINT)
                 if attempt == self.MAX_ATTEMPTS:
                     break
                 self._wait(delay, cancel_check)
@@ -414,8 +456,10 @@ class AnthropicClient(_RetryMixin):
                 self._wait(min(wait, 120), cancel_check)
                 delay *= 2
                 continue
-            raise ApiError("Claude request failed: HTTP %d. %s"
-                           % (response.status_code, readable_error(response)))
+            raise ApiError("Claude request failed: HTTP %d. %s %s"
+                           % (response.status_code,
+                              readable_error(response),
+                              http_hint(response.status_code)))
 
         raise ApiError(
             "Request failed after %d attempts. Last error: %s. Your "
@@ -497,7 +541,7 @@ class OpenAIClient(_RetryMixin):
                 response = requests.post(
                     self.URL, headers=headers, json=payload, timeout=600)
             except requests.RequestException as error:
-                last_error = "network error: %s" % error
+                last_error = "network error: %s. %s" % (error, NETWORK_HINT)
                 if attempt == self.MAX_ATTEMPTS:
                     break
                 self._wait(delay, cancel_check)
@@ -557,7 +601,7 @@ class OpenAIClient(_RetryMixin):
                         "later, or switch model or service in Settings. "
                         "OpenAI's explanation: %s" % (self.model, message),
                         key_exhausted=True)
-                last_error = "rate limit: %s" % message
+                last_error = "rate limit: %s. %s" % (message, http_hint(429))
                 if attempt == self.MAX_ATTEMPTS:
                     break
                 retry_after = response.headers.get("Retry-After", "")
@@ -569,15 +613,18 @@ class OpenAIClient(_RetryMixin):
                 delay *= 2
                 continue
             if response.status_code in (500, 502, 503, 504):
-                last_error = "HTTP %d" % response.status_code
+                last_error = ("HTTP %d. %s" % (
+                    response.status_code,
+                    http_hint(response.status_code)))
                 if attempt == self.MAX_ATTEMPTS:
                     break
                 self._wait(delay, cancel_check)
                 delay *= 2
                 continue
-            raise ApiError("%s request failed: HTTP %d. %s"
+            raise ApiError("%s request failed: HTTP %d. %s %s"
                            % (self.SERVICE_NAME, response.status_code,
-                              readable_error(response)))
+                              readable_error(response),
+                              http_hint(response.status_code)))
 
         raise ApiError(
             "Request failed after %d attempts. Last error: %s. Your "
@@ -784,10 +831,12 @@ def fetch_models(service, api_key, base_url=""):
         raise ApiError("Could not reach the service: %s" % error)
 
     if response.status_code in (401, 403):
-        raise ApiError("The service rejected the API key.")
+        raise ApiError("The service rejected the API key. %s"
+                       % http_hint(response.status_code))
     if response.status_code != 200:
-        raise ApiError("The service returned HTTP %d: %s"
-                       % (response.status_code, readable_error(response)))
+        raise ApiError("The service returned HTTP %d: %s %s"
+                       % (response.status_code, readable_error(response),
+                          http_hint(response.status_code)))
     try:
         models = parser(response.json())
     except ValueError:

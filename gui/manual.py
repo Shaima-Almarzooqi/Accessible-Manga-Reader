@@ -233,6 +233,9 @@ any mode</li>
 <li>If processing stops with a message about a limit or quota, you have
 reached the service's daily free allowance. Wait until it resets, then
 choose Process again to continue. Nothing is lost.</li>
+<li>If processing stops with a server error such as 503, the service's
+servers are temporarily overloaded. This is not caused by your key or
+settings; wait a few minutes and choose Process again.</li>
 <li>If a message says a model was not found, open Settings and use
 Refresh model list to see the models your key can use, then pick
 one.</li>

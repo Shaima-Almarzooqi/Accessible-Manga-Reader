@@ -14,6 +14,9 @@ newest version is at the top.
 
 ### Changed
 
+- Error messages now explain in plain language what went wrong and what
+  to do about it, for example that a 503 means the service's servers
+  are temporarily busy and processing can simply be resumed later.
 - The default Gemini model is now gemini-3.5-flash, the strongest model
   on the free tier.
 - The model choices for every service now list only current models that
