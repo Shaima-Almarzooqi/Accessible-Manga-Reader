@@ -1645,5 +1645,75 @@ class TestErrorHints(unittest.TestCase):
         self.assertEqual(api_client.http_hint(418), "")
 
 
+
+
+class TestAskFeature(WorkspaceTestCase):
+    def _book(self):
+        book = library.Book(self.workspace)
+        book.title = "Ask Book"
+        pages_dir = os.path.join(self.workspace, "pages")
+        os.makedirs(pages_dir, exist_ok=True)
+        for i in (1, 2, 3):
+            make_test_image().save(
+                os.path.join(pages_dir, "%04d.jpg" % i), "JPEG")
+        book.detect_page_count()
+        book.scripts = {1: "Panel 1 (top right): A door.",
+                        2: "Panel 1 (top right): A key."}
+        book.character_notes = "Aiko: short dark hair."
+        return book
+
+    def test_ask_system_prompt_is_grounded_and_localised(self):
+        from core import ask
+        settings = dict(config.DEFAULT_SETTINGS)
+        settings["output_language"] = "Arabic"
+        prompt = ask.build_ask_system_prompt(settings)
+        self.assertIn("blind reader's question", prompt)
+        self.assertIn("say so plainly rather than guessing", prompt)
+        self.assertIn("Answer in Arabic", prompt)
+        self.assertIn("RIGHT-TO-LEFT", prompt)  # default comic type
+
+    def test_ask_content_includes_context_and_images(self):
+        from core import ask
+        book = self._book()
+        content = ask.build_ask_content(
+            book, [1, 2], "Whose door is that?",
+            history=[("Earlier q?", "Earlier a.")])
+        images = [c for c in content if c.get("type") == "image"]
+        self.assertEqual(len(images), 2)
+        text = " ".join(c["text"] for c in content
+                        if c.get("type") == "text")
+        self.assertIn("Aiko: short dark hair.", text)
+        self.assertIn("A door.", text)
+        self.assertIn("Earlier q?", text)
+        self.assertIn("Whose door is that?", text)
+
+    def test_ask_question_caps_pages_and_returns_answer(self):
+        from core import api_client, ask
+
+        class FakeClient:
+            def __init__(self):
+                self.seen_pages = None
+
+            def request_scripts(self, system_prompt, content,
+                                cancel_check=None):
+                self.seen_pages = [
+                    c for c in content if c.get("type") == "image"]
+                return "  The door belongs to Aiko.  "
+
+        fake = FakeClient()
+        original = api_client.create_client
+        api_client.create_client = lambda settings: fake
+        try:
+            book = self._book()
+            settings = dict(config.DEFAULT_SETTINGS)
+            settings["gemini_api_keys"] = ["k"]
+            answer = ask.ask_question(
+                book, settings, "Whose door?", list(range(1, 30)))
+        finally:
+            api_client.create_client = original
+        self.assertEqual(answer, "The door belongs to Aiko.")
+        self.assertLessEqual(len(fake.seen_pages), ask.MAX_ASK_PAGES)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -136,6 +136,20 @@ as flowing text, press Ctrl plus L, or open the View menu and turn off
 Show panel labels. The story then reads continuously. You can turn this
 on or off at any time; it changes only how the text is shown.</p>
 
+<h3>Ask about a page</h3>
+<p>If something in the description was unclear, you can ask the AI
+about it directly. In the reader, press Ctrl plus Q, or use the Ask
+button. Type your question, choose whether the AI should look at just
+the current page, the surrounding pages, or a small range, then select
+Ask. The AI looks at the original page images again, not just the
+text, so it can clarify details the description missed, and it knows
+the characters from the book's notes. You can ask follow-up questions
+in the same window, and copy the latest answer.</p>
+<p>Two things to know: each question uses your AI service the same way
+processing does, so it counts toward your allowance; and it needs the
+book's page images, so it is unavailable for a book whose images were
+removed with Free up space.</p>
+
 <h3>HTML view</h3>
 <p>For a different way to navigate, press Ctrl plus H to open the HTML
 view. This shows the whole book in a window where each page and each
@@ -223,6 +237,7 @@ any mode</li>
 <li>Alt plus G, or Ctrl plus G: go to a page</li>
 <li>Ctrl plus F: find text</li>
 <li>Ctrl plus L: show or hide panel labels</li>
+<li>Ctrl plus Q: ask about the current page</li>
 <li>Ctrl plus E: save as a text file</li>
 <li>Ctrl plus H: open the HTML view</li>
 <li>Alt plus C, or Escape: close the reader</li>

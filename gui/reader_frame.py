@@ -36,6 +36,7 @@ import wx
 
 from core import config, html_export, prompts
 
+from .ask_dialog import AskDialog
 from .html_view import show_html_view
 
 from . import keys as keyhelp
@@ -85,6 +86,7 @@ class ReaderFrame(wx.Frame):
                 # No Alt mnemonic here on purpose: Ctrl+E (in the Book
                 # menu) is the single shortcut for saving.
                 ("Save as text...", self.on_export),
+                ("&Ask...", self.on_ask_page),
                 ("&HTML view", self.on_html_view),
                 ("&Close", lambda e: self.Close())]:
             button = wx.Button(panel, label=label)
@@ -137,6 +139,10 @@ class ReaderFrame(wx.Frame):
             "as a continuous narrative")
         self.labels_item.Check(self.show_labels)
         self.Bind(wx.EVT_MENU, self.on_toggle_labels, self.labels_item)
+        self.Bind(wx.EVT_MENU, self.on_ask_page, view.Append(
+            wx.ID_ANY, "Ask about this &page...\tCtrl+Q",
+            "Ask the AI a question about the current page; it looks at "
+            "the page image again to answer"))
         self.Bind(wx.EVT_MENU, self.on_html_view, view.Append(
             wx.ID_ANY, "Open &HTML view\tCtrl+H",
             "Open the book in an HTML window with pages and panels as "
@@ -371,6 +377,22 @@ class ReaderFrame(wx.Frame):
                 wx.MessageBox("Saving failed: %s" % error, "Save as text",
                               wx.OK | wx.ICON_ERROR, self)
         dialog.Destroy()
+
+    def on_ask_page(self, event):
+        if not self.book.has_page_images():
+            wx.MessageBox(
+                "Asking needs the original page images, and this book's "
+                "images were removed to free space. Delete the book and "
+                "import the original file to use Ask.",
+                "Ask about this page", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        if self.view == VIEW_BOOK:
+            self.current_page = self._page_at_caret()
+        dialog = AskDialog(self, self.book, self.settings,
+                           self.current_page)
+        dialog.ShowModal()
+        dialog.Destroy()
+        self.text.SetFocus()
 
     def _build_html(self):
         return html_export.build_html(

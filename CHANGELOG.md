@@ -3,6 +3,16 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 0.15.0
+
+### Added
+
+- Ask about a page (Ctrl+Q in the reader): type a question about the
+  current page, nearby pages, or a small range, and the AI answers by
+  looking at the original page images again. Follow-up questions work,
+  and the latest answer can be copied. Each question uses your AI
+  service like processing does.
+
 ## 0.14.0
 
 ### Added

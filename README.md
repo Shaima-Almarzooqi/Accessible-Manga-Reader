@@ -73,6 +73,7 @@ In the reader:
 * Alt+G or Ctrl+G — go to a page
 * Ctrl+F — find (entire-book mode)
 * Ctrl+E — save the whole book as a text file
+* Ctrl+Q — ask the AI about the current page (it looks at the page image again to answer; uses your AI service like processing does)
 * Ctrl+H — open the HTML view
 * Ctrl+Shift+E — save as an HTML file
 * Alt+C or Escape — close, remembering your place
