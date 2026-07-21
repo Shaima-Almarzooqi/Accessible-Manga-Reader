@@ -417,7 +417,7 @@ class TestProviderClients(unittest.TestCase):
         client = api_client.create_client(settings)
         self.assertIsInstance(client, api_client.RotatingClient)
         self.assertIs(client.client_class, api_client.GeminiClient)
-        self.assertEqual(client.model, "gemini-3-flash-preview")
+        self.assertEqual(client.model, "gemini-3.5-flash")
 
 
 class TestSettingsMigration(unittest.TestCase):
@@ -683,7 +683,7 @@ class TestBookKindAndPositions(unittest.TestCase):
         self.assertEqual(config.DEFAULT_SETTINGS["reader_view"], "book")
         self.assertIn("openai", config.SUGGESTED_MODELS)
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3-flash-preview")
+                         "gemini-3.5-flash")
 
 
 
@@ -1596,6 +1596,26 @@ class TestComicTypeSettings(unittest.TestCase):
             else:
                 os.environ["APPDATA"] = original
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+
+
+class TestModelDefaultsAndLists(unittest.TestCase):
+    def test_gemini_default_is_stable_flash(self):
+        self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
+                         "gemini-3.5-flash")
+        self.assertEqual(config.SUGGESTED_MODELS["gemini"][0],
+                         "gemini-3.5-flash")
+
+    def test_every_default_model_is_in_its_suggested_list(self):
+        for service in ("gemini", "anthropic", "openai", "openrouter"):
+            default = config.DEFAULT_SETTINGS["%s_model" % service]
+            self.assertIn(default, config.SUGGESTED_MODELS[service],
+                          service)
+
+    def test_ask_instructions_setting_defaults_on(self):
+        self.assertTrue(
+            config.DEFAULT_SETTINGS["ask_instructions_before_processing"])
 
 
 if __name__ == "__main__":

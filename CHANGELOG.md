@@ -3,6 +3,23 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 0.14.0
+
+### Added
+
+- A Settings option to skip the AI-instructions box when processing a
+  book. Instructions remain available from the Book menu, which now has
+  Save and Save and reprocess buttons, so new instructions can be
+  applied to an already processed book directly.
+
+### Changed
+
+- The default Gemini model is now gemini-3.5-flash, the strongest model
+  on the free tier.
+- The model choices for every service now list only current models that
+  can read images. Refresh model list and typing a model by hand work as
+  before.
+
 ## 0.13.0
 
 ### Added

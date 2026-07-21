@@ -379,10 +379,14 @@ class MainFrame(wx.Frame):
                 "original file to continue." % book.title,
                 config.APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
             return
-        if book.processed_count() == 0:
+        if (book.processed_count() == 0
+                and self.settings.get(
+                    "ask_instructions_before_processing", True)):
             # Fresh run: instructions only take effect during processing,
             # so this is the moment to collect them. OK (even with an
-            # empty box) starts processing; Cancel aborts.
+            # empty box) starts processing; Cancel aborts. The dialog can
+            # be turned off in Settings; instructions then remain
+            # reachable from the Book menu.
             instructions = InstructionsDialog(self, book, before_processing=True)
             proceed = instructions.ShowModal() == wx.ID_OK
             if proceed:
@@ -485,14 +489,18 @@ class MainFrame(wx.Frame):
         reader.Show()
 
     def on_instructions(self, event):
+        # Returns wx.ID_OK for Save, wx.ID_APPLY for Save and reprocess.
         book = self._selected_book()
         if not book:
             return
         dialog = InstructionsDialog(self, book)
-        if dialog.ShowModal() == wx.ID_OK:
+        result = dialog.ShowModal()
+        if result in (wx.ID_OK, wx.ID_APPLY):
             book.user_instructions = dialog.instructions
             book.save()
         dialog.Destroy()
+        if result == wx.ID_APPLY:
+            self.on_reprocess(event)
 
     def on_rename(self, event):
         book = self._selected_book()
@@ -784,7 +792,8 @@ class InstructionsDialog(wx.Dialog):
         "late.' The AI will use these names from the very first page "
         "instead of guessing. Note: instructions only affect pages "
         "processed from now on. To apply them to an already processed "
-        "book, use Reprocess entire book in the Book menu.")
+        "book, use Save and reprocess (also available as Reprocess "
+        "entire book in the Book menu).")
 
     def __init__(self, parent, book, before_processing=False):
         title = ("AI instructions before processing %s"
@@ -808,13 +817,20 @@ class InstructionsDialog(wx.Dialog):
         main_sizer.Add(self.text, 1, wx.EXPAND | wx.ALL, 8)
 
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        ok_label = ("Save and &process" if before_processing else "&OK")
+        ok_label = ("Save and &process" if before_processing else "&Save")
         cancel_label = ("Cancel processing" if before_processing
                         else "Cancel")
         ok_button = wx.Button(self, wx.ID_OK, ok_label)
         cancel_button = wx.Button(self, wx.ID_CANCEL, cancel_label)
         button_sizer.AddStretchSpacer()
         button_sizer.Add(ok_button, 0, wx.RIGHT, 6)
+        if not before_processing:
+            # Apply the instructions right away: save, then run the
+            # normal Reprocess entire book flow with its confirmation.
+            reprocess_button = wx.Button(
+                self, wx.ID_APPLY, "Save and &reprocess...")
+            reprocess_button.Bind(wx.EVT_BUTTON, self.on_reprocess_clicked)
+            button_sizer.Add(reprocess_button, 0, wx.RIGHT, 6)
         button_sizer.Add(cancel_button, 0)
         main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 8)
 
@@ -837,3 +853,7 @@ class InstructionsDialog(wx.Dialog):
     def on_ok(self, event):
         self.instructions = self.text.GetValue().strip()
         self.EndModal(wx.ID_OK)
+
+    def on_reprocess_clicked(self, event):
+        self.instructions = self.text.GetValue().strip()
+        self.EndModal(wx.ID_APPLY)

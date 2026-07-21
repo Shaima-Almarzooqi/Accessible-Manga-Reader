@@ -98,6 +98,11 @@ AI will then use those names from the first page instead of guessing.
 You can also leave this empty.</li>
 <li>Select Save and process to begin.</li>
 </ol>
+<p>If you prefer not to see this box each time, turn off "Ask for AI
+instructions before processing a book" in Settings. Processing then
+starts immediately, and the instructions stay available from the Book
+menu, where Save and reprocess applies new instructions to a book that
+is already processed.</p>
 <p>A progress window opens and tells you how far along it is. Processing
 a whole volume can take several minutes, because each page is sent to
 the AI in turn. You can cancel at any time; everything done so far is
@@ -185,9 +190,9 @@ both are set, the book's own notes take priority.</p>
 
 <h3>Give the AI notes about a book</h3>
 <p>To add or change the notes for a book, such as character names,
-select it in the library and press Ctrl plus T. Notes take effect on
-pages processed after you add them. To apply new notes to a book already
-processed, use Reprocess entire book in the Book menu.</p>
+select it in the library and press Ctrl plus T. Save keeps your notes
+for later; Save and reprocess applies them right away by processing the
+book again. Notes affect pages processed after you add them.</p>
 
 <h3>Free up disk space</h3>
 <p>After a book is fully processed, its page images are no longer needed

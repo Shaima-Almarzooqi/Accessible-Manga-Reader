@@ -4,7 +4,7 @@ import json
 import os
 
 APP_NAME = "Accessible Manga Reader"
-APP_VERSION = "0.13.0"
+APP_VERSION = "0.14.0"
 
 # Folders used by earlier versions, migrated on first run so existing
 # libraries and settings are not lost to a rename.
@@ -21,11 +21,11 @@ DEFAULT_SETTINGS = {
     # Default confirmed working on current free-tier projects; older
     # gemini-2.5-* models are no longer served to all projects. Use the
     # "Refresh model list" button in Settings to fetch what YOUR key can use.
-    "gemini_model": "gemini-3-flash-preview",
+    "gemini_model": "gemini-3.5-flash",
     "anthropic_api_keys": [],
     "anthropic_model": "claude-sonnet-4-6",
     "openai_api_keys": [],
-    "openai_model": "gpt-5.1",
+    "openai_model": "gpt-5.6",
     "openrouter_api_keys": [],
     "openrouter_model": "google/gemma-4-31b-it:free",
     # Any OpenAI-compatible endpoint: Groq, Mistral, a local Ollama or
@@ -44,6 +44,10 @@ DEFAULT_SETTINGS = {
     # A user's own extra instructions, one set per comic type, applied to
     # every book read as that type. Kept separate from a book's own
     # per-book instructions.
+    # Show the AI-instructions dialog before processing a book. Off
+    # starts processing immediately; instructions stay reachable from
+    # the Book menu.
+    "ask_instructions_before_processing": True,
     "custom_prompts": {
         "manga": "",
         "manhwa": "",
@@ -70,21 +74,24 @@ DEFAULT_SETTINGS = {
 # list-models endpoint and is always the source of truth).
 SUGGESTED_MODELS = {
     "gemini": [
+        "gemini-3.5-flash",
         "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
     ],
     "anthropic": [
         "claude-sonnet-4-6",
-        "claude-haiku-4-5-20251001",
-        "claude-opus-4-8",
         "claude-fable-5",
+        "claude-opus-4-8",
+        "claude-haiku-4-5-20251001",
     ],
     "openai": [
-        "gpt-5.1",
-        "gpt-5",
-        "gpt-4.1",
-        "gpt-4o",
+        "gpt-5.6",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.5",
+        "gpt-5.4-mini",
     ],
     # Free, vision-capable OpenRouter models (IDs ending in :free cost
     # nothing). The roster rotates, so use Refresh model list to see

@@ -172,6 +172,13 @@ class SettingsDialog(wx.Dialog):
         self.reader_view.SetSelection({"book": 0, "page": 1, "panel": 2}.get(
             self.settings["reader_view"], 0))
 
+        self.ask_instructions = wx.CheckBox(
+            general_panel,
+            label="As&k for AI instructions before processing a book")
+        self.ask_instructions.SetValue(bool(
+            self.settings.get("ask_instructions_before_processing", True)))
+        general_sizer.Add(self.ask_instructions, 0, wx.ALL, 6)
+
         self.panel_labels = wx.CheckBox(
             general_panel,
             label="Show panel &numbers and positions in the reader text")
@@ -376,6 +383,8 @@ class SettingsDialog(wx.Dialog):
         self.settings["reader_view"] = (
             ["book", "page", "panel"][self.reader_view.GetSelection()])
         self.settings["show_panel_labels"] = self.panel_labels.GetValue()
+        self.settings["ask_instructions_before_processing"] = (
+            self.ask_instructions.GetValue())
         self.settings["check_updates_on_start"] = self.check_updates.GetValue()
         self.settings["include_beta_updates"] = self.include_betas.GetValue()
         event.Skip()  # lets the dialog close with wx.ID_OK
