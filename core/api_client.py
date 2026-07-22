@@ -704,13 +704,8 @@ class RotatingClient:
 
 def set_retry_limits(client, max_attempts, initial_backoff):
     """Give a client a different retry policy, including every per-key
-    client inside a RotatingClient.
-
-    Processing is a long batch job, so it is patient: five attempts with
-    a doubling backoff, which rides out a service that is briefly
-    overloaded. An interactive feature has somebody sitting there
-    waiting for a reply, so it uses this to give up quickly instead and
-    report what happened.
+    client inside a RotatingClient. Interactive callers use a shorter
+    policy than batch processing does.
     """
     if isinstance(client, RotatingClient):
         client.retry_overrides = {"MAX_ATTEMPTS": max_attempts,

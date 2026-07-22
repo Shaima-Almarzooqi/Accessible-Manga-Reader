@@ -9,9 +9,14 @@ newest version is at the top.
 
 - Ask about a page (Ctrl+Q in the reader): type a question about the
   current page, nearby pages, or a small range, and the AI answers by
-  looking at the original page images again. Follow-up questions work,
-  and the latest answer can be copied. Each question uses your AI
-  service like processing does.
+  looking at the original page images again. Questions and answers are
+  headings, so browse mode moves between them; follow-up questions keep
+  the earlier ones in mind; a question can be stopped while it is being
+  answered; and the latest answer can be copied. Each question uses your
+  AI service like processing does.
+- Newer Gemini models in the model list, including Gemini 3.6 Flash and
+  Gemini 3.5 Flash-Lite. Your current model is unchanged; pick another
+  in Settings, or use Refresh model list to see what your key offers.
 
 ## 0.14.0
 

@@ -12,9 +12,6 @@ from . import api_client, prompts
 # an image, and an unbounded range would exhaust tokens and quota.
 MAX_ASK_PAGES = 10
 
-# Asking is interactive: somebody is waiting for the reply, so a failing
-# request is reported in seconds instead of working through the long
-# backoff that batch processing rides out.
 ASK_MAX_ATTEMPTS = 2
 ASK_INITIAL_BACKOFF = 4.0
 
@@ -132,8 +129,6 @@ def answer_to_html(text):
     return "\n".join(blocks)
 
 
-# Shown in place of an answer while one is on its way, after stopping,
-# and before the first question, so the window is never blank.
 WAITING_TEXT = "Waiting for the answer. This usually takes a few seconds."
 
 STOPPED_TEXT = ("Stopped before the AI answered. Your question is still in "
@@ -142,34 +137,14 @@ STOPPED_TEXT = ("Stopped before the AI answered. Your question is still in "
 EMPTY_TEXT = ("No questions yet. Type a question in the box above, choose "
               "which pages the AI should look at, then select Ask.")
 
-# The id given to the newest question heading, so the cursor can land on
-# the exchange just added rather than at the top of the conversation.
-LATEST_ANCHOR_ID = "latest"
-
-# The document moves its own cursor as it loads. Doing it here rather
-# than by evaluating a script against the view afterwards matters: the
-# engine reports a load for an empty placeholder document before the
-# real one arrives, and a script aimed at that one fails noisily and
-# leaves the cursor at the top. An attribute inside the document can
-# only ever run against that document, and simply does nothing if the
-# anchor is absent (the conversation is empty) or scripting is off.
-_FOCUS_LATEST = ("var latest = document.getElementById('%s');"
-                 " if (latest) { latest.scrollIntoView(); latest.focus(); }"
-                 % LATEST_ANCHOR_ID)
-
 
 def conversation_html(book_title, history, pending=None):
-    """The whole Ask session as an HTML document.
-
-    Each question is a level-2 heading and each answer a level-3
-    heading, so browse mode moves between questions with 2, between
-    answers with 3, and through everything with H.
+    """The whole Ask session as an HTML document: each question is a
+    level-2 heading and each answer a level-3 heading, so browse mode
+    jumps between them with H, 2, and 3.
 
     `pending` is an optional (question, status text) pair for a question
-    that has been sent but not answered yet. It is rendered like any
-    other exchange so the question and a progress note appear
-    immediately, but the caller keeps it out of the history sent to the
-    AI, since it has no real answer.
+    that has been sent but not answered yet.
     """
     parts = [
         "<!DOCTYPE html>",
@@ -179,8 +154,7 @@ def conversation_html(book_title, history, pending=None):
         "auto;padding:0 1em;line-height:1.6}h2{font-size:1.15em;"
         "margin-top:1.2em}h3{font-size:1.05em;margin:0.7em 0 0.2em}"
         "h4{font-size:1em;margin:0.8em 0 0.2em}"
-        "p{margin:0.4em 0}</style></head>",
-        '<body onload="%s">' % _FOCUS_LATEST,
+        "p{margin:0.4em 0}</style></head><body>",
     ]
     exchanges = list(history)
     if pending is not None:
@@ -188,14 +162,8 @@ def conversation_html(book_title, history, pending=None):
     if not exchanges:
         parts.append("<p>%s</p>" % _html.escape(EMPTY_TEXT))
     for index, (question, answer) in enumerate(exchanges, start=1):
-        # The newest exchange carries the id the window jumps to after
-        # each reply, so a follow-up question lands on itself rather than
-        # back at the top of the conversation. tabindex makes a heading
-        # focusable, which is what moves the screen reader's cursor.
-        marker = (' id="%s" tabindex="-1"' % LATEST_ANCHOR_ID
-                  if index == len(exchanges) else "")
-        parts.append("<h2%s>Question %d: %s</h2>"
-                     % (marker, index, _inline_html(question)))
+        parts.append("<h2>Question %d: %s</h2>"
+                     % (index, _inline_html(question)))
         parts.append("<h3>Answer</h3>")
         parts.append(answer_to_html(answer))
     parts.append("</body></html>")

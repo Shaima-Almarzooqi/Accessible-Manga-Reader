@@ -24,13 +24,6 @@ def make_web_view(parent, accessible_name):
 
     Returns None if this system has no web view backend, so callers can
     fall back to the browser or a text control.
-
-    Do not attach a custom wx.Accessible to this control to rename it.
-    That replaces the engine's own accessibility tree -- the one that
-    carries the headings, paragraphs and links -- with an empty generic
-    one, so the page still draws but a screen reader finds nothing in
-    it. The document renders identically either way, which makes the
-    fault invisible unless you are listening to it.
     """
     if wx.html2 is None:
         return None

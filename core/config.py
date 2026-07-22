@@ -18,9 +18,9 @@ DEFAULT_SETTINGS = {
     # One of: gemini, openrouter, anthropic, openai, custom.
     "provider": "gemini",
     "gemini_api_keys": [],
-    # Which models a key can use, and how quickly they answer, differs
-    # between accounts. Use the "Refresh model list" button in Settings
-    # to fetch what YOUR key can actually use.
+    # Default confirmed working on current free-tier projects; older
+    # gemini-2.5-* models are no longer served to all projects. Use the
+    # "Refresh model list" button in Settings to fetch what YOUR key can use.
     "gemini_model": "gemini-3.5-flash",
     "anthropic_api_keys": [],
     "anthropic_model": "claude-sonnet-4-6",

@@ -1618,9 +1618,6 @@ class TestModelDefaultsAndLists(unittest.TestCase):
             config.DEFAULT_SETTINGS["ask_instructions_before_processing"])
 
     def test_gemini_list_offers_several_current_models(self):
-        """Availability and speed vary by account, so the box offers a
-        spread of current models to fall back on. Refresh model list and
-        typing a model by hand both still work."""
         models = config.SUGGESTED_MODELS["gemini"]
         self.assertGreaterEqual(len(models), 5)
         self.assertEqual(len(set(models)), len(models))  # no duplicates
@@ -1629,8 +1626,6 @@ class TestModelDefaultsAndLists(unittest.TestCase):
 
 
 class TestInteractiveRetryPolicy(unittest.TestCase):
-    """Asking must not leave the reader through minutes of backoff."""
-
     def test_ask_uses_a_short_retry_policy(self):
         from core import ask
         self.assertLess(ask.ASK_MAX_ATTEMPTS,
@@ -1649,8 +1644,6 @@ class TestInteractiveRetryPolicy(unittest.TestCase):
         from core import api_client
         rotating = api_client.RotatingClient(
             api_client.GeminiClient, ["one", "two"], "model")
-        # One client already built, one built after the limits are set:
-        # both must end up with the short policy.
         first = rotating._client_for(0)
         api_client.set_retry_limits(rotating, 2, 4.0)
         second = rotating._client_for(1)
@@ -1839,46 +1832,17 @@ class TestAskConversationDocument(unittest.TestCase):
         self.assertLess(doc.index("First?"), doc.index("Second?"))
         self.assertIn("Stopped before the AI answered", doc)
 
-    def test_only_the_newest_question_carries_the_jump_anchor(self):
-        """The window jumps to this anchor after each reply, so a
-        follow-up lands on itself rather than back at question one."""
-        from core import ask
-        doc = ask.conversation_html(
-            "Book", [("First?", "Done."), ("Second?", "Also done.")])
-        self.assertEqual(doc.count('id="%s"' % ask.LATEST_ANCHOR_ID), 1)
-        anchored = doc.index('id="%s"' % ask.LATEST_ANCHOR_ID)
-        self.assertGreater(anchored, doc.index("First?"))
-        self.assertLess(anchored, doc.index("Second?"))
-        # Focusable, or the screen reader cursor would not follow it.
-        self.assertIn('tabindex="-1"', doc)
-
-    def test_a_pending_question_takes_the_anchor(self):
-        from core import ask
-        doc = ask.conversation_html(
-            "Book", [("First?", "Done.")],
-            pending=("Second?", ask.WAITING_TEXT))
-        anchored = doc.index('id="%s"' % ask.LATEST_ANCHOR_ID)
-        self.assertGreater(anchored, doc.index("First?"))
-
     def test_waiting_note_stays_free_of_mechanics(self):
         from core import ask
         self.assertNotIn("page images", ask.WAITING_TEXT)
 
-    def test_document_moves_its_own_cursor_to_the_newest_exchange(self):
-        """Carried inside the document rather than run against the view
-        afterwards: the view reports a load for an empty placeholder
-        first, and a script aimed at that one fails and leaves the
-        cursor at the top of the conversation."""
+    def test_document_carries_no_script(self):
         from core import ask
-        doc = ask.conversation_html("Book", [("First?", "Done.")])
-        self.assertIn("<body onload=", doc)
-        self.assertIn("getElementById('%s')" % ask.LATEST_ANCHOR_ID, doc)
-        # Absent anchor must be harmless, since the empty conversation
-        # and any placeholder document have none.
-        self.assertIn("if (latest)", doc)
-        empty = ask.conversation_html("Book", [])
-        self.assertIn("<body onload=", empty)
-        self.assertNotIn('id="%s"' % ask.LATEST_ANCHOR_ID, empty)
+        doc = ask.conversation_html(
+            "Book", [("First?", "Done."), ("Second?", "Also done.")])
+        self.assertIn("<body>", doc)
+        self.assertNotIn("onload", doc)
+        self.assertNotIn("tabindex", doc)
 
 
 if __name__ == "__main__":
