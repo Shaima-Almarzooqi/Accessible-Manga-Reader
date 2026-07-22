@@ -19,44 +19,29 @@ except ImportError:
     wx.html2 = None
 
 
-class _NamedAccessible(wx.Accessible):
-    """Reports a chosen name to the screen reader.
-
-    wxWindow.SetName does not reach the accessibility layer for the web
-    view, so without this the control is announced by its underlying
-    toolkit class name the first time focus reaches it, before any
-    document has loaded. Every other property is left to the default
-    implementation.
-    """
-
-    def __init__(self, window, name):
-        super().__init__(window)
-        self._name = name
-
-    def GetName(self, childId):
-        return (wx.ACC_OK, self._name)
-
-
 def make_web_view(parent, accessible_name):
-    """Create a web view that announces `accessible_name`.
+    """Create the web view used for every HTML display in the app.
 
     Returns None if this system has no web view backend, so callers can
     fall back to the browser or a text control.
+
+    Do not attach a custom wx.Accessible to this control to rename it.
+    That replaces the engine's own accessibility tree -- the one that
+    carries the headings, paragraphs and links -- with an empty generic
+    one, so the page still draws but a screen reader finds nothing in
+    it. The document renders identically either way, which makes the
+    fault invisible unless you are listening to it.
     """
     if wx.html2 is None:
         return None
     try:
         # Default arguments on purpose: passing an explicit backend
         # together with a custom name= was found to leave the control
-        # blank on the Windows (MSHTML) backend.
+        # blank on the Windows backend.
         view = wx.html2.WebView.New(parent)
     except Exception:
         return None
     view.SetName(accessible_name)
-    try:
-        view.SetAccessible(_NamedAccessible(view, accessible_name))
-    except Exception:
-        pass  # accessibility support is optional in some wx builds
     return view
 
 

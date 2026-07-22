@@ -417,7 +417,7 @@ class TestProviderClients(unittest.TestCase):
         client = api_client.create_client(settings)
         self.assertIsInstance(client, api_client.RotatingClient)
         self.assertIs(client.client_class, api_client.GeminiClient)
-        self.assertEqual(client.model, "gemini-3.6-flash")
+        self.assertEqual(client.model, "gemini-3.5-flash")
 
 
 class TestSettingsMigration(unittest.TestCase):
@@ -683,7 +683,7 @@ class TestBookKindAndPositions(unittest.TestCase):
         self.assertEqual(config.DEFAULT_SETTINGS["reader_view"], "book")
         self.assertIn("openai", config.SUGGESTED_MODELS)
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.6-flash")
+                         "gemini-3.5-flash")
 
 
 
@@ -1603,9 +1603,9 @@ class TestComicTypeSettings(unittest.TestCase):
 class TestModelDefaultsAndLists(unittest.TestCase):
     def test_gemini_default_is_stable_flash(self):
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.6-flash")
+                         "gemini-3.5-flash")
         self.assertEqual(config.SUGGESTED_MODELS["gemini"][0],
-                         "gemini-3.6-flash")
+                         "gemini-3.5-flash")
 
     def test_every_default_model_is_in_its_suggested_list(self):
         for service in ("gemini", "anthropic", "openai", "openrouter"):
@@ -1617,12 +1617,13 @@ class TestModelDefaultsAndLists(unittest.TestCase):
         self.assertTrue(
             config.DEFAULT_SETTINGS["ask_instructions_before_processing"])
 
-    def test_gemini_list_offers_only_flash_class_models(self):
-        """The frontier models think for far longer per request and are
-        the ones free-tier keys cannot get served, so the suggestions
-        stay on the Flash line. Anything else can still be typed in."""
-        for model in config.SUGGESTED_MODELS["gemini"]:
-            self.assertIn("flash", model, model)
+    def test_gemini_list_offers_several_current_models(self):
+        """Availability and speed vary by account, so the box offers a
+        spread of current models to fall back on. Refresh model list and
+        typing a model by hand both still work."""
+        models = config.SUGGESTED_MODELS["gemini"]
+        self.assertGreaterEqual(len(models), 5)
+        self.assertEqual(len(set(models)), len(models))  # no duplicates
 
 
 
