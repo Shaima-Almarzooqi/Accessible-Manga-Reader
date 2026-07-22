@@ -12,6 +12,12 @@ from . import api_client, prompts
 # an image, and an unbounded range would exhaust tokens and quota.
 MAX_ASK_PAGES = 10
 
+# Asking is interactive: somebody is waiting for the reply, so a failing
+# request is reported in seconds instead of working through the long
+# backoff that batch processing rides out.
+ASK_MAX_ATTEMPTS = 2
+ASK_INITIAL_BACKOFF = 4.0
+
 
 def build_ask_system_prompt(settings):
     comic_type = settings.get("comic_type", "manga")
@@ -70,7 +76,9 @@ def ask_question(book, settings, question, page_numbers, history=None,
     Raises api_client.ApiError with a readable message on failure.
     """
     page_numbers = sorted(set(page_numbers))[:MAX_ASK_PAGES]
-    client = api_client.create_client(settings)
+    client = api_client.set_retry_limits(
+        api_client.create_client(settings),
+        ASK_MAX_ATTEMPTS, ASK_INITIAL_BACKOFF)
     system_prompt = build_ask_system_prompt(settings)
     content = build_ask_content(book, page_numbers, question, history)
     return client.request_scripts(system_prompt, content,
@@ -126,14 +134,17 @@ def answer_to_html(text):
 
 # Shown in place of an answer while one is on its way, after stopping,
 # and before the first question, so the window is never blank.
-WAITING_TEXT = ("Waiting for the AI to answer. It is looking at the page "
-                "images now; this usually takes a few seconds.")
+WAITING_TEXT = "Waiting for the answer. This usually takes a few seconds."
 
 STOPPED_TEXT = ("Stopped before the AI answered. Your question is still in "
                 "the question box, so you can ask it again.")
 
 EMPTY_TEXT = ("No questions yet. Type a question in the box above, choose "
               "which pages the AI should look at, then select Ask.")
+
+# The id given to the newest question heading, so the window can jump
+# straight to it once a reply has been rendered.
+LATEST_ANCHOR_ID = "latest"
 
 
 def conversation_html(book_title, history, pending=None):
@@ -165,8 +176,14 @@ def conversation_html(book_title, history, pending=None):
     if not exchanges:
         parts.append("<p>%s</p>" % _html.escape(EMPTY_TEXT))
     for index, (question, answer) in enumerate(exchanges, start=1):
-        parts.append("<h2>Question %d: %s</h2>"
-                     % (index, _inline_html(question)))
+        # The newest exchange carries the id the window jumps to after
+        # each reply, so a follow-up question lands on itself rather than
+        # back at the top of the conversation. tabindex makes a heading
+        # focusable, which is what moves the screen reader's cursor.
+        marker = (' id="%s" tabindex="-1"' % LATEST_ANCHOR_ID
+                  if index == len(exchanges) else "")
+        parts.append("<h2%s>Question %d: %s</h2>"
+                     % (marker, index, _inline_html(question)))
         parts.append("<h3>Answer</h3>")
         parts.append(answer_to_html(answer))
     parts.append("</body></html>")

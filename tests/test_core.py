@@ -1,4 +1,4 @@
-"""Core test suite.
+﻿"""Core test suite.
 
 Run with:  python -m tests.test_core   (from the project root)
 or:        python run_tests.py
@@ -243,10 +243,10 @@ class TestLibrary(WorkspaceTestCase):
     def test_unicode_scripts_survive_round_trip(self):
         # Non-ASCII scripts must survive the JSON round trip.
         book = self._book_with_pages(1)
-        book.scripts[1] = 'Aiko: "Çok teşekkürler! ありがとう ♪"'
+        book.scripts[1] = 'Aiko: "Ã‡ok teÅŸekkÃ¼rler! ã‚ã‚ŠãŒã¨ã† â™ª"'
         book.save()
         loaded = library.Book.load(self.workspace)
-        self.assertEqual(loaded.scripts[1], 'Aiko: "Çok teşekkürler! ありがとう ♪"')
+        self.assertEqual(loaded.scripts[1], 'Aiko: "Ã‡ok teÅŸekkÃ¼rler! ã‚ã‚ŠãŒã¨ã† â™ª"')
 
 
 class TestProcessorWithFakeClient(WorkspaceTestCase):
@@ -417,7 +417,7 @@ class TestProviderClients(unittest.TestCase):
         client = api_client.create_client(settings)
         self.assertIsInstance(client, api_client.RotatingClient)
         self.assertIs(client.client_class, api_client.GeminiClient)
-        self.assertEqual(client.model, "gemini-3.5-flash")
+        self.assertEqual(client.model, "gemini-3.6-flash")
 
 
 class TestSettingsMigration(unittest.TestCase):
@@ -683,7 +683,7 @@ class TestBookKindAndPositions(unittest.TestCase):
         self.assertEqual(config.DEFAULT_SETTINGS["reader_view"], "book")
         self.assertIn("openai", config.SUGGESTED_MODELS)
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.5-flash")
+                         "gemini-3.6-flash")
 
 
 
@@ -1603,9 +1603,9 @@ class TestComicTypeSettings(unittest.TestCase):
 class TestModelDefaultsAndLists(unittest.TestCase):
     def test_gemini_default_is_stable_flash(self):
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.5-flash")
+                         "gemini-3.6-flash")
         self.assertEqual(config.SUGGESTED_MODELS["gemini"][0],
-                         "gemini-3.5-flash")
+                         "gemini-3.6-flash")
 
     def test_every_default_model_is_in_its_suggested_list(self):
         for service in ("gemini", "anthropic", "openai", "openrouter"):
@@ -1617,7 +1617,50 @@ class TestModelDefaultsAndLists(unittest.TestCase):
         self.assertTrue(
             config.DEFAULT_SETTINGS["ask_instructions_before_processing"])
 
+    def test_gemini_list_offers_only_flash_class_models(self):
+        """The frontier models think for far longer per request and are
+        the ones free-tier keys cannot get served, so the suggestions
+        stay on the Flash line. Anything else can still be typed in."""
+        for model in config.SUGGESTED_MODELS["gemini"]:
+            self.assertIn("flash", model, model)
 
+
+
+
+class TestInteractiveRetryPolicy(unittest.TestCase):
+    """Asking must not leave the reader through minutes of backoff."""
+
+    def test_ask_uses_a_short_retry_policy(self):
+        from core import ask
+        self.assertLess(ask.ASK_MAX_ATTEMPTS,
+                        api_client_module().GeminiClient.MAX_ATTEMPTS)
+        self.assertLess(ask.ASK_INITIAL_BACKOFF,
+                        api_client_module().GeminiClient.INITIAL_BACKOFF)
+
+    def test_limits_apply_to_a_plain_client(self):
+        from core import api_client
+        client = api_client.GeminiClient("key", "model")
+        api_client.set_retry_limits(client, 2, 4.0)
+        self.assertEqual(client.MAX_ATTEMPTS, 2)
+        self.assertEqual(client.INITIAL_BACKOFF, 4.0)
+
+    def test_limits_reach_every_key_of_a_rotating_client(self):
+        from core import api_client
+        rotating = api_client.RotatingClient(
+            api_client.GeminiClient, ["one", "two"], "model")
+        # One client already built, one built after the limits are set:
+        # both must end up with the short policy.
+        first = rotating._client_for(0)
+        api_client.set_retry_limits(rotating, 2, 4.0)
+        second = rotating._client_for(1)
+        for client in (first, second):
+            self.assertEqual(client.MAX_ATTEMPTS, 2)
+            self.assertEqual(client.INITIAL_BACKOFF, 4.0)
+
+
+def api_client_module():
+    from core import api_client
+    return api_client
 
 
 class TestErrorHints(unittest.TestCase):
@@ -1751,7 +1794,8 @@ class TestAskAnswerFormatting(unittest.TestCase):
         doc = ask.conversation_html(
             "Book", [("Q one?", "Answer one."), ("Q two?", "Answer two.")])
         self.assertIn("<h2>Question 1: Q one?</h2>", doc)
-        self.assertIn("<h2>Question 2: Q two?</h2>", doc)
+        # The newest heading also carries the jump anchor.
+        self.assertIn("Question 2: Q two?</h2>", doc)
 
     def test_ask_prompt_forbids_markdown(self):
         from core import ask
@@ -1766,7 +1810,7 @@ class TestAskConversationDocument(unittest.TestCase):
     def test_question_and_answer_are_both_headings(self):
         from core import ask
         doc = ask.conversation_html("Book", [("Q?", "A.")])
-        self.assertIn("<h2>Question 1: Q?</h2>", doc)
+        self.assertIn("Question 1: Q?</h2>", doc)
         self.assertIn("<h3>Answer</h3>", doc)
 
     def test_empty_conversation_still_has_a_document(self):
@@ -1779,9 +1823,9 @@ class TestAskConversationDocument(unittest.TestCase):
         from core import ask
         doc = ask.conversation_html(
             "Book", [], pending=("Why is she running?", ask.WAITING_TEXT))
-        self.assertIn("<h2>Question 1: Why is she running?</h2>", doc)
+        self.assertIn("Question 1: Why is she running?</h2>", doc)
         self.assertIn("<h3>Answer</h3>", doc)
-        self.assertIn("Waiting for the AI", doc)
+        self.assertIn("Waiting for the answer", doc)
         self.assertNotIn("No questions yet", doc)
 
     def test_pending_question_follows_completed_ones(self):
@@ -1789,10 +1833,35 @@ class TestAskConversationDocument(unittest.TestCase):
         doc = ask.conversation_html(
             "Book", [("First?", "Done.")],
             pending=("Second?", ask.STOPPED_TEXT))
-        self.assertIn("<h2>Question 1: First?</h2>", doc)
-        self.assertIn("<h2>Question 2: Second?</h2>", doc)
+        self.assertIn("Question 1: First?</h2>", doc)
+        self.assertIn("Question 2: Second?</h2>", doc)
         self.assertLess(doc.index("First?"), doc.index("Second?"))
         self.assertIn("Stopped before the AI answered", doc)
+
+    def test_only_the_newest_question_carries_the_jump_anchor(self):
+        """The window jumps to this anchor after each reply, so a
+        follow-up lands on itself rather than back at question one."""
+        from core import ask
+        doc = ask.conversation_html(
+            "Book", [("First?", "Done."), ("Second?", "Also done.")])
+        self.assertEqual(doc.count('id="%s"' % ask.LATEST_ANCHOR_ID), 1)
+        anchored = doc.index('id="%s"' % ask.LATEST_ANCHOR_ID)
+        self.assertGreater(anchored, doc.index("First?"))
+        self.assertLess(anchored, doc.index("Second?"))
+        # Focusable, or the screen reader cursor would not follow it.
+        self.assertIn('tabindex="-1"', doc)
+
+    def test_a_pending_question_takes_the_anchor(self):
+        from core import ask
+        doc = ask.conversation_html(
+            "Book", [("First?", "Done.")],
+            pending=("Second?", ask.WAITING_TEXT))
+        anchored = doc.index('id="%s"' % ask.LATEST_ANCHOR_ID)
+        self.assertGreater(anchored, doc.index("First?"))
+
+    def test_waiting_note_stays_free_of_mechanics(self):
+        from core import ask
+        self.assertNotIn("page images", ask.WAITING_TEXT)
 
 
 if __name__ == "__main__":

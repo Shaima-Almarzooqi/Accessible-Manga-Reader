@@ -665,12 +665,16 @@ class RotatingClient:
         self.max_tokens = max_tokens
         self.index = 0
         self.on_key_switch = None  # optional callable(new_index, total, reason)
+        self.retry_overrides = {}  # see set_retry_limits
         self._cache = {}
 
     def _client_for(self, index):
         if index not in self._cache:
-            self._cache[index] = self.client_class(
+            client = self.client_class(
                 self.api_keys[index], self.model, max_tokens=self.max_tokens)
+            for attribute, value in self.retry_overrides.items():
+                setattr(client, attribute, value)
+            self._cache[index] = client
         return self._cache[index]
 
     def request_scripts(self, system_prompt, content, cancel_check=None):
@@ -696,6 +700,28 @@ class RotatingClient:
             "rotation only helps with keys from different projects or "
             "accounts. Details -- %s"
             % (len(self.api_keys), " | ".join(problems)))
+
+
+def set_retry_limits(client, max_attempts, initial_backoff):
+    """Give a client a different retry policy, including every per-key
+    client inside a RotatingClient.
+
+    Processing is a long batch job, so it is patient: five attempts with
+    a doubling backoff, which rides out a service that is briefly
+    overloaded. An interactive feature has somebody sitting there
+    waiting for a reply, so it uses this to give up quickly instead and
+    report what happened.
+    """
+    if isinstance(client, RotatingClient):
+        client.retry_overrides = {"MAX_ATTEMPTS": max_attempts,
+                                  "INITIAL_BACKOFF": initial_backoff}
+        for cached in client._cache.values():
+            cached.MAX_ATTEMPTS = max_attempts
+            cached.INITIAL_BACKOFF = initial_backoff
+    else:
+        client.MAX_ATTEMPTS = max_attempts
+        client.INITIAL_BACKOFF = initial_backoff
+    return client
 
 
 # ---------------------------------------------------------------------------

@@ -18,10 +18,13 @@ DEFAULT_SETTINGS = {
     # One of: gemini, openrouter, anthropic, openai, custom.
     "provider": "gemini",
     "gemini_api_keys": [],
-    # Default confirmed working on current free-tier projects; older
-    # gemini-2.5-* models are no longer served to all projects. Use the
-    # "Refresh model list" button in Settings to fetch what YOUR key can use.
-    "gemini_model": "gemini-3.5-flash",
+    # The general-purpose Flash model, which is what this app needs:
+    # fast, multimodal, and served reliably on the free tier. The
+    # frontier models (gemini-3.5-flash and the Pro line) think for far
+    # longer per request and are heavily loaded, so they answer slowly
+    # and often return "overloaded" on free-tier keys. Use the "Refresh
+    # model list" button in Settings to fetch what YOUR key can use.
+    "gemini_model": "gemini-3.6-flash",
     "anthropic_api_keys": [],
     "anthropic_model": "claude-sonnet-4-6",
     "openai_api_keys": [],
@@ -73,10 +76,14 @@ DEFAULT_SETTINGS = {
 # the Refresh button in Settings (which queries the service's own
 # list-models endpoint and is always the source of truth).
 SUGGESTED_MODELS = {
+    # Flash and Flash-Lite models only: they read pages just as well as
+    # the frontier models for this purpose, answer in seconds rather
+    # than minutes, and are the ones the free tier actually serves.
     "gemini": [
-        "gemini-3.5-flash",
-        "gemini-3-flash-preview",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
+        "gemini-3-flash-preview",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
     ],

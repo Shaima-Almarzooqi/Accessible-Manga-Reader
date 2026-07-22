@@ -19,6 +19,47 @@ except ImportError:
     wx.html2 = None
 
 
+class _NamedAccessible(wx.Accessible):
+    """Reports a chosen name to the screen reader.
+
+    wxWindow.SetName does not reach the accessibility layer for the web
+    view, so without this the control is announced by its underlying
+    toolkit class name the first time focus reaches it, before any
+    document has loaded. Every other property is left to the default
+    implementation.
+    """
+
+    def __init__(self, window, name):
+        super().__init__(window)
+        self._name = name
+
+    def GetName(self, childId):
+        return (wx.ACC_OK, self._name)
+
+
+def make_web_view(parent, accessible_name):
+    """Create a web view that announces `accessible_name`.
+
+    Returns None if this system has no web view backend, so callers can
+    fall back to the browser or a text control.
+    """
+    if wx.html2 is None:
+        return None
+    try:
+        # Default arguments on purpose: passing an explicit backend
+        # together with a custom name= was found to leave the control
+        # blank on the Windows (MSHTML) backend.
+        view = wx.html2.WebView.New(parent)
+    except Exception:
+        return None
+    view.SetName(accessible_name)
+    try:
+        view.SetAccessible(_NamedAccessible(view, accessible_name))
+    except Exception:
+        pass  # accessibility support is optional in some wx builds
+    return view
+
+
 def show_html_view(parent, title, html, default_filename):
     """Open the internal HTML view. Returns True on success, False if
     no web view backend is available on this system."""
@@ -41,18 +82,9 @@ class HtmlViewFrame(wx.Frame):
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Create the web view with default arguments. Passing an explicit
-        # backend together with a custom name= was found to leave the
-        # control blank on the Windows (MSHTML) backend; the default
-        # backend already resolves to the system engine, and the
-        # accessible name is set separately below, which is safe.
-        self.view = wx.html2.WebView.New(panel)
-        try:
-            # Give the control the window's own name so screen readers do
-            # not announce a toolkit word.
-            self.view.SetName(title)
-        except Exception:
-            pass
+        self.view = make_web_view(panel, title)
+        if self.view is None:
+            raise RuntimeError("no web view backend")
         sizer.Add(self.view, 1, wx.EXPAND)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)

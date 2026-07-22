@@ -23,6 +23,8 @@ except ImportError:
 
 from core import ask, api_client
 
+from .html_view import make_web_view
+
 from . import keys as keyhelp
 
 
@@ -49,10 +51,7 @@ class AskDialog(wx.Dialog):
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        sizer.Add(wx.StaticText(
-            self, label="&Question (the AI answers by looking at the "
-            "page images again; each question uses your AI service like "
-            "processing does):"), 0, wx.ALL, 6)
+        sizer.Add(wx.StaticText(self, label="&Question:"), 0, wx.ALL, 6)
         self.question = wx.TextCtrl(self, style=wx.TE_MULTILINE,
                                     size=(-1, 70))
         sizer.Add(self.question, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
@@ -96,13 +95,7 @@ class AskDialog(wx.Dialog):
         # the AI's structure reads cleanly instead of as symbols. Falls
         # back to a plain text control if no web view is available.
         self.answers_text = None
-        self.answers_view = None
-        if wx.html2 is not None:
-            try:
-                self.answers_view = wx.html2.WebView.New(self)
-                self.answers_view.SetName("Answers")
-            except Exception:
-                self.answers_view = None
+        self.answers_view = make_web_view(self, "Answers")
         if self.answers_view is not None:
             self.answers_view.Bind(wx.html2.EVT_WEBVIEW_LOADED,
                                    self._on_view_loaded)
@@ -166,9 +159,20 @@ class AskDialog(wx.Dialog):
     def _on_view_loaded(self, event):
         # Focus only once the document exists, so the screen reader
         # announces the document instead of an empty control.
-        if self._focus_after_load:
-            self._focus_after_load = False
-            self.answers_view.SetFocus()
+        if not self._focus_after_load:
+            return
+        self._focus_after_load = False
+        self.answers_view.SetFocus()
+        # Then land on the newest exchange. Without this the cursor sits
+        # at the top of the document, which after a follow-up question is
+        # the first question asked rather than the one just answered.
+        try:
+            self.answers_view.RunScript(
+                "var latest = document.getElementById('%s');"
+                " if (latest) { latest.scrollIntoView(); latest.focus(); }"
+                % ask.LATEST_ANCHOR_ID)
+        except Exception:
+            pass  # a refinement, not a requirement
 
     # ----- asking ----------------------------------------------------------
 
