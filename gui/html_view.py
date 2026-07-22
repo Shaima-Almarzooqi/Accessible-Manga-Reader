@@ -9,8 +9,6 @@ If no web view backend is available on the system, show_html_view
 returns False and the caller falls back to the default browser.
 """
 
-import ctypes
-
 import wx
 
 from . import keys as keyhelp
@@ -37,13 +35,6 @@ def make_web_view(parent, accessible_name):
     except Exception:
         return None
     view.SetName(accessible_name)
-    # The window's own text, which is what a screen reader reads as the
-    # control's name; wx leaves it set to the class name.
-    try:
-        ctypes.windll.user32.SetWindowTextW(
-            view.GetHandle(), accessible_name)
-    except Exception:
-        pass
     return view
 
 
