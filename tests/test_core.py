@@ -1864,6 +1864,22 @@ class TestAskConversationDocument(unittest.TestCase):
         from core import ask
         self.assertNotIn("page images", ask.WAITING_TEXT)
 
+    def test_document_moves_its_own_cursor_to_the_newest_exchange(self):
+        """Carried inside the document rather than run against the view
+        afterwards: the view reports a load for an empty placeholder
+        first, and a script aimed at that one fails and leaves the
+        cursor at the top of the conversation."""
+        from core import ask
+        doc = ask.conversation_html("Book", [("First?", "Done.")])
+        self.assertIn("<body onload=", doc)
+        self.assertIn("getElementById('%s')" % ask.LATEST_ANCHOR_ID, doc)
+        # Absent anchor must be harmless, since the empty conversation
+        # and any placeholder document have none.
+        self.assertIn("if (latest)", doc)
+        empty = ask.conversation_html("Book", [])
+        self.assertIn("<body onload=", empty)
+        self.assertNotIn('id="%s"' % ask.LATEST_ANCHOR_ID, empty)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

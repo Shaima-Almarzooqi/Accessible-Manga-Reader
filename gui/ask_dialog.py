@@ -158,21 +158,13 @@ class AskDialog(wx.Dialog):
 
     def _on_view_loaded(self, event):
         # Focus only once the document exists, so the screen reader
-        # announces the document instead of an empty control.
+        # announces the document instead of an empty control. The
+        # document has already put its own cursor on the newest
+        # exchange as it loaded, so focusing the view lands there.
         if not self._focus_after_load:
             return
         self._focus_after_load = False
         self.answers_view.SetFocus()
-        # Then land on the newest exchange. Without this the cursor sits
-        # at the top of the document, which after a follow-up question is
-        # the first question asked rather than the one just answered.
-        try:
-            self.answers_view.RunScript(
-                "var latest = document.getElementById('%s');"
-                " if (latest) { latest.scrollIntoView(); latest.focus(); }"
-                % ask.LATEST_ANCHOR_ID)
-        except Exception:
-            pass  # a refinement, not a requirement
 
     # ----- asking ----------------------------------------------------------
 

@@ -142,9 +142,20 @@ STOPPED_TEXT = ("Stopped before the AI answered. Your question is still in "
 EMPTY_TEXT = ("No questions yet. Type a question in the box above, choose "
               "which pages the AI should look at, then select Ask.")
 
-# The id given to the newest question heading, so the window can jump
-# straight to it once a reply has been rendered.
+# The id given to the newest question heading, so the cursor can land on
+# the exchange just added rather than at the top of the conversation.
 LATEST_ANCHOR_ID = "latest"
+
+# The document moves its own cursor as it loads. Doing it here rather
+# than by evaluating a script against the view afterwards matters: the
+# engine reports a load for an empty placeholder document before the
+# real one arrives, and a script aimed at that one fails noisily and
+# leaves the cursor at the top. An attribute inside the document can
+# only ever run against that document, and simply does nothing if the
+# anchor is absent (the conversation is empty) or scripting is off.
+_FOCUS_LATEST = ("var latest = document.getElementById('%s');"
+                 " if (latest) { latest.scrollIntoView(); latest.focus(); }"
+                 % LATEST_ANCHOR_ID)
 
 
 def conversation_html(book_title, history, pending=None):
@@ -168,7 +179,8 @@ def conversation_html(book_title, history, pending=None):
         "auto;padding:0 1em;line-height:1.6}h2{font-size:1.15em;"
         "margin-top:1.2em}h3{font-size:1.05em;margin:0.7em 0 0.2em}"
         "h4{font-size:1em;margin:0.8em 0 0.2em}"
-        "p{margin:0.4em 0}</style></head><body>",
+        "p{margin:0.4em 0}</style></head>",
+        '<body onload="%s">' % _FOCUS_LATEST,
     ]
     exchanges = list(history)
     if pending is not None:
