@@ -1845,5 +1845,168 @@ class TestAskConversationDocument(unittest.TestCase):
         self.assertNotIn("tabindex", doc)
 
 
+class TestTailRules(unittest.TestCase):
+    """Speech-bubble tails: the artist's own mark of who is speaking.
+    The tail outranks proximity, which is what previously caused wrong
+    speaker names."""
+
+    COMIC_TYPES = ("manga", "manhwa", "webtoon", "western")
+
+    def _prompt(self, comic_type):
+        return prompts.build_system_prompt(comic_type, "detailed", "English")
+
+    def test_every_comic_type_has_tail_rules(self):
+        for comic_type in self.COMIC_TYPES:
+            self.assertIn(comic_type, prompts.TAIL_TEXT)
+            self.assertGreater(len(prompts.TAIL_TEXT[comic_type]), 500)
+
+    def test_tail_section_reaches_every_prompt(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("WHICH CHARACTER IS SPEAKING", prompt)
+            self.assertIn(prompts.TAIL_TEXT[comic_type], prompt)
+
+    def test_tail_outranks_proximity_in_every_type(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("Proximity is not attribution", prompt)
+
+    def test_bubble_chains_are_one_speaker(self):
+        for comic_type in self.COMIC_TYPES:
+            self.assertIn("chain", self._prompt(comic_type))
+
+    def test_tailless_bubbles_carry_the_speaker_forward(self):
+        # A tail-less bubble should resolve to the previous speaker, NOT
+        # become a reason to give up on naming anyone.
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("no tail", prompt)
+            self.assertIn("carry that speaker forward", prompt)
+
+    def test_narration_and_thought_are_not_dialogue(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("narration", prompt.lower())
+            self.assertIn("(thinking)", prompt)
+
+    def test_rules_are_specific_to_each_tradition(self):
+        manga = prompts.TAIL_TEXT["manga"]
+        western = prompts.TAIL_TEXT["western"]
+        webtoon = prompts.TAIL_TEXT["webtoon"]
+        manhwa = prompts.TAIL_TEXT["manhwa"]
+        self.assertIn("vertical text", manga)
+        self.assertIn("narrow bands", western)
+        self.assertNotIn("narrow bands", manga)
+        self.assertIn("ABOVE or BELOW", webtoon)
+        self.assertIn("ABOVE or BELOW", manhwa)
+        self.assertNotIn("ABOVE or BELOW", manga)
+        self.assertEqual(len({manga, manhwa, webtoon, western}), 4)
+
+    def test_legacy_direction_values_get_tail_rules(self):
+        for legacy, expected in (("rtl", "manga"), ("ltr", "western"),
+                                 ("vertical", "webtoon")):
+            prompt = prompts.build_system_prompt(
+                legacy, "detailed", "English")
+            self.assertIn(prompts.TAIL_TEXT[expected], prompt)
+
+    def test_unknown_comic_type_falls_back_to_manga_tails(self):
+        prompt = prompts.build_system_prompt(
+            "nonsense", "detailed", "English")
+        self.assertIn(prompts.TAIL_TEXT["manga"], prompt)
+
+    def test_tail_rules_apply_at_every_verbosity(self):
+        for verbosity in ("concise", "detailed", "extensive"):
+            prompt = prompts.build_system_prompt(
+                "manga", verbosity, "English")
+            self.assertIn("Proximity is not attribution", prompt)
+
+
+class TestUnknownIsNotEncouraged(unittest.TestCase):
+    """Regression guard. An earlier draft of the tail rules also told
+    the model that answering "Unknown" was an expected, non-failing
+    outcome. In testing that made it answer Unknown far too often, so
+    the tail rules must never grow that framing back: the single
+    existing rule in the output format is the only place uncertainty is
+    licensed."""
+
+    COMIC_TYPES = ("manga", "manhwa", "webtoon", "western")
+
+    def test_unknown_is_mentioned_exactly_once(self):
+        # Once, in the OUTPUT FORMAT rules -- the 0.15.0 wording.
+        for comic_type in self.COMIC_TYPES:
+            prompt = prompts.build_system_prompt(
+                comic_type, "detailed", "English")
+            self.assertEqual(
+                prompt.count("Unknown"), 1,
+                "%s prompt mentions Unknown %d times"
+                % (comic_type, prompt.count("Unknown")))
+
+    def test_original_attribution_rule_is_untouched(self):
+        prompt = prompts.build_system_prompt(
+            "manga", "detailed", "English")
+        self.assertIn(
+            "Attribute every line of dialogue to a character. Use bubble "
+            "tail position, who is shown speaking, and the CHARACTER "
+            "NOTES to identify speakers. If genuinely uncertain, use "
+            "\"Off-panel voice:\" or \"Unknown:\" rather than guessing a "
+            "name.", prompt)
+
+    def test_tail_rules_never_frame_uncertainty_as_desirable(self):
+        banned = ("not a failure", "expected outcome",
+                  "correct, expected", "expect to use it",
+                  "do not guess a name", "rather than guessing")
+        for comic_type in self.COMIC_TYPES:
+            block = prompts.TAIL_TEXT[comic_type]
+            for phrase in banned:
+                self.assertNotIn(
+                    phrase, block,
+                    "%s tail rules contain %r" % (comic_type, phrase))
+
+    def test_off_panel_bullets_push_toward_naming(self):
+        # Where a tail leads off-panel, the rules must send the model to
+        # neighbouring panels to find a name first.
+        for comic_type in self.COMIC_TYPES:
+            block = prompts.TAIL_TEXT[comic_type]
+            self.assertIn("surrounding panels to name them", block)
+
+    def test_no_standalone_attribution_procedure_block(self):
+        # The four-step "WHO IS SPEAKING" block was part of the reverted
+        # design and must not return.
+        self.assertFalse(hasattr(prompts, "ATTRIBUTION_TEXT"))
+        prompt = prompts.build_system_prompt(
+            "manga", "detailed", "English")
+        self.assertNotIn("WHO IS SPEAKING", prompt)
+
+
+class TestAskInheritsTailRules(unittest.TestCase):
+    def _settings(self, comic_type="manga"):
+        return {"comic_type": comic_type, "output_language": "English"}
+
+    def test_ask_prompt_carries_tail_rules(self):
+        from core import ask
+        for comic_type in ("manga", "manhwa", "webtoon", "western"):
+            prompt = ask.build_ask_system_prompt(self._settings(comic_type))
+            self.assertIn(prompts.TAIL_TEXT[comic_type], prompt)
+
+    def test_ask_prompt_prefers_the_image_over_the_script(self):
+        from core import ask
+        prompt = ask.build_ask_system_prompt(self._settings())
+        self.assertIn("trust the page images", prompt)
+
+    def test_ask_prompt_does_not_encourage_unknown(self):
+        from core import ask
+        prompt = ask.build_ask_system_prompt(self._settings())
+        for phrase in ("rather than naming a likely", "cannot be "
+                       "established", "not a failure"):
+            self.assertNotIn(phrase, prompt)
+
+    def test_ask_prompt_still_localised_and_markdown_free(self):
+        from core import ask
+        prompt = ask.build_ask_system_prompt(
+            {"comic_type": "manga", "output_language": "Arabic"})
+        self.assertIn("Answer in Arabic", prompt)
+        self.assertIn("Markdown", prompt)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
