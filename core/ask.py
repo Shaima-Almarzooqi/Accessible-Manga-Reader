@@ -21,6 +21,7 @@ def build_ask_system_prompt(settings):
     resolved = prompts.LEGACY_DIRECTION_MAP.get(comic_type, comic_type)
     direction = prompts.COMIC_TYPE_TEXT.get(
         resolved, prompts.COMIC_TYPE_TEXT["manga"])
+    tails = prompts.TAIL_TEXT.get(resolved, prompts.TAIL_TEXT["manga"])
     language = settings.get("output_language", "English")
     return (
         "You are answering a blind reader's question about specific comic "
@@ -36,8 +37,17 @@ def build_ask_system_prompt(settings):
         "horizontal rules. When walking through several panels, start "
         "each panel on its own line with a short lead-in like 'Panel 2, "
         "middle right:' in words. Answer in %s.\n\n"
+        "If the question is about who says or thinks something, settle "
+        "it from the bubble's tail first -- the tail is the artist's own "
+        "mark of the speaker and outranks which character sits nearest "
+        "the bubble. Say plainly when a bubble has no tail and the "
+        "speaker cannot be established, rather than naming a likely "
+        "character. If this contradicts the existing script supplied "
+        "below, trust the page images and say so.\n\n"
         "For reference, the pages follow these reading conventions:\n%s"
-        % (language, direction))
+        "\n\nHow speech is attached to a speaker in this kind of "
+        "comic:\n%s"
+        % (language, direction, tails))
 
 
 def build_ask_content(book, page_numbers, question, history=None):

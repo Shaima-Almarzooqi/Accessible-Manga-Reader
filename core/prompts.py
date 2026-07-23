@@ -112,6 +112,173 @@ LEGACY_DIRECTION_MAP = {
     "vertical": "webtoon",
 }
 
+# How speech is attached to a speaker, per comic type. The tail is the
+# artist's own deliberate mark of who is talking, so it outranks
+# proximity: the nearest character is often NOT the speaker. Research on
+# automatic manga transcription found that making a model tail-aware was
+# by far the largest single improvement to speaker attribution, and that
+# errors concentrate on bubbles that have no tail at all -- which is why
+# the rules below say to fall back to "Unknown" there rather than guess.
+TAIL_TEXT = {
+    "manga": (
+        "- The tail is a narrow spike or point on the bubble's outline. "
+        "Follow the direction it points: it ends at or near the mouth or "
+        "head of the character speaking. Read the tail FIRST, before "
+        "considering which character happens to be closest.\n"
+        "- Proximity is not attribution. A bubble sitting over one "
+        "character's head may have a tail reaching across to a different "
+        "character. The tail wins every time.\n"
+        "- Japanese bubbles hold vertical text and their tails are often "
+        "small, thin, or barely more than a notch in the outline. Look "
+        "carefully at the whole outline for the break in its curve.\n"
+        "- A bubble with NO tail is common in manga and does not by "
+        "itself mean thought. It usually means the speaker is obvious "
+        "from context, or that it continues the previous bubble's "
+        "speaker. If you cannot establish the speaker from context, "
+        "write \"Unknown:\" -- do not guess a name.\n"
+        "- Several bubbles joined by a narrow neck or overlapping in a "
+        "chain are ONE speaker continuing; only the bubble nearest that "
+        "speaker carries the tail. Attribute the whole chain to that one "
+        "character, in reading order, and never split a chain between "
+        "two different speakers.\n"
+        "- A tail pointing off the edge of the panel, or into empty "
+        "space away from everyone drawn, means the speaker is off-panel. "
+        "Write \"Off-panel voice:\" unless the story makes the identity "
+        "certain.\n"
+        "- A tail drawn as a chain of small circles or bubbles leading "
+        "back to a character's head means thought, not speech: use the "
+        "(thinking) form. A cloud-shaped bubble, or a bubble made of "
+        "radiating rays with no tail, is likewise inner thought.\n"
+        "- Jagged or spiked outlines mean shouting or anger; a dashed or "
+        "dotted outline means whispering; a rectangular or squared "
+        "bubble with a jagged tail means a voice through a phone, radio, "
+        "or speaker. These change HOW the line is said, not who says it, "
+        "so keep the speaker from the tail and note the manner briefly.\n"
+        "- A plain rectangular box with no tail at all is narration, not "
+        "speech: use the Narration form, never a character name."
+    ),
+    "manhwa": (
+        "- The tail is a spike or point on the bubble's outline; follow "
+        "where it points, and it ends at the speaker. Read the tail "
+        "FIRST, before considering which character is closest.\n"
+        "- Proximity is not attribution: a bubble near one character can "
+        "carry a tail reaching to another. The tail wins.\n"
+        "- In a vertical strip, a character often speaks from a panel "
+        "ABOVE or BELOW the bubble, and the tail stretches toward them "
+        "across the gap. Follow it out of the immediate panel rather "
+        "than assuming the nearest visible face.\n"
+        "- A bubble with no tail usually continues the previous "
+        "speaker. If context does not settle it, write \"Unknown:\" "
+        "rather than guessing.\n"
+        "- Bubbles joined by a neck or stacked in an overlapping chain "
+        "are one speaker continuing; attribute the whole chain to the "
+        "character the tailed bubble points at.\n"
+        "- A tail running off the panel edge means an off-panel speaker: "
+        "write \"Off-panel voice:\" unless the story makes it certain.\n"
+        "- A cloud-shaped bubble, or one trailing small circles to a "
+        "character's head, is thought: use the (thinking) form. Faded, "
+        "borderless, or free-floating text over the art is usually "
+        "internal monologue -- attribute it to the viewpoint character "
+        "when clear, otherwise mark it as narration.\n"
+        "- Coloured caption boxes, common at the top of a panel, are "
+        "narration: use the Narration form, not a character name.\n"
+        "- Jagged outlines mean shouting; dashed outlines mean "
+        "whispering; angular or squared bubbles mean an electronic or "
+        "broadcast voice. Note the manner, but take the speaker from "
+        "the tail."
+    ),
+    "webtoon": (
+        "- The tail is a spike or point on the bubble's outline; follow "
+        "where it points, and it ends at the speaker. Read the tail "
+        "FIRST, before considering which character is closest.\n"
+        "- Proximity is not attribution. In a vertical scroll the "
+        "speaker is frequently drawn ABOVE or BELOW their own bubble, "
+        "sometimes a considerable distance away, with the tail "
+        "stretching toward them. Follow the tail rather than assuming "
+        "the nearest face.\n"
+        "- Long stretches of dialogue often alternate between two "
+        "characters down the strip. Use the tails to track who has the "
+        "line; do not assume speakers simply alternate.\n"
+        "- A bubble with no tail usually continues the previous "
+        "speaker. If context does not settle it, write \"Unknown:\".\n"
+        "- Bubbles joined by a neck or in an overlapping chain are one "
+        "speaker continuing; attribute the whole chain to the character "
+        "the tailed bubble points at.\n"
+        "- A tail pointing off the edge means an off-panel speaker: "
+        "write \"Off-panel voice:\" unless the story makes it certain.\n"
+        "- A cloud-shaped bubble, or one trailing small circles toward a "
+        "head, is thought: use the (thinking) form. Free-floating or "
+        "faded text with no bubble is usually internal monologue -- "
+        "attribute it to the viewpoint character when clear, otherwise "
+        "treat it as narration.\n"
+        "- Caption boxes, often coloured and set at the top of a panel, "
+        "are narration: use the Narration form, not a character name.\n"
+        "- Jagged outlines mean shouting; dashed outlines mean "
+        "whispering; angular or squared bubbles mean an electronic "
+        "voice. Note the manner, but take the speaker from the tail."
+    ),
+    "western": (
+        "- The tail is a triangular pointer on the balloon; letterers "
+        "draw it to curve toward the speaker and end at or near their "
+        "mouth. Follow it. Read the tail FIRST, before considering which "
+        "character is closest.\n"
+        "- Proximity is not attribution: balloons are placed for reading "
+        "flow, so a balloon can sit nearer a listener than the speaker. "
+        "The tail wins.\n"
+        "- Balloons connected by narrow bands, or overlapping in a "
+        "chain, are ONE speaker continuing across several balloons; only "
+        "the balloon nearest that speaker carries the tail. Attribute "
+        "the whole chain to that character and never split it between "
+        "two speakers.\n"
+        "- A tail extending to the panel edge marks an off-panel "
+        "speaker: write \"Off-panel voice:\" unless the story makes the "
+        "identity certain.\n"
+        "- A balloon with no tail usually continues the previous "
+        "speaker. If context does not settle it, write \"Unknown:\".\n"
+        "- A cloud or scalloped balloon trailing small circles to a "
+        "character's head is thought: use the (thinking) form.\n"
+        "- Rectangular caption boxes, usually at the top or bottom of "
+        "the panel, are narration or a character's retrospective "
+        "voice-over. Use the Narration form; only attribute a caption to "
+        "a character when the art or the story makes the narrator "
+        "explicit.\n"
+        "- Jagged or burst outlines mean shouting; dashed outlines mean "
+        "whispering; squared or jagged-edged balloons with a lightning "
+        "tail mean a radio, phone, or broadcast voice. Note the manner, "
+        "but take the speaker from the tail."
+    ),
+}
+
+# Applies to every comic type: the procedure for working out a speaker,
+# and the instruction to stop rather than invent one.
+ATTRIBUTION_TEXT = (
+    "WHO IS SPEAKING\n"
+    "Getting the speaker wrong is worse than admitting uncertainty: a "
+    "blind reader cannot glance at the page to correct you, so a "
+    "confident wrong name silently rewrites the story for them. Work "
+    "out each speaker in this order, and stop at the first step that "
+    "gives a clear answer:\n"
+    "1. The bubble's tail. This is the artist's explicit statement of "
+    "who is speaking and it overrides everything else, including which "
+    "character is nearest the bubble.\n"
+    "2. If there is no tail, whether this bubble continues the previous "
+    "bubble's speaker -- a chain of joined or stacked bubbles is one "
+    "person talking on.\n"
+    "3. Who is visibly speaking: an open mouth, a turned head, a raised "
+    "hand, a character mid-gesture.\n"
+    "4. The conversation so far, plus the CHARACTER NOTES and any "
+    "READER'S INSTRUCTIONS, to see who this line must belong to.\n"
+    "If those steps still do not settle it, write \"Unknown:\" for a "
+    "speaker you cannot identify, or \"Off-panel voice:\" when the "
+    "speaker is clearly outside the panel. Using \"Unknown:\" is the "
+    "correct, expected outcome on crowded or ambiguous pages -- it is "
+    "not a failure, and you should expect to use it occasionally in any "
+    "long book. Never pick a name because it is plausible, because that "
+    "character spoke recently, or because they are the nearest figure.\n"
+    "Attribute every line of dialogue to a character, one line per "
+    "bubble."
+)
+
 VERBOSITY_TEXT = {
     "concise": (
         "Verbosity: CONCISE. Describe each panel in ONE short sentence "
@@ -165,6 +332,7 @@ def build_system_prompt(comic_type, verbosity, output_language,
                         custom_prompt=""):
     resolved = LEGACY_DIRECTION_MAP.get(comic_type, comic_type)
     direction = COMIC_TYPE_TEXT.get(resolved, COMIC_TYPE_TEXT["manga"])
+    tails = TAIL_TEXT.get(resolved, TAIL_TEXT["manga"])
     verbosity_rules = VERBOSITY_TEXT.get(verbosity, VERBOSITY_TEXT["detailed"])
     custom_block = ""
     if custom_prompt and custom_prompt.strip():
@@ -176,6 +344,11 @@ def build_system_prompt(comic_type, verbosity, output_language,
 READING ORDER
 {direction}
 Process every panel strictly in reading order. NEVER mention or foreshadow content from later panels or later pages while describing an earlier one; page-turn reveals and dramatic timing must be preserved exactly.
+
+{ATTRIBUTION_TEXT}
+
+READING THE BUBBLES AND THEIR TAILS
+{tails}
 
 {verbosity_rules}
 
@@ -196,7 +369,7 @@ SFX: <sound> -- <what it conveys, e.g. "a door slamming">
 
 Rules:
 - Dialogue lines come AFTER the panel description line for their panel, in the order the bubbles are read, each attached to the character who speaks it.
-- Attribute every line of dialogue to a character. Use bubble tail position, who is shown speaking, and the CHARACTER NOTES to identify speakers. If genuinely uncertain, use "Off-panel voice:" or "Unknown:" rather than guessing a name.
+- Attribute every line of dialogue following the WHO IS SPEAKING procedure above: tail first, then bubble chaining, then who is visibly speaking, then context. Use "Unknown:" or "Off-panel voice:" rather than guessing a name.
 - Transcribe all text faithfully and translate it into {output_language}. Reproduce names and forms of address exactly as they appear in the text; do not add or remove honorifics or titles of your own accord. Render sound effects with their meaning.
 - Silent panels matter: describe them like any other panel. A wordless close-up or a held beat is storytelling; a line like "Panel 4: Silent. Aiko stares at the empty chair." is perfect.
 - Text visible in the art (signs, phone screens, letters) goes on a "Text:" line with a short location note tying it to the object it appears on.

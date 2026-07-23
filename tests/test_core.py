@@ -1845,5 +1845,162 @@ class TestAskConversationDocument(unittest.TestCase):
         self.assertNotIn("tabindex", doc)
 
 
+class TestSpeakerAttribution(unittest.TestCase):
+    """The 0.16.0 speaker-attribution work: every comic type gets rules
+    for reading speech-bubble tails, and the prompt states the order in
+    which a speaker is worked out."""
+
+    COMIC_TYPES = ("manga", "manhwa", "webtoon", "western")
+
+    def _prompt(self, comic_type):
+        return prompts.build_system_prompt(comic_type, "detailed", "English")
+
+    def test_every_comic_type_has_tail_rules(self):
+        for comic_type in self.COMIC_TYPES:
+            self.assertIn(comic_type, prompts.TAIL_TEXT)
+            self.assertGreater(len(prompts.TAIL_TEXT[comic_type]), 500)
+
+    def test_tail_section_reaches_every_prompt(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("READING THE BUBBLES AND THEIR TAILS", prompt)
+            self.assertIn("WHO IS SPEAKING", prompt)
+
+    def test_tail_outranks_proximity_in_every_type(self):
+        # The core correction: the nearest character is often not the
+        # speaker, and the tail is what settles it.
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("Proximity is not attribution", prompt)
+
+    def test_attribution_order_is_explicit(self):
+        prompt = self._prompt("manga")
+        # Tail first, then chaining, then who is visibly speaking, then
+        # context -- each step must be present and in that order.
+        tail = prompt.index("The bubble's tail.")
+        chain = prompt.index("continues the previous")
+        visible = prompt.index("Who is visibly speaking")
+        context = prompt.index("The conversation so far")
+        self.assertLess(tail, chain)
+        self.assertLess(chain, visible)
+        self.assertLess(visible, context)
+
+    def test_unknown_is_framed_as_a_correct_outcome(self):
+        # Models over-commit to a name; the prompt has to make "Unknown"
+        # an acceptable answer rather than an admission of failure.
+        prompt = self._prompt("manga")
+        self.assertIn("is the correct, expected outcome", prompt)
+        self.assertIn("not a failure", prompt)
+        self.assertIn("Never pick a name because it is plausible", prompt)
+
+    def test_tailless_bubbles_have_a_rule_in_every_type(self):
+        # Attribution errors concentrate on bubbles with no tail.
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("no tail", prompt)
+            self.assertIn("Unknown:", prompt)
+
+    def test_bubble_chains_are_one_speaker_in_every_type(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("chain", prompt)
+
+    def test_off_panel_tails_covered_in_every_type(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("Off-panel voice:", prompt)
+
+    def test_narration_boxes_are_not_attributed_to_characters(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("narration", prompt.lower())
+
+    def test_thought_tails_distinguished_from_speech(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("(thinking)", prompt)
+
+    def test_rules_are_specific_to_each_tradition(self):
+        # Not one generic block copied four times: each tradition has
+        # its own conventions.
+        manga = prompts.TAIL_TEXT["manga"]
+        western = prompts.TAIL_TEXT["western"]
+        webtoon = prompts.TAIL_TEXT["webtoon"]
+        manhwa = prompts.TAIL_TEXT["manhwa"]
+        # Manga: vertical text, small/subtle tails.
+        self.assertIn("vertical text", manga)
+        # Western: balloons joined by narrow connecting bands.
+        self.assertIn("narrow bands", western)
+        self.assertNotIn("narrow bands", manga)
+        # Vertical formats: the speaker may be in another panel entirely.
+        self.assertIn("ABOVE or BELOW", webtoon)
+        self.assertIn("ABOVE or BELOW", manhwa)
+        self.assertNotIn("ABOVE or BELOW", manga)
+        # All four blocks are distinct texts.
+        self.assertEqual(
+            len({manga, manhwa, webtoon, western}), 4)
+
+    def test_legacy_direction_values_get_tail_rules(self):
+        # Settings saved before comic_type existed must still work.
+        for legacy, expected in (("rtl", "manga"), ("ltr", "western"),
+                                 ("vertical", "webtoon")):
+            prompt = prompts.build_system_prompt(
+                legacy, "detailed", "English")
+            self.assertIn(prompts.TAIL_TEXT[expected], prompt)
+
+    def test_unknown_comic_type_falls_back_to_manga_tails(self):
+        prompt = prompts.build_system_prompt(
+            "nonsense", "detailed", "English")
+        self.assertIn(prompts.TAIL_TEXT["manga"], prompt)
+
+    def test_tail_rules_apply_at_every_verbosity(self):
+        for verbosity in ("concise", "detailed", "extensive"):
+            prompt = prompts.build_system_prompt(
+                "manga", verbosity, "English")
+            self.assertIn("READING THE BUBBLES AND THEIR TAILS", prompt)
+            self.assertIn("Proximity is not attribution", prompt)
+
+    def test_old_single_line_rule_is_gone(self):
+        # Superseded by the full procedure; it should not linger and
+        # contradict it.
+        prompt = self._prompt("manga")
+        self.assertNotIn(
+            "Use bubble tail position, who is shown speaking, and the "
+            "CHARACTER NOTES", prompt)
+
+
+class TestAskInheritsTailRules(unittest.TestCase):
+    """Ask is the reader's repair tool for a wrong speaker, so it needs
+    the same tail knowledge as processing."""
+
+    def _settings(self, comic_type="manga"):
+        return {"comic_type": comic_type, "output_language": "English"}
+
+    def test_ask_prompt_carries_tail_rules(self):
+        from core import ask
+        for comic_type in ("manga", "manhwa", "webtoon", "western"):
+            prompt = ask.build_ask_system_prompt(self._settings(comic_type))
+            self.assertIn(prompts.TAIL_TEXT[comic_type], prompt)
+
+    def test_ask_prompt_prefers_the_image_over_the_script(self):
+        # The whole point of asking is that the script may be wrong.
+        from core import ask
+        prompt = ask.build_ask_system_prompt(self._settings())
+        self.assertIn("trust the page images", prompt)
+
+    def test_ask_prompt_allows_admitting_an_unknown_speaker(self):
+        from core import ask
+        prompt = ask.build_ask_system_prompt(self._settings())
+        self.assertIn("no tail", prompt)
+        self.assertIn("rather than naming a likely", prompt)
+
+    def test_ask_prompt_still_localised_and_markdown_free(self):
+        from core import ask
+        prompt = ask.build_ask_system_prompt(
+            {"comic_type": "manga", "output_language": "Arabic"})
+        self.assertIn("Answer in Arabic", prompt)
+        self.assertIn("Markdown", prompt)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
