@@ -3,22 +3,6 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
-## 0.16.0
-
-### Changed
-
-- Better speaker identification. The AI now follows the speech
-  bubble's tail, the small pointer aimed at whoever is talking, rather
-  than the character sitting nearest the bubble, with the conventions
-  of each comic type: bubbles chained into one speaker, tails pointing
-  off the panel, thought and whisper and shouting bubbles, and caption
-  boxes that are narration rather than dialogue.
-- Ask about a page follows the same rules, so it can correct a wrong
-  speaker in the script.
-
-Applies to pages processed from now on. Use Reprocess entire book in
-the Book menu to apply them to a book already processed.
-
 ## 0.15.0
 
 ### Added

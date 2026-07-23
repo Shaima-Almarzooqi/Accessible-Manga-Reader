@@ -2,9 +2,9 @@
 
 Manga read aloud properly for blind readers.
 
-Comics are one of the few storytelling media that stayed almost entirely closed to blind readers: the words are drawn into the artwork, so no screen reader can touch them, and the story is carried as much by panels, expressions, and sound effects as by dialogue. Accessible Manga Reader sends each page to an AI vision model and turns it into a script you can read with your screen reader: panel-by-panel descriptions, dialogue attributed to the character speaking, sound effects with their meaning, and the silent panels that carry so much of the storytelling. It reads manga, manhwa and manhua, webtoons, and Western comics.
+Manga is one of the few storytelling media that stayed almost entirely closed to blind readers: the words are drawn into the artwork, so no screen reader can touch them, and the story is carried as much by panels, expressions, and sound effects as by dialogue. Accessible Manga Reader sends each page to an AI vision model and turns it into a script you can read with your screen reader: panel-by-panel descriptions, dialogue attributed to the character speaking, sound effects with their meaning, and the silent panels that carry so much of the storytelling.
 
-It follows each tradition's own reading grammar, set by the comic type in Settings. Manga is read right to left, top to bottom — panels, speech bubbles inside a panel, and the artwork itself. Manhwa, manhua, and Western comics are read left to right, and webtoons as a single vertical scroll.
+It follows manga's own reading grammar. Pages are read right to left, top to bottom — panels, speech bubbles inside a panel, and the artwork itself.
 
 ## Install
 
@@ -90,7 +90,7 @@ Verbosity and AI instructions apply to pages processed from then on. To apply th
 
 ## Notes and limits
 
-* **Speaker attribution** follows the speech bubble's tail — the pointer an artist draws toward whoever is talking — rather than whichever character sits nearest the bubble, with the conventions of each comic type. It is good but not perfect on crowded pages; where the speaker cannot be established the AI says "Unknown" rather than guessing. If a line looks misattributed, Ctrl+Q in the reader asks about the page from the original image and can correct it.
+* **Speaker attribution** is good but not perfect on crowded pages; the AI is told to say "Unknown" rather than guess.
 * **Your keys stay on your computer**, in a settings file in your app data folder. They are never sent anywhere except to the service you chose.
 * **Interface language** is English regardless of the output language setting; only the AI's script is translated.
 * **`.cbr` (RAR) archives** are not supported — convert to `.cbz` first.
