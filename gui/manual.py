@@ -159,27 +159,6 @@ processing does, so it counts toward your allowance; and it needs the
 book's page images, so it is unavailable for a book whose images were
 removed with Free up space.</p>
 
-<h3>Speaker names, and what "Unknown" means</h3>
-<p>Comic artists show who is talking by drawing a small pointer on the
-speech bubble, called a tail, aimed at the character saying the line.
-The AI reads that tail first, before considering which character is
-nearest the bubble, because bubbles are often placed near a listener
-rather than the speaker. Each comic type follows the conventions of its
-own tradition.</p>
-<p>Some bubbles are drawn with no tail at all, and on a crowded page
-the speaker is sometimes genuinely impossible to establish. In those
-cases the AI writes "Unknown" instead of choosing a likely name, and
-"Off-panel voice" when someone is speaking from outside the panel.
-Seeing "Unknown" occasionally is the app working correctly: a wrong
-name would quietly change the story, and an honest "Unknown" leaves you
-free to work it out from the dialogue.</p>
-<p>Two things improve the names. First, give the cast in the AI
-instructions for the book, as described under Processing a book: names
-with a short description of each let the AI recognise characters from
-the very first page. Second, if a line still looks wrong, press Ctrl
-plus Q and ask about that page. The AI looks at the original artwork
-again and can tell you who the tail actually points at.</p>
-
 <h3>HTML view</h3>
 <p>For a different way to navigate, press Ctrl plus H to open the HTML
 view. This shows the whole book in a window where each page and each
