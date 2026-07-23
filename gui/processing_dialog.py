@@ -45,9 +45,18 @@ class ProcessingDialog(wx.Dialog):
         self.gauge = wx.Gauge(panel, range=100)
         sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        # Offered only once pages have actually been processed, so the
+        # button never appears when there is nothing to read. Placed
+        # before Close so Tab reaches it first at the moment it matters.
+        self.read_button = wx.Button(panel, wx.ID_ANY, "&Read now")
+        self.read_button.Bind(wx.EVT_BUTTON, self.on_read_now)
+        self.read_button.Hide()
+        buttons.Add(self.read_button, 0, wx.RIGHT, 8)
         self.cancel_button = wx.Button(panel, wx.ID_CANCEL, "&Cancel")
         self.cancel_button.Bind(wx.EVT_BUTTON, self.on_cancel)
-        sizer.Add(self.cancel_button, 0, wx.ALL | wx.ALIGN_RIGHT, 8)
+        buttons.Add(self.cancel_button, 0)
+        sizer.Add(buttons, 0, wx.ALL | wx.ALIGN_RIGHT, 8)
 
         panel.SetSizer(sizer)
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -118,14 +127,36 @@ class ProcessingDialog(wx.Dialog):
                     "%d pages failed and will be retried if you choose "
                     "Process again.\n" % len(result.pages_failed))
         self.cancel_button.SetLabel("&Close")
-        self.cancel_button.SetDefault()
-        self.cancel_button.SetFocus()
+        # Anything already saved is readable, including after a cancel or
+        # an error partway through, so the offer depends on the book
+        # rather than on how the run ended.
+        if self.book.processed_count() > 0:
+            self.log.AppendText(
+                "Select Read now to start reading, or Close to return to "
+                "your library.\n")
+            self.read_button.Show()
+            self.read_button.SetDefault()
+            self.Layout()
+            self.read_button.SetFocus()
+        else:
+            self.cancel_button.SetDefault()
+            self.cancel_button.SetFocus()
 
     # ----- cancel / close ------------------------------------------------------
 
     def _close_now(self):
         self._closed = True
         self.EndModal(wx.ID_CLOSE)
+
+    def on_read_now(self, event):
+        """Close the dialog asking the caller to open the reader.
+
+        The reader is opened by the library window rather than here, so
+        this dialog can be destroyed first and the reader is never
+        parented to a window that is about to disappear.
+        """
+        self._closed = True
+        self.EndModal(wx.ID_OPEN)
 
     def on_cancel(self, event):
         if self._finished_flag or not self._thread.is_alive():
@@ -148,7 +179,12 @@ class ProcessingDialog(wx.Dialog):
             self.on_cancel(event)
         elif (code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
               and self._finished_flag):
-            self._close_now()
+            # Enter follows whichever button is offered as the default:
+            # Read now when there is something to read, otherwise Close.
+            if self.read_button.IsShown():
+                self.on_read_now(event)
+            else:
+                self._close_now()
         elif keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
             return
         else:

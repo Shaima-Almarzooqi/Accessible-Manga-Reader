@@ -109,10 +109,14 @@ the AI in turn. You can cancel at any time; everything done so far is
 saved, and choosing Process again later continues from where it stopped.
 If you reach a service's daily limit partway through, the same applies:
 come back later and continue.</p>
+<p>When it finishes, a Read now button appears in that window, so you
+can start reading without going back to your library. Pressing Enter
+selects it. It also appears after a cancelled run, since the pages
+already saved can be read straight away.</p>
 
 <h2>Step 5: Read</h2>
-<p>When the book is ready, select it and press Enter, or Alt plus R. The
-reader window opens.</p>
+<p>Select Read now in the processing window, or select the book in your
+library and press Enter, or Alt plus R. The reader window opens.</p>
 <p>There are three ways to read, which you choose from the View menu, or
 set a default in Settings:</p>
 <ul>
@@ -158,6 +162,21 @@ so you can ask it again.</p>
 processing does, so it counts toward your allowance; and it needs the
 book's page images, so it is unavailable for a book whose images were
 removed with Free up space.</p>
+
+<h3>Speaker names</h3>
+<p>Comic artists show who is talking by drawing a small pointer on the
+speech bubble, called a tail, aimed at the character saying the line.
+The AI follows that tail rather than picking the character nearest the
+bubble, since bubbles are often placed closer to a listener than to the
+speaker. Each comic type follows the conventions of its own
+tradition.</p>
+<p>On crowded pages it will still sometimes get a name wrong. Two
+things help. Give the cast in the AI instructions for the book, as
+described under Processing a book: names with a short description of
+each let the AI recognise characters from the first page. And if a line
+looks wrong while reading, press Ctrl plus Q to ask about that page.
+The AI looks at the original artwork again and can tell you who the
+tail actually points at.</p>
 
 <h3>HTML view</h3>
 <p>For a different way to navigate, press Ctrl plus H to open the HTML

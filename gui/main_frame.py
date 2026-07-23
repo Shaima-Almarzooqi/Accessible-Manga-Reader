@@ -396,9 +396,13 @@ class MainFrame(wx.Frame):
             if not proceed:
                 return
         dialog = ProcessingDialog(self, book, self.settings)
-        dialog.ShowModal()
+        outcome = dialog.ShowModal()
         dialog.Destroy()
         self.refresh_books(select_book=book)
+        if outcome == wx.ID_OPEN:
+            # Read now was chosen in the processing dialog.
+            reader = ReaderFrame(self, book, self.settings)
+            reader.Show()
 
     def on_free_space(self, event):
         book = self._selected_book()
