@@ -134,10 +134,10 @@ class Book:
         """Drop the cached scripts for `page_numbers` so they will be
         processed again. Returns the page numbers actually cleared.
 
-        Character notes are deliberately left alone: they are the book's
-        accumulated memory of the cast, and a reader reprocessing a bad
-        page wants that memory kept, not reset. Only a whole-book
-        reprocess clears the notes.
+        Character notes are left alone here: a page in the middle of a
+        book still needs the AI to know the cast. Callers redoing the
+        whole book clear the notes themselves, since those are rebuilt
+        from page one.
         """
         cleared = []
         for number in page_numbers:

@@ -187,11 +187,9 @@ page you are on, which is usually what you want when you notice a
 problem while reading. You can also give a range, from one page number
 to another, or redo the whole book. Only the pages you choose are
 replaced; the rest of the book is left as it is.</p>
-<p>Redoing a range keeps the AI's character notes for the book, so it
-still knows the cast. Redoing the whole book clears those notes and
-builds them again from the first page, which is what you want after
-changing the AI instructions or the verbosity level. Either way the
-pages are sent to the AI again, so it uses your allowance.</p>
+<p>Redoing a page or a range keeps the AI's character notes for the
+book, so it still knows the cast. Redoing the whole book starts those
+notes again from the first page.</p>
 <p>For a one-off question about a page, such as who said a particular
 line, Ask about this page with Ctrl plus Q is quicker and costs less
 than reprocessing.</p>

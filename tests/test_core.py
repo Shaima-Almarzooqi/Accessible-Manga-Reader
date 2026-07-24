@@ -1873,9 +1873,17 @@ class TestReprocessPageRange(unittest.TestCase):
         self.assertEqual(self.book.unprocessed_pages(), [4, 5, 6])
 
     def test_clearing_keeps_character_notes(self):
-        # A range reprocess is a repair, not a restart: the book's
-        # accumulated memory of the cast must survive.
+        # Redoing a page in the middle of a book keeps the cast in mind.
         self.book.clear_pages([2])
+        self.assertEqual(self.book.character_notes,
+                         "Aiko: short dark hair.")
+
+    def test_clear_pages_never_touches_notes_even_for_every_page(self):
+        # clear_pages only ever drops scripts. A whole-book reprocess
+        # resets the notes, but that is the caller's job, not this
+        # method's -- see the reprocess handlers in the GUI.
+        self.book.clear_pages(list(range(1, 11)))
+        self.assertEqual(self.book.processed_count(), 0)
         self.assertEqual(self.book.character_notes,
                          "Aiko: short dark hair.")
 

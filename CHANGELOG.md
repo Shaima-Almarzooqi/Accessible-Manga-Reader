@@ -11,8 +11,8 @@ newest version is at the top.
   page to the AI again, or a range of pages you choose, instead of
   redoing the whole book. Press Ctrl plus R in the reader to redo the
   page you are reading, or choose Reprocess pages from the Book menu
-  in your library. Redoing a range keeps the AI's character notes for
-  the book; redoing the whole book still clears them and starts over.
+  in your library. Redoing a page or a range keeps the AI's character
+  notes for the book; redoing the whole book starts them again.
 
 ## 0.16.0
 

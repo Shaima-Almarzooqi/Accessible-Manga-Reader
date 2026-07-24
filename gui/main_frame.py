@@ -467,8 +467,9 @@ class MainFrame(wx.Frame):
         """Clear the chosen pages and process them again.
 
         A whole-book reprocess also clears the character notes, since
-        those are rebuilt from page one. A range keeps them: the reader
-        is fixing a bad page, not starting the book over.
+        every page is being read again and the notes are rebuilt from
+        page one. A range keeps them: the AI needs to know the cast to
+        make sense of a page in the middle of a book.
         """
         if scope == SCOPE_WHOLE_BOOK:
             book.scripts = {}
