@@ -22,11 +22,15 @@ from . import keys as keyhelp
 
 
 class ProcessingDialog(wx.Dialog):
-    def __init__(self, parent, book, settings):
+    def __init__(self, parent, book, settings, pages=None):
+        """pages: explicit 1-based page numbers to process, or None for
+        every page that is still unprocessed. Used when reprocessing a
+        range, where the caller has already cleared those pages."""
         super().__init__(parent, title="Processing " + (book.title or "book"),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.book = book
         self.settings = settings
+        self.pages = pages
         self._cancel = threading.Event()
         self._closed = False
         self._finished_flag = False
@@ -79,7 +83,8 @@ class ProcessingDialog(wx.Dialog):
             result = processor.process_book(
                 self.book, self.settings,
                 on_progress=on_progress,
-                cancel_check=self._cancel.is_set)
+                cancel_check=self._cancel.is_set,
+                pages=self.pages)
         except Exception as error:
             # The dialog must always be told the run is over, or it
             # would wait for a worker that is no longer running.

@@ -14,6 +14,7 @@ import wx
 from core import config, extract, library, updates
 from .html_view import show_html_view
 from .processing_dialog import ProcessingDialog
+from .reprocess_dialog import ReprocessDialog, SCOPE_WHOLE_BOOK
 from .reader_frame import ReaderFrame
 from .settings_dialog import SettingsDialog
 from . import keys as keyhelp
@@ -100,7 +101,7 @@ class MainFrame(wx.Frame):
             "Give the AI extra guidance, like character names and "
             "descriptions"))
         self.Bind(wx.EVT_MENU, self.on_reprocess, book_menu.Append(
-            wx.ID_ANY, "Reprocess entire boo&k...",
+            wx.ID_ANY, "Reprocess pa&ges...",
             "Clear the processed pages and process the whole book again, "
             "for example after changing AI instructions or verbosity"))
         self.Bind(wx.EVT_MENU, self.on_free_space, book_menu.Append(
@@ -369,7 +370,7 @@ class MainFrame(wx.Frame):
             wx.MessageBox(
                 "This book is already fully processed. To apply new AI "
                 "instructions or a new verbosity level to it, use "
-                "Reprocess entire book in the Book menu.",
+                "Reprocess pages in the Book menu.",
                 config.APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
             return
         if not book.has_page_images():
@@ -443,26 +444,56 @@ class MainFrame(wx.Frame):
                 "free space), so it cannot be processed again. Delete "
                 "the book and import the original file to reprocess."
                 % book.title,
-                "Reprocess entire book", wx.OK | wx.ICON_INFORMATION, self)
+                "Reprocess pages", wx.OK | wx.ICON_INFORMATION, self)
             return
         if book.processed_count() == 0:
             self.on_process(event)
             return
-        answer = wx.MessageBox(
-            "Reprocess '%s' from the beginning? This clears all %d "
-            "processed pages and the AI's character memory for this "
-            "book, then processes every page again -- useful after "
-            "changing AI instructions or verbosity. The pages will be "
-            "sent to the AI again, which uses your API quota. Continue?"
-            % (book.title, book.processed_count()),
-            "Reprocess entire book", wx.YES_NO | wx.ICON_WARNING, self)
-        if answer != wx.YES:
+        if not self._active_api_keys():
+            wx.MessageBox(
+                "Enter an API key in Settings first (File menu, then "
+                "Settings, or Alt+S).",
+                "API key required", wx.OK | wx.ICON_INFORMATION, self)
             return
-        book.scripts = {}
-        book.character_notes = ""
+        dialog = ReprocessDialog(self, book)
+        proceed = dialog.ShowModal() == wx.ID_OK
+        scope, pages = dialog.scope, list(dialog.pages)
+        dialog.Destroy()
+        if not proceed:
+            return
+        self._reprocess(book, scope, pages)
+
+    def _reprocess(self, book, scope, pages):
+        """Clear the chosen pages and process them again.
+
+        A whole-book reprocess also clears the character notes, since
+        those are rebuilt from page one. A range keeps them: the reader
+        is fixing a bad page, not starting the book over.
+        """
+        if scope == SCOPE_WHOLE_BOOK:
+            book.scripts = {}
+            book.character_notes = ""
+            book.save()
+            self.refresh_books(select_book=book)
+            self.on_process(None)
+            return
+        cleared = book.clear_pages(pages)
+        if not cleared:
+            wx.MessageBox(
+                "Those pages have not been processed yet, so there is "
+                "nothing to replace. Use Process to work through the "
+                "pages that are still waiting.",
+                "Reprocess pages", wx.OK | wx.ICON_INFORMATION, self)
+            return
         book.save()
         self.refresh_books(select_book=book)
-        self.on_process(event)
+        dialog = ProcessingDialog(self, book, self.settings, pages=cleared)
+        outcome = dialog.ShowModal()
+        dialog.Destroy()
+        self.refresh_books(select_book=book)
+        if outcome == wx.ID_OPEN:
+            reader = ReaderFrame(self, book, self.settings)
+            reader.Show()
 
     def on_read(self, event):
         book = self._selected_book()
@@ -660,7 +691,7 @@ class MainFrame(wx.Frame):
             self.Bind(wx.EVT_MENU, self.on_instructions,
                       menu.Append(wx.ID_ANY, "AI &instructions..."))
             self.Bind(wx.EVT_MENU, self.on_reprocess,
-                      menu.Append(wx.ID_ANY, "Reprocess entire boo&k..."))
+                      menu.Append(wx.ID_ANY, "Reprocess pa&ges..."))
             self.Bind(wx.EVT_MENU, self.on_rename,
                       menu.Append(wx.ID_ANY, "Re&name..."))
             self.Bind(wx.EVT_MENU, self.on_delete,
@@ -837,7 +868,7 @@ class InstructionsDialog(wx.Dialog):
         button_sizer.Add(ok_button, 0, wx.RIGHT, 6)
         if not before_processing:
             # Apply the instructions right away: save, then run the
-            # normal Reprocess entire book flow with its confirmation.
+            # normal Reprocess pages flow, which asks for the scope.
             reprocess_button = wx.Button(
                 self, wx.ID_APPLY, "Save and &reprocess...")
             reprocess_button.Bind(wx.EVT_BUTTON, self.on_reprocess_clicked)

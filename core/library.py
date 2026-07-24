@@ -130,6 +130,22 @@ class Book:
         """Page numbers (1-based) that do not yet have a cached script."""
         return [n for n in range(1, self.page_count + 1) if n not in self.scripts]
 
+    def clear_pages(self, page_numbers):
+        """Drop the cached scripts for `page_numbers` so they will be
+        processed again. Returns the page numbers actually cleared.
+
+        Character notes are deliberately left alone: they are the book's
+        accumulated memory of the cast, and a reader reprocessing a bad
+        page wants that memory kept, not reset. Only a whole-book
+        reprocess clears the notes.
+        """
+        cleared = []
+        for number in page_numbers:
+            if number in self.scripts:
+                del self.scripts[number]
+                cleared.append(number)
+        return cleared
+
     def processed_count(self):
         return len([n for n in self.scripts if 1 <= n <= self.page_count])
 

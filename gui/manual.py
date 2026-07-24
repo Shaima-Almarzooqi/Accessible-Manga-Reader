@@ -178,6 +178,24 @@ looks wrong while reading, press Ctrl plus Q to ask about that page.
 The AI looks at the original artwork again and can tell you who the
 tail actually points at.</p>
 
+<h3>Reprocessing pages</h3>
+<p>If a page came out badly, you can send it to the AI again to replace
+it. In the reader press Ctrl plus R, or in your library choose
+Reprocess pages from the Book menu.</p>
+<p>You choose how much to redo. From the reader you can redo just the
+page you are on, which is usually what you want when you notice a
+problem while reading. You can also give a range, from one page number
+to another, or redo the whole book. Only the pages you choose are
+replaced; the rest of the book is left as it is.</p>
+<p>Redoing a range keeps the AI's character notes for the book, so it
+still knows the cast. Redoing the whole book clears those notes and
+builds them again from the first page, which is what you want after
+changing the AI instructions or the verbosity level. Either way the
+pages are sent to the AI again, so it uses your allowance.</p>
+<p>For a one-off question about a page, such as who said a particular
+line, Ask about this page with Ctrl plus Q is quicker and costs less
+than reprocessing.</p>
+
 <h3>HTML view</h3>
 <p>For a different way to navigate, press Ctrl plus H to open the HTML
 view. This shows the whole book in a window where each page and each
@@ -266,6 +284,7 @@ any mode</li>
 <li>Ctrl plus F: find text</li>
 <li>Ctrl plus L: show or hide panel labels</li>
 <li>Ctrl plus Q: ask about the current page</li>
+<li>Ctrl plus R: reprocess this page, a range, or the whole book</li>
 <li>Ctrl plus E: save as a text file</li>
 <li>Ctrl plus H: open the HTML view</li>
 <li>Alt plus C, or Escape: close the reader</li>

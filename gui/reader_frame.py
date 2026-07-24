@@ -38,6 +38,8 @@ from core import config, html_export, prompts
 
 from .ask_dialog import AskDialog
 from .html_view import show_html_view
+from .processing_dialog import ProcessingDialog
+from .reprocess_dialog import ReprocessDialog, SCOPE_WHOLE_BOOK
 
 from . import keys as keyhelp
 
@@ -150,6 +152,11 @@ class ReaderFrame(wx.Frame):
         menubar.Append(view, "&View")
 
         book_menu = wx.Menu()
+        self.Bind(wx.EVT_MENU, self.on_reprocess_pages, book_menu.Append(
+            wx.ID_ANY, "&Reprocess pages...\tCtrl+R",
+            "Send this page, a range of pages, or the whole book to the "
+            "AI again to replace the script"))
+        book_menu.AppendSeparator()
         self.Bind(wx.EVT_MENU, self.on_export,
                   book_menu.Append(wx.ID_ANY, "&Save as text file...\tCtrl+E"))
         self.Bind(wx.EVT_MENU, self.on_save_html, book_menu.Append(
@@ -392,6 +399,72 @@ class ReaderFrame(wx.Frame):
                            self.current_page)
         dialog.ShowModal()
         dialog.Destroy()
+        self.text.SetFocus()
+
+    def on_reprocess_pages(self, event):
+        """Send pages to the AI again from inside the reader.
+
+        Offers the page being read, since noticing a bad page while
+        reading is the usual reason to want this.
+        """
+        if not self.book.has_page_images():
+            wx.MessageBox(
+                "Reprocessing needs the original page images, and this "
+                "book's images were removed to free space. Delete the "
+                "book and import the original file to reprocess it.",
+                "Reprocess pages", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        if self.view == VIEW_BOOK:
+            self.current_page = self._page_at_caret()
+        dialog = ReprocessDialog(self, self.book,
+                                 current_page=self.current_page)
+        proceed = dialog.ShowModal() == wx.ID_OK
+        scope, pages = dialog.scope, list(dialog.pages)
+        dialog.Destroy()
+        if not proceed:
+            return
+        if scope == SCOPE_WHOLE_BOOK:
+            self.book.scripts = {}
+            self.book.character_notes = ""
+            pages_to_do = None
+        else:
+            cleared = self.book.clear_pages(pages)
+            if not cleared:
+                wx.MessageBox(
+                    "Those pages have not been processed yet, so there "
+                    "is nothing to replace.",
+                    "Reprocess pages", wx.OK | wx.ICON_INFORMATION, self)
+                return
+            pages_to_do = cleared
+        self.book.save()
+        dialog = ProcessingDialog(self, self.book, self.settings,
+                                  pages=pages_to_do)
+        dialog.ShowModal()
+        dialog.Destroy()
+        # The script the reader is showing is now out of date, so
+        # rebuild it and put the reader back where it was.
+        self._reload_after_reprocess()
+
+    def _reload_after_reprocess(self):
+        """Redraw the reader from the book's new scripts, keeping the
+        reading position where it was.
+
+        Both the full text and the per-page panel lists are computed
+        once when the reader opens, so they have to be rebuilt here or
+        the reader would keep showing the old script.
+        """
+        page = self.current_page
+        self.raw_full_text = self.book.full_text()
+        self.page_panels = {
+            n: prompts.split_panels(self.book.scripts.get(n, "")) or
+               ["(This page has not been processed yet.)"]
+            for n in range(1, self.book.page_count + 1)
+        }
+        self._rebuild_display_text()
+        if page and 1 <= page <= self.book.page_count:
+            self._go_page(page)
+        else:
+            self._render()
         self.text.SetFocus()
 
     def _build_html(self):

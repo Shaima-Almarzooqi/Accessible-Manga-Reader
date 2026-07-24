@@ -1845,6 +1845,110 @@ class TestAskConversationDocument(unittest.TestCase):
         self.assertNotIn("tabindex", doc)
 
 
+class TestReprocessPageRange(unittest.TestCase):
+    """Reprocessing a chosen range: clearing those pages' scripts and
+    processing only them, leaving the rest of the book alone."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.book = library.Book(self.tmp)
+        self.book.page_count = 10
+        self.book.scripts = {n: "Panel 1 (top right): page %d" % n
+                             for n in range(1, 11)}
+        self.book.character_notes = "Aiko: short dark hair."
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_clearing_a_range_leaves_other_pages(self):
+        cleared = self.book.clear_pages([4, 5, 6])
+        self.assertEqual(cleared, [4, 5, 6])
+        self.assertEqual(self.book.processed_count(), 7)
+        self.assertIn(3, self.book.scripts)
+        self.assertIn(7, self.book.scripts)
+        self.assertNotIn(5, self.book.scripts)
+
+    def test_cleared_pages_become_the_pending_work(self):
+        self.book.clear_pages([4, 5, 6])
+        self.assertEqual(self.book.unprocessed_pages(), [4, 5, 6])
+
+    def test_clearing_keeps_character_notes(self):
+        # A range reprocess is a repair, not a restart: the book's
+        # accumulated memory of the cast must survive.
+        self.book.clear_pages([2])
+        self.assertEqual(self.book.character_notes,
+                         "Aiko: short dark hair.")
+
+    def test_clearing_a_single_page(self):
+        cleared = self.book.clear_pages([7])
+        self.assertEqual(cleared, [7])
+        self.assertEqual(self.book.processed_count(), 9)
+
+    def test_clearing_an_unprocessed_page_reports_nothing_cleared(self):
+        self.book.clear_pages([3])
+        self.assertEqual(self.book.clear_pages([3]), [])
+
+    def test_clearing_pages_outside_the_book_is_harmless(self):
+        self.assertEqual(self.book.clear_pages([99, 100]), [])
+        self.assertEqual(self.book.processed_count(), 10)
+
+    def test_cleared_range_survives_save_and_load(self):
+        self.book.clear_pages([4, 5])
+        self.book.save()
+        reloaded = library.Book.load(self.tmp)
+        self.assertEqual(reloaded.unprocessed_pages(), [4, 5])
+        self.assertEqual(reloaded.character_notes, "Aiko: short dark hair.")
+
+
+class TestProcessBookPageArgument(unittest.TestCase):
+    """process_book(pages=...) drives a range reprocess: it must honour
+    the list it is given and never resend work already done."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.book = library.Book(self.tmp)
+        self.book.page_count = 10
+        self.book.scripts = {n: "page %d" % n for n in range(1, 11)}
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _pending(self, pages):
+        """The page list process_book would work on, without calling
+        the API: mirrors the filter at the top of process_book."""
+        if pages is None:
+            return self.book.unprocessed_pages()
+        return [n for n in pages
+                if 1 <= n <= self.book.page_count
+                and n not in self.book.scripts]
+
+    def test_none_means_every_unprocessed_page(self):
+        self.book.clear_pages([2, 8])
+        self.assertEqual(self._pending(None), [2, 8])
+
+    def test_an_explicit_range_is_honoured(self):
+        self.book.clear_pages([4, 5, 6])
+        self.assertEqual(self._pending([4, 5, 6]), [4, 5, 6])
+
+    def test_pages_still_holding_a_script_are_skipped(self):
+        # Guards against a stale range resending pages that are fine.
+        self.book.clear_pages([4])
+        self.assertEqual(self._pending([3, 4, 5]), [4])
+
+    def test_pages_outside_the_book_are_dropped(self):
+        self.book.clear_pages([9, 10])
+        self.assertEqual(self._pending([9, 10, 11, 99]), [9, 10])
+
+    def test_an_empty_list_processes_nothing(self):
+        self.assertEqual(self._pending([]), [])
+
+    def test_a_cleared_range_batches_consecutively(self):
+        # Batches must not bridge pages that still have scripts.
+        self.book.clear_pages([3, 4, 7])
+        batches = processor.make_batches(self._pending([3, 4, 7]), 4)
+        self.assertEqual(batches, [[3, 4], [7]])
+
+
 class TestReadableAfterProcessing(unittest.TestCase):
     """The processing dialog offers "Read now" when the book has any
     saved pages, which is what makes a book readable -- including after

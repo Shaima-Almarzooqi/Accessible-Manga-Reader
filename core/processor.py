@@ -42,15 +42,27 @@ def make_batches(page_numbers, batch_size):
     return batches
 
 
-def process_book(book, settings, on_progress=None, cancel_check=None):
-    """Process all unprocessed pages of `book`.
+def process_book(book, settings, on_progress=None, cancel_check=None,
+                 pages=None):
+    """Process pages of `book`.
+
+    By default every unprocessed page is done. Pass `pages` (a list of
+    1-based page numbers) to process an explicit set instead, which is
+    how reprocessing a range works: the caller clears those pages'
+    scripts first, then names them here.
 
     on_progress(message, done, total) is called with human-readable status.
     cancel_check() returning True stops after the current request.
     Returns a ProcessResult.
     """
     result = ProcessResult()
-    pending = book.unprocessed_pages()
+    if pages is None:
+        pending = book.unprocessed_pages()
+    else:
+        # Trust the caller's order but keep only real, unprocessed pages,
+        # so a stale range cannot resend work that is already done.
+        pending = [n for n in pages
+                   if 1 <= n <= book.page_count and n not in book.scripts]
     total = len(pending)
     if not pending:
         return result

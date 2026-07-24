@@ -4,7 +4,7 @@ import json
 import os
 
 APP_NAME = "Accessible Manga Reader"
-APP_VERSION = "0.16.0"
+APP_VERSION = "0.17.0"
 
 # Folders used by earlier versions, migrated on first run so existing
 # libraries and settings are not lost to a rename.

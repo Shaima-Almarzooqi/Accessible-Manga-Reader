@@ -6,3 +6,6 @@ dist/
 .venv/
 venv/
 settings.json
+.agents/
+.claude/
+.cursor/

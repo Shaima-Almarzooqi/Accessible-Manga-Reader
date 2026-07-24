@@ -3,6 +3,17 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 0.17.0
+
+### Added
+
+- Reprocess pages. If a page came out badly you can now send just that
+  page to the AI again, or a range of pages you choose, instead of
+  redoing the whole book. Press Ctrl plus R in the reader to redo the
+  page you are reading, or choose Reprocess pages from the Book menu
+  in your library. Redoing a range keeps the AI's character notes for
+  the book; redoing the whole book still clears them and starts over.
+
 ## 0.16.0
 
 ### Added
@@ -23,8 +34,8 @@ newest version is at the top.
 - Ask about a page follows the same rules, so it can correct a wrong
   speaker in the script.
 
-Applies to pages processed from now on. Use Reprocess entire book in
-the Book menu to apply them to a book already processed.
+Applies to pages processed from now on. Use Reprocess pages in the
+Book menu to apply them to a book already processed.
 
 ## 0.15.0
 

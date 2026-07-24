@@ -74,6 +74,7 @@ In the reader:
 * Ctrl+F — find (entire-book mode)
 * Ctrl+E — save the whole book as a text file
 * Ctrl+Q — ask the AI about the current page (it looks at the page image again to answer; uses your AI service like processing does)
+* Ctrl+R — reprocess this page, a page range, or the whole book
 * Ctrl+H — open the HTML view
 * Ctrl+Shift+E — save as an HTML file
 * Alt+C or Escape — close, remembering your place
@@ -86,7 +87,7 @@ Tab moves between controls; arrow keys stay inside the control that has focus. S
 
 **General tab.** Output language (choose from the list or type any language — the script is translated into it, and text is transcribed exactly as it appears). Verbosity: Concise, Detailed, or Extensive, which walks every panel through composition, each character's expression and pose, the background, and drawn effects like speed lines. Comic type, which sets the correct reading rules: Manga (Japanese, right to left), Manhwa or Manhua (Korean or Chinese, left to right), Webtoon (vertical scroll), or Western comic (left to right). Custom instructions for the selected comic type, applied to every book of that type (kept separate from a book's own instructions). Whether the AI-instructions box is offered before processing a book (off starts processing immediately; instructions stay available from the Book menu, where Save and reprocess applies them to an already processed book). The default reader view, and whether panel labels are shown.
 
-Verbosity and AI instructions apply to pages processed from then on. To apply them to a book already processed, use **Reprocess entire book** in the Book menu.
+Verbosity and AI instructions apply to pages processed from then on. To apply them to a book already processed, use **Reprocess pages** in the Book menu, which can redo a single page, a range, or the whole book.
 
 ## Notes and limits
 
