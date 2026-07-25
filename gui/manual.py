@@ -221,9 +221,12 @@ character's expression and pose, the background, and drawn effects.</li>
 drawn, without adding its own opinions.</p>
 
 <h3>Read in another language</h3>
-<p>Also on the General tab, Output language sets the language of the
-descriptions and dialogue. Choose from the list or type any language.
-The text is translated into it and transcribed as it appears.</p>
+<p>Also on the General tab, Output language sets the language the whole
+script is written in: both the descriptions and the dialogue. Choose
+from the list or type any language. If the comic itself is in a
+different language, its text is translated into your chosen one rather
+than copied, so a Spanish manga can be read entirely in English.
+Proper names are kept as they appear.</p>
 
 <h3>Choose the comic type</h3>
 <p>On the General tab, Comic type tells the app how the pages should be
@@ -301,6 +304,11 @@ Refresh model list to see the models your key can use, then pick
 one.</li>
 <li>If a request is refused for being too large, lower Pages per request
 in Settings.</li>
+<li>If a page reads oddly, with headings the app does not use such as
+Composition or Setting, or with remarks from the AI about its own
+work, that model has drifted from the script format it was given. Redo
+those pages with Reprocess pages in the Book menu; a stronger model
+usually holds the format better.</li>
 </ul>
 
 <h2>Getting help and giving feedback</h2>
