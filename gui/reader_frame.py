@@ -34,7 +34,7 @@ import webbrowser
 
 import wx
 
-from core import config, html_export, prompts
+from core import config, extract, html_export, prompts
 
 from .ask_dialog import AskDialog
 from .html_view import show_html_view
@@ -156,6 +156,11 @@ class ReaderFrame(wx.Frame):
             wx.ID_ANY, "&Reprocess pages...\tCtrl+R",
             "Send this page, a range of pages, or the whole book to the "
             "AI again to replace the script"))
+        if self.book.source_kind == "images":
+            self.Bind(
+                wx.EVT_MENU, self.on_import_pages, book_menu.Append(
+                    wx.ID_ANY, "&Import more pages...\tCtrl+I",
+                    "Add more image files to the end of this book"))
         book_menu.AppendSeparator()
         self.Bind(wx.EVT_MENU, self.on_export,
                   book_menu.Append(wx.ID_ANY, "&Save as text file...\tCtrl+E"))
@@ -400,6 +405,62 @@ class ReaderFrame(wx.Frame):
         dialog.ShowModal()
         dialog.Destroy()
         self.text.SetFocus()
+
+    def on_import_pages(self, event):
+        """Append more image files to an image-built book from inside the
+        reader, then offer to process the pages just added.
+
+        Only image books can grow this way: an archive or PDF book is a
+        fixed extracted file, so the menu item is not shown for them.
+        """
+        if self.book.source_kind != "images":
+            return
+        dialog = wx.FileDialog(
+            self, "Import more image files (they are added after the "
+            "current last page)",
+            wildcard=("Images (*.jpg;*.jpeg;*.png;*.webp;*.bmp;*.gif)|"
+                      "*.jpg;*.jpeg;*.png;*.webp;*.bmp;*.gif|"
+                      "All files (*.*)|*.*"),
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE)
+        if dialog.ShowModal() != wx.ID_OK:
+            dialog.Destroy()
+            return
+        paths = dialog.GetPaths()
+        dialog.Destroy()
+        if not paths:
+            return
+
+        first_new = self.book.page_count + 1
+        try:
+            added = extract.append_image_files(paths, self.book.workspace)
+        except Exception as exc:
+            wx.MessageBox(
+                "Those images could not be added: %s" % exc,
+                "Import more pages", wx.OK | wx.ICON_ERROR, self)
+            return
+        if not added:
+            return
+        # The images on disk are the source of truth for the count.
+        self.book.detect_page_count()
+        # Record the added files so a later re-import of this book still
+        # rebuilds every page, keeping the source description in sync.
+        combined = self.book.source
+        if combined:
+            combined += "|"
+        self.book.source = combined + "|".join(sorted(paths))
+        self.book.save()
+
+        new_pages = list(range(first_new, self.book.page_count + 1))
+        answer = wx.MessageBox(
+            "%d page(s) added, now %d to %d. Process them now?"
+            % (added, first_new, self.book.page_count),
+            "Import more pages", wx.YES_NO | wx.ICON_QUESTION, self)
+        if answer == wx.YES:
+            dlg = ProcessingDialog(self, self.book, self.settings,
+                                   pages=new_pages)
+            dlg.ShowModal()
+            dlg.Destroy()
+        self._reload_after_reprocess()
 
     def on_reprocess_pages(self, event):
         """Send pages to the AI again from inside the reader.

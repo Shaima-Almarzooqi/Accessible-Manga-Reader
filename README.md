@@ -75,6 +75,7 @@ In the reader:
 * Ctrl+E — save the whole book as a text file
 * Ctrl+Q — ask the AI about the current page (it looks at the page image again to answer; uses your AI service like processing does)
 * Ctrl+R — reprocess this page, a page range, or the whole book
+* Ctrl+I — import more image pages (image-built books only)
 * Ctrl+H — open the HTML view
 * Ctrl+Shift+E — save as an HTML file
 * Alt+C or Escape — close, remembering your place

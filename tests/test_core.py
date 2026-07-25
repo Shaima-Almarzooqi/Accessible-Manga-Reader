@@ -1911,6 +1911,77 @@ class TestAskConversationDocument(unittest.TestCase):
         self.assertNotIn("tabindex", doc)
 
 
+class TestAppendImagePages(unittest.TestCase):
+    """Adding more image files to an image-built book from the reader:
+    new pages are numbered after the existing ones, and the pages
+    already processed keep their scripts."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.pages_dir = os.path.join(self.tmp, "pages")
+        os.makedirs(self.pages_dir)
+        for n in (1, 2):
+            Image.new("RGB", (10, 10), "white").save(
+                os.path.join(self.pages_dir, "%04d.jpg" % n))
+        self.src = os.path.join(self.tmp, "incoming")
+        os.makedirs(self.src)
+        self.new_paths = []
+        for name in ("p10.png", "p3.png", "p04.png"):
+            p = os.path.join(self.src, name)
+            Image.new("RGB", (10, 10), "black").save(p)
+            self.new_paths.append(p)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _page_files(self):
+        return sorted(n for n in os.listdir(self.pages_dir)
+                      if n.endswith(".jpg"))
+
+    def test_new_pages_are_numbered_after_existing(self):
+        added = extract.append_image_files(self.new_paths, self.tmp)
+        self.assertEqual(added, 3)
+        self.assertEqual(
+            self._page_files(),
+            ["0001.jpg", "0002.jpg", "0003.jpg", "0004.jpg", "0005.jpg"])
+
+    def test_existing_pages_are_not_overwritten(self):
+        before = Image.open(
+            os.path.join(self.pages_dir, "0001.jpg")).getpixel((0, 0))
+        extract.append_image_files(self.new_paths, self.tmp)
+        after = Image.open(
+            os.path.join(self.pages_dir, "0001.jpg")).getpixel((0, 0))
+        self.assertEqual(before, after)
+
+    def test_appended_pages_use_natural_sort(self):
+        extract.append_image_files(self.new_paths, self.tmp)
+        self.assertEqual(len(self._page_files()), 5)
+
+    def test_scripts_for_existing_pages_survive_a_grow(self):
+        book = library.Book(self.tmp)
+        book.source_kind = "images"
+        book.detect_page_count()
+        book.scripts = {1: "page one", 2: "page two"}
+        book.save()
+        extract.append_image_files(self.new_paths, self.tmp)
+        book.detect_page_count()
+        self.assertEqual(book.page_count, 5)
+        self.assertEqual(book.scripts.get(1), "page one")
+        self.assertEqual(book.unprocessed_pages(), [3, 4, 5])
+
+    def test_append_into_empty_workspace_starts_at_one(self):
+        empty = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(empty, "pages"))
+            added = extract.append_image_files(self.new_paths, empty)
+            self.assertEqual(added, 3)
+            files = sorted(n for n in os.listdir(
+                os.path.join(empty, "pages")) if n.endswith(".jpg"))
+            self.assertEqual(files[0], "0001.jpg")
+        finally:
+            shutil.rmtree(empty, ignore_errors=True)
+
+
 class TestReprocessPageRange(unittest.TestCase):
     """Reprocessing a chosen range: clearing those pages' scripts and
     processing only them, leaving the rest of the book alone."""

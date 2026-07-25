@@ -194,6 +194,15 @@ notes again from the first page.</p>
 line, Ask about this page with Ctrl plus Q is quicker and costs less
 than reprocessing.</p>
 
+<h3>Import more pages</h3>
+<p>If you built a book from image files, you can add more pages to it
+while reading, without going back to your library. In the reader press
+Ctrl plus I, or choose Import more pages from the Book menu, and pick
+the image files to add. They are placed after the current last page,
+and the app offers to process them straight away. The pages you have
+already read keep their scripts. This is only available for books made
+from images; a book imported from an archive or PDF is fixed.</p>
+
 <h3>HTML view</h3>
 <p>For a different way to navigate, press Ctrl plus H to open the HTML
 view. This shows the whole book in a window where each page and each
@@ -289,6 +298,7 @@ any mode</li>
 <li>Ctrl plus L: show or hide panel labels</li>
 <li>Ctrl plus Q: ask about the current page</li>
 <li>Ctrl plus R: reprocess this page, a range, or the whole book</li>
+<li>Ctrl plus I: import more image pages (for books built from images)</li>
 <li>Ctrl plus E: save as a text file</li>
 <li>Ctrl plus H: open the HTML view</li>
 <li>Alt plus C, or Escape: close the reader</li>

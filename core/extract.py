@@ -143,6 +143,31 @@ def extract_image_files(file_paths, workspace, max_dim=1568, quality=85,
     return total
 
 
+def append_image_files(file_paths, workspace, max_dim=1568, quality=85,
+                       progress=None):
+    """Add image files to a workspace that already holds pages, numbering
+    them after the current highest page so existing pages and their
+    cached scripts are left untouched. Returns the number added.
+    """
+    pages = _pages_dir(workspace)
+    existing = [n for n in os.listdir(pages) if n.lower().endswith(".jpg")]
+    start = 0
+    for name in existing:
+        stem = os.path.splitext(name)[0]
+        if stem.isdigit():
+            start = max(start, int(stem))
+    ordered = sorted(
+        file_paths, key=lambda p: natural_sort_key(os.path.basename(p)))
+    total = len(ordered)
+    for offset, path in enumerate(ordered, start=1):
+        image = Image.open(path)
+        out_path = os.path.join(pages, "%04d.jpg" % (start + offset))
+        _normalize_and_save(image, out_path, max_dim, quality)
+        if progress:
+            progress(offset, total)
+    return total
+
+
 def extract_folder(folder_path, workspace, max_dim=1568, quality=85,
                    progress=None):
     """Import every image directly inside a folder (non-recursive)."""
