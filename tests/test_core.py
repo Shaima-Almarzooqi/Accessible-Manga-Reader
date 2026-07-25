@@ -883,6 +883,24 @@ class TestVerbosityAndObjectivity(unittest.TestCase):
         self.assertIn("speed lines", prompt)
         self.assertIn("objectivity rule applies in full", prompt)
 
+    def test_extensive_list_is_framed_as_a_checklist(self):
+        # The numbered points are what to cover, not sections to print.
+        # Presenting them as output structure is what made some models
+        # emit "Composition:" / "Characters:" headings.
+        prompt = prompts.build_system_prompt("rtl", "extensive", "English")
+        self.assertIn("checklist of what to COVER", prompt)
+        self.assertIn("not a structure to reproduce", prompt)
+        self.assertIn("never print their names as headings", prompt)
+        self.assertIn("weave them into", prompt)
+
+    def test_extensive_does_not_ask_to_name_absent_categories(self):
+        # The old wording told the model to say a category was empty,
+        # which produced category labels in the output.
+        prompt = prompts.build_system_prompt("rtl", "extensive", "English")
+        self.assertNotIn("say so in a few words", prompt)
+        self.assertNotIn("plain white background", prompt)
+        self.assertIn("do not name the category to say so", prompt)
+
     def test_objectivity_rule_at_every_level(self):
         for verbosity in ("concise", "detailed", "extensive"):
             prompt = prompts.build_system_prompt("rtl", verbosity, "English")
@@ -1304,11 +1322,57 @@ class TestLanguageSetting(unittest.TestCase):
         # The box stays editable, so a language not on the list must
         # still be honoured.
         prompt = prompts.build_system_prompt("rtl", "detailed", "Swahili")
-        self.assertIn("translate it into Swahili", prompt)
+        self.assertIn("WRITE THE ENTIRE SCRIPT IN Swahili", prompt)
 
     def test_listed_language_reaches_the_prompt(self):
         prompt = prompts.build_system_prompt("rtl", "detailed", "Arabic")
-        self.assertIn("translate it into Arabic", prompt)
+        self.assertIn("WRITE THE ENTIRE SCRIPT IN Arabic", prompt)
+
+    def test_language_covers_descriptions_not_only_text(self):
+        # The setting governs the whole script -- panel descriptions as
+        # well as translated dialogue -- so a non-English target does
+        # not produce a mixed-language script.
+        prompt = prompts.build_system_prompt("manga", "detailed", "Spanish")
+        self.assertIn("every panel description", prompt)
+        self.assertIn("all dialogue", prompt)
+
+    def test_labels_and_speaker_names_are_in_target_language(self):
+        # Speaker names, the thinking/off-panel qualifiers and the
+        # SFX/Narration/Text labels all go in the output language.
+        prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
+        self.assertIn("every speaker label", prompt)
+        self.assertIn('"(thinking)" and "(off-panel)"', prompt)
+        self.assertIn('"Narration:", "SFX:", and "Text:" labels, are '
+                      "written in Arabic", prompt)
+
+    def test_only_structural_markers_stay_in_english(self):
+        prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
+        self.assertIn("three structural markers", prompt)
+        self.assertIn('the "=== PAGE n ===" line', prompt)
+        self.assertIn('"Panel n (position):" prefix', prompt)
+        self.assertIn('"=== CHARACTER NOTES ===" line', prompt)
+
+    def test_character_notes_are_written_in_target_language(self):
+        # The notes carry between batches, so they must use the same
+        # transliterated names as the script or names would drift.
+        prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
+        self.assertIn("Write this list in Arabic too", prompt)
+        self.assertIn("same Arabic spelling you use in the script",
+                      prompt)
+
+    def test_fallback_labels_follow_the_language(self):
+        prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
+        self.assertIn('the Arabic equivalent of "Off-panel voice:" or '
+                      '"Unknown:"', prompt)
+
+    def test_names_are_transliterated_into_the_target_alphabet(self):
+        # Character names now follow the target language's alphabet, and
+        # the speaker label matches the spelling used in the description
+        # so the two never diverge.
+        prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
+        self.assertIn("transliterated into the Arabic alphabet", prompt)
+        self.assertIn("the speaker label for that same character uses "
+                      "that identical spelling", prompt)
 
 
 
@@ -1400,7 +1464,9 @@ class TestStricterPromptRules(unittest.TestCase):
         prompt = prompts.build_system_prompt("rtl", "detailed", "English")
         self.assertIn("top right, 2) top center, 3) top left", prompt)
         self.assertIn("RETURN TO ITS RIGHT EDGE", prompt)
-        self.assertIn("silently map the page's panel grid", prompt)
+        # The instruction to map the page before writing now lives in
+        # its own MAPPING THE PAGE section rather than inline here.
+        self.assertIn("work out its actual layout", prompt)
 
     def test_completeness_rule_present_at_every_verbosity(self):
         for verbosity in ("concise", "detailed", "extensive"):
@@ -1558,7 +1624,7 @@ class TestPromptEnhancements(unittest.TestCase):
             p = prompts.build_system_prompt(ctype, "detailed", "English")
             self.assertNotIn("-san", p)
             self.assertNotIn("-kun", p)
-            self.assertIn("do not add or remove honorifics", p)
+            self.assertIn("add or remove honorifics", p)
 
     def test_custom_prompt_included_when_present(self):
         p = prompts.build_system_prompt(
@@ -2000,6 +2066,245 @@ class TestReadableAfterProcessing(unittest.TestCase):
         self.assertEqual(reloaded.processed_count(), 1)
 
 
+class TestPageLayoutMap(unittest.TestCase):
+    """The model works out the page's panel layout before describing
+    it, and sweeps each panel in the tradition's own direction. Grid
+    positions suit page-based comics; a vertical webtoon has no columns,
+    so it gets a sequence instead."""
+
+    GRID_TYPES = ("manga", "manhwa", "western")
+    ALL_TYPES = GRID_TYPES + ("webtoon",)
+
+    def _prompt(self, comic_type="manga", verbosity="detailed"):
+        return prompts.build_system_prompt(
+            comic_type, verbosity, "English")
+
+    def test_every_type_maps_the_page_first(self):
+        for comic_type in self.ALL_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("MAPPING THE PAGE", prompt)
+            self.assertIn(prompts.LAYOUT_TEXT[comic_type], prompt)
+
+    def test_manga_orders_rows_right_to_left(self):
+        block = prompts.LAYOUT_TEXT["manga"]
+        self.assertIn("from RIGHT to LEFT", block)
+        self.assertIn("rows from top to bottom", block)
+
+    def test_western_and_manhwa_order_rows_left_to_right(self):
+        for comic_type in ("western", "manhwa"):
+            block = prompts.LAYOUT_TEXT[comic_type]
+            self.assertIn("from LEFT to RIGHT", block)
+
+    def test_the_real_layout_is_read_not_assumed(self):
+        # The nine position names are vocabulary, not a template: a
+        # page has whatever panels it has.
+        for comic_type in self.ALL_TYPES:
+            block = prompts.LAYOUT_TEXT[comic_type]
+            self.assertIn("actually drawn", block)
+            self.assertIn("never assume", block)
+            self.assertIn("fixed number of panels", block)
+
+    def test_grid_types_say_the_cells_are_not_a_template(self):
+        for comic_type in self.GRID_TYPES:
+            block = prompts.LAYOUT_TEXT[comic_type]
+            self.assertIn("not a grid the page must fit", block)
+            self.assertIn("Only use the nine cell names", block)
+
+    def test_irregular_layouts_are_given_as_examples(self):
+        # Rows of two and four, banners and full-page images all need
+        # naming or a model will reach for the nine-cell default.
+        for comic_type in ("manga", "western"):
+            block = prompts.LAYOUT_TEXT[comic_type]
+            self.assertIn("two panels is", block)
+            self.assertIn("full width top", block)
+            self.assertIn("full page", block)
+
+    def test_within_panel_direction_matches_the_tradition(self):
+        self.assertIn("sweep the same way: right to left",
+                      prompts.LAYOUT_TEXT["manga"])
+        for comic_type in ("manhwa", "webtoon", "western"):
+            self.assertIn("sweep left to right",
+                          prompts.LAYOUT_TEXT[comic_type])
+
+    def test_within_panel_rule_covers_art_and_dialogue(self):
+        for comic_type in self.ALL_TYPES:
+            block = prompts.LAYOUT_TEXT[comic_type]
+            self.assertIn("visual description and to the order of the "
+                          "dialogue lines", block)
+
+    def test_webtoon_gets_no_grid_positions(self):
+        # A scrolling strip has no left, centre or right, so grid words
+        # would describe a layout the page does not have.
+        block = prompts.LAYOUT_TEXT["webtoon"]
+        for grid_word in ("top right", "top left", "middle right",
+                          "middle left", "bottom right", "bottom left",
+                          "bottom center", "right half", "left half"):
+            self.assertNotIn(grid_word, block)
+        self.assertIn("top, middle, bottom, and full width", block)
+        self.assertIn("strictly top to bottom", block)
+
+    def test_manhwa_handles_both_page_shapes(self):
+        # The same manhwa can mix grid pages and vertical strips.
+        block = prompts.LAYOUT_TEXT["manhwa"]
+        self.assertIn("If the page is a grid of panels", block)
+        self.assertIn("single vertical strip", block)
+        self.assertIn("The same book may contain both", block)
+
+    def test_wide_panels_have_a_form_in_grid_types(self):
+        for comic_type in self.GRID_TYPES:
+            block = prompts.LAYOUT_TEXT[comic_type]
+            self.assertIn("full width top", block)
+            self.assertIn("full page", block)
+
+    def test_rows_are_not_assumed_to_hold_three_panels(self):
+        for comic_type in ("manga", "western"):
+            block = prompts.LAYOUT_TEXT[comic_type]
+            self.assertIn("two or four", block)
+            self.assertIn("Whatever the layout, that is the sequence",
+                          block)
+
+    def test_the_map_is_never_written_out(self):
+        # Building a map must not become a preamble in the output.
+        prompt = self._prompt()
+        self.assertIn("working-out for your own use", prompt)
+        self.assertIn("never written out as a list", prompt)
+
+    def test_blocks_are_specific_to_each_tradition(self):
+        self.assertEqual(len(set(prompts.LAYOUT_TEXT.values())), 4)
+
+    def test_legacy_direction_values_get_layout_rules(self):
+        for legacy, expected in (("rtl", "manga"), ("ltr", "western"),
+                                 ("vertical", "webtoon")):
+            prompt = prompts.build_system_prompt(
+                legacy, "detailed", "English")
+            self.assertIn(prompts.LAYOUT_TEXT[expected], prompt)
+
+    def test_unknown_comic_type_falls_back_to_manga_layout(self):
+        prompt = prompts.build_system_prompt(
+            "nonsense", "detailed", "English")
+        self.assertIn(prompts.LAYOUT_TEXT["manga"], prompt)
+
+    def test_layout_applies_at_every_verbosity(self):
+        for verbosity in ("concise", "detailed", "extensive"):
+            prompt = self._prompt("manga", verbosity)
+            self.assertIn("MAPPING THE PAGE", prompt)
+
+    def test_position_vocabulary_points_at_the_map(self):
+        prompt = self._prompt()
+        self.assertIn("Pick the position from the page map", prompt)
+
+
+class TestOutputDiscipline(unittest.TestCase):
+    """The script must contain the comic and nothing else: no remarks
+    from the model about its own work, and no reorganising the page
+    into general image-description categories. Both were seen from
+    Gemini models in real use."""
+
+    COMIC_TYPES = ("manga", "manhwa", "webtoon", "western")
+
+    def _prompt(self, comic_type="manga", verbosity="detailed"):
+        return prompts.build_system_prompt(
+            comic_type, verbosity, "English")
+
+    def test_self_commentary_is_banned_in_every_type(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("NEVER WRITE ABOUT YOURSELF", prompt)
+
+    def test_the_specific_leaked_phrases_are_named(self):
+        # Naming the actual phrases works better than a general rule.
+        prompt = self._prompt()
+        for phrase in ('"I forgot"', '"oops"', '"correction"',
+                       '"apologies"', '"as an AI"'):
+            self.assertIn(phrase, prompt)
+
+    def test_self_correction_is_silent(self):
+        prompt = self._prompt()
+        self.assertIn("do not narrate the fix", prompt)
+
+    def test_unclear_art_is_settled_without_narration(self):
+        # The model carries on writing rather than explaining its
+        # difficulty, but the wording stays light -- it must not read
+        # as another push toward answering Unknown.
+        prompt = self._prompt()
+        self.assertIn("carry on writing the script", prompt)
+
+    def test_category_headings_are_banned_in_every_type(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("THE PANEL FORMAT IS THE ONLY STRUCTURE", prompt)
+
+    def test_the_specific_categories_are_named(self):
+        prompt = self._prompt()
+        for heading in ('"Composition"', '"Setting"', '"Characters"',
+                        '"Context"', '"Summary"', '"Mood"',
+                        '"Art style"'):
+            self.assertIn(heading, prompt)
+
+    def test_grouping_across_panels_is_banned(self):
+        prompt = self._prompt()
+        self.assertIn("never group all the characters", prompt)
+        self.assertIn("never gather all the characters", prompt)
+
+    def test_panels_are_completed_one_at_a_time(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("one panel at a time", prompt)
+            self.assertIn(
+                "finishing each panel completely", prompt)
+
+    def test_markdown_and_invented_headings_are_banned(self):
+        for comic_type in self.COMIC_TYPES:
+            prompt = self._prompt(comic_type)
+            self.assertIn("NO HEADINGS, LABELS, OR MARKDOWN", prompt)
+
+    def test_no_opening_or_closing_sentence(self):
+        prompt = self._prompt()
+        self.assertIn("first line of a page is its page header", prompt)
+
+    def test_rules_apply_at_every_verbosity(self):
+        for verbosity in ("concise", "detailed", "extensive"):
+            prompt = self._prompt("manga", verbosity)
+            self.assertIn("NEVER WRITE ABOUT YOURSELF", prompt)
+            self.assertIn("THE PANEL FORMAT IS THE ONLY STRUCTURE", prompt)
+
+    def test_existing_objectivity_rule_is_kept(self):
+        # The new rules sit alongside the interpretive-commentary ban,
+        # they do not replace it.
+        prompt = self._prompt()
+        self.assertIn("OBJECTIVITY IS STRICT", prompt)
+        self.assertIn(
+            "Do not add commentary, summaries, chapter recaps", prompt)
+
+
+class TestPreambleStillReachesTheReader(unittest.TestCase):
+    """If a model does emit stray text despite the rules, the reader
+    shows it rather than silently dropping it -- losing real content
+    would be worse than showing a stray line."""
+
+    def test_preamble_is_attached_to_the_first_panel(self):
+        script = ("Composition: a wide establishing shot.\n"
+                  "Panel 1 (top right): A street at dusk.\n"
+                  "Aiko: \"We're late.\"")
+        units = prompts.split_panels(script)
+        self.assertEqual(len(units), 1)
+        self.assertIn("Composition:", units[0])
+        self.assertIn("Panel 1", units[0])
+
+    def test_a_script_with_no_panel_markers_is_one_unit(self):
+        units = prompts.split_panels("Summary: nothing was parsed.")
+        self.assertEqual(len(units), 1)
+
+    def test_normal_scripts_are_unaffected(self):
+        script = ("Panel 1 (top right): A street.\n"
+                  "Aiko: \"Late again.\"\n"
+                  "Panel 2 (top left): A clock.")
+        units = prompts.split_panels(script)
+        self.assertEqual(len(units), 2)
+        self.assertTrue(units[0].startswith("Panel 1"))
+        self.assertTrue(units[1].startswith("Panel 2"))
+
+
 class TestTailRules(unittest.TestCase):
     """Speech-bubble tails: the artist's own mark of who is speaking.
     The tail outranks proximity, which is what previously caused wrong
@@ -2087,7 +2392,9 @@ class TestUnknownIsNotEncouraged(unittest.TestCase):
     COMIC_TYPES = ("manga", "manhwa", "webtoon", "western")
 
     def test_unknown_is_mentioned_exactly_once(self):
-        # Once, in the OUTPUT FORMAT rules -- the 0.15.0 wording.
+        # Once, in the OUTPUT FORMAT rules -- the 0.15.0 wording. More
+        # than that starts nudging models toward using it, which is
+        # what made the reverted 0.16.0 draft over-trigger.
         for comic_type in self.COMIC_TYPES:
             prompt = prompts.build_system_prompt(
                 comic_type, "detailed", "English")
@@ -2099,12 +2406,14 @@ class TestUnknownIsNotEncouraged(unittest.TestCase):
     def test_original_attribution_rule_is_untouched(self):
         prompt = prompts.build_system_prompt(
             "manga", "detailed", "English")
+        # The 0.15.0 rule, now with the fallback labels allowed in the
+        # output language rather than pinned to English.
         self.assertIn(
             "Attribute every line of dialogue to a character. Use bubble "
             "tail position, who is shown speaking, and the CHARACTER "
             "NOTES to identify speakers. If genuinely uncertain, use "
-            "\"Off-panel voice:\" or \"Unknown:\" rather than guessing a "
-            "name.", prompt)
+            "the English equivalent of \"Off-panel voice:\" or "
+            "\"Unknown:\" rather than guessing a name.", prompt)
 
     def test_tail_rules_never_frame_uncertainty_as_desirable(self):
         banned = ("not a failure", "expected outcome",
