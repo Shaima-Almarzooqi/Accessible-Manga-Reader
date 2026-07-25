@@ -11,8 +11,10 @@ newest version is at the top.
   image files, the Book menu now has Import more pages (Ctrl+I): pick
   more images and they are added after the last page, then offered for
   processing straight away. The added pages are saved to the book and
-  are there when you reopen it, and the library's page count and
-  processed status update right away. Useful for growing a book you
+  are there when you reopen it, the library's page count and processed
+  status update right away, and reopening returns you to where you
+  actually stopped reading, including on a page you had just imported.
+  Useful for growing a book you
   are already reading without going back to the library. It is not
   shown for books imported from an archive or PDF, which are fixed.
 

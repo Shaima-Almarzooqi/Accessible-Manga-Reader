@@ -2024,6 +2024,53 @@ class TestAppendImagePages(unittest.TestCase):
                 os.environ["APPDATA"] = old
             shutil.rmtree(appdata, ignore_errors=True)
 
+    def test_reading_position_reflects_final_save_not_import_time(self):
+        # After importing pages mid-session the library reloads the book,
+        # capturing the reading position as it was at import time. When
+        # the reader later closes further along, reopening must restore
+        # the final position, not the stale import-time one. The library
+        # reloads from disk, so the invariant is that the last save on
+        # close wins; this checks it at the data layer.
+        appdata = tempfile.mkdtemp()
+        old = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = appdata
+        try:
+            from core import config
+            workspace = os.path.join(config.books_dir(), "posbook")
+            os.makedirs(os.path.join(workspace, "pages"))
+            book = library.create_book(
+                "posbook", "T", "seed", source_kind="images")
+            book.workspace = workspace
+            for n in (1, 2, 3):
+                Image.new("RGB", (10, 10), "white").save(
+                    os.path.join(workspace, "pages", "%04d.jpg" % n))
+            book.detect_page_count()
+            book.scripts = {1: "a", 2: "b", 3: "c"}
+            book.last_page = 2
+            book.save()
+
+            extract.append_image_files(self.new_paths, workspace)
+            book.detect_page_count()
+            book.save()
+            for n in (4, 5):
+                book.scripts[n] = "page %d" % n
+            book.save()
+            mid = library.Book.load(workspace)
+            self.assertEqual(mid.last_page, 2)
+
+            # Reader reads on to page 5 and closes, saving the position.
+            book.last_page = 5
+            book.save()
+
+            final = library.Book.load(workspace)
+            self.assertEqual(final.last_page, 5)
+        finally:
+            if old is None:
+                os.environ.pop("APPDATA", None)
+            else:
+                os.environ["APPDATA"] = old
+            shutil.rmtree(appdata, ignore_errors=True)
+
     def test_imported_pages_persist_to_the_library(self):
         # The reader-side import bug: pages added and processed inside
         # the reader must survive when the library reloads books from

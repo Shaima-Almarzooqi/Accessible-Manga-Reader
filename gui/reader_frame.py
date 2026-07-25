@@ -590,4 +590,10 @@ class ReaderFrame(wx.Frame):
             self.book.last_page = self.current_page
             self.book.last_panel = self.current_panel
         self.book.save()
+        # The library may be holding a copy of this book that was
+        # reloaded mid-session (for example when pages were imported),
+        # which would carry an out-of-date reading position. Refresh it
+        # from the state just saved so reopening restores where reading
+        # actually stopped, not where it was at import time.
+        self._refresh_library()
         event.Skip()
