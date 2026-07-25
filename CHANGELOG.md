@@ -3,39 +3,6 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
-## 0.18.0
-
-### Changed
-
-- The output language setting now covers the whole script. Before, it
-  reliably translated the comic's text but did not govern the panel
-  descriptions, so a non-English setting could produce a mixed-language
-  script. Now the descriptions and the dialogue are both written in the
-  language you choose, English by default. Reading a comic that is
-  itself in another language — a Spanish manga, say — now gives you a
-  script entirely in English.
-- The AI now works out a page's panel layout before it describes
-  anything, then follows that map. Positions run in the page's own
-  direction: right to left along each row for manga, left to right for
-  manhwa and Western comics, and top to bottom in a single column for
-  vertical webtoons, which have no left or right. Within a single
-  panel it now sweeps the same way, so the rightmost bubble, character
-  or object comes first in manga and the leftmost first in the others.
-- Stricter output rules, mainly to stop Gemini models drifting. The AI
-  is now told never to write about its own work, so remarks like "I
-  forgot who said that" or "oops, wrong panel" no longer appear in a
-  script; a page it gets wrong partway is simply written correctly
-  rather than corrected out loud. It is also held to the panel format:
-  some models were reorganising a page into general headings like
-  Composition, Setting and Characters, or describing everything of one
-  kind across the whole page at once, instead of going panel by panel
-  in reading order. On the Extensive verbosity level the list of things
-  to describe is now clearly a checklist to cover in flowing prose,
-  rather than a set of headings to print.
-
-Applies to pages processed from now on. Use Reprocess pages in the
-Book menu to apply them to a book already processed.
-
 ## 0.17.0
 
 ### Added

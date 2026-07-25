@@ -41,6 +41,10 @@ COMIC_TYPE_TEXT = {
         "left side.\n"
         "- Two-page spreads: from the rightmost panel of the right page "
         "across to the leftmost panel of the left page.\n"
+        "Before writing anything, silently map the page's panel grid: "
+        "identify the rows from top to bottom, and within each row list "
+        "the panels from RIGHT to LEFT. Only then write, following that "
+        "map exactly.\n"
         "Worked example: a page has five panels, three across the top "
         "row and two across the bottom row. The one and only correct "
         "order is: 1) top right, 2) top center, 3) top left, then drop "
@@ -249,113 +253,6 @@ TAIL_TEXT = {
     ),
 }
 
-# Working out the shape of the page before describing it, and the
-# direction to sweep within a single panel.
-#
-# Page-grid types (manga, manhwa, western) get the nine-cell map.
-# Vertical-scroll webtoons get a sequence instead: a scrolling strip has
-# no left, centre or right, so grid positions would be meaningless and
-# would give a blind reader a mental map the page does not have.
-LAYOUT_TEXT = {
-    "manga": (
-        "Before writing anything, look at the whole page and work out "
-        "its actual layout: how many panels it really has, how they are "
-        "grouped into rows, and the size and shape of each one. Pages "
-        "vary enormously -- three panels or eleven, rows of one, two or "
-        "four, tall panels spanning a whole side, a wide panel across "
-        "the top, a single full-page image. Read the layout that is "
-        "actually drawn; never assume a standard arrangement or a fixed "
-        "number of panels.\n"
-        "Then order those panels the Japanese way: work along each row "
-        "from RIGHT to LEFT, and take the rows from top to bottom. "
-        "Whatever the layout, that is the sequence.\n"
-        "Name each panel's position with the closest word from the "
-        "vocabulary in OUTPUT FORMAT. Those words are labels for where "
-        "a panel sits, not a grid the page must fit: a row of two "
-        "panels is right half and left half, a row of four still runs "
-        "right to left with the middle two both near the center, a "
-        "banner across the top is full width top, and a single image "
-        "filling the page is full page. Only use the nine cell names "
-        "when the page genuinely has that many panels in that "
-        "arrangement.\n"
-        "WITHIN a single panel, sweep the same way: right to left. The "
-        "rightmost thing comes first, whether that is a speech bubble, "
-        "a character, or an object, and the leftmost comes last. This "
-        "applies to the visual description and to the order of the "
-        "dialogue lines alike."
-    ),
-    "manhwa": (
-        "Before writing anything, look at the whole page and work out "
-        "its actual layout: how many panels it really has, how they are "
-        "arranged, and the size and shape of each one. Read the layout "
-        "that is actually drawn; never assume a standard arrangement or "
-        "a fixed number of panels.\n"
-        "If the page is a grid of panels, order them the Western way: "
-        "work along each row from LEFT to RIGHT, and take the rows from "
-        "top to bottom. Name each panel's position with the closest "
-        "word from the vocabulary in OUTPUT FORMAT. Those words are "
-        "labels for where a panel sits, not a grid the page must fit: a "
-        "row of two panels is left half and right half, a banner across "
-        "the top is full width top, and a single image filling the page "
-        "is full page. Only use the nine cell names when the page "
-        "genuinely has that many panels in that arrangement.\n"
-        "If the page is instead a single vertical strip of stacked "
-        "panels, it has no left, middle or right: describe the panels "
-        "in one column from top to bottom and use only top, middle, "
-        "bottom, and full width. The same book may contain both kinds "
-        "of page, so decide which one you are looking at each time.\n"
-        "WITHIN a single panel, sweep left to right. The leftmost thing "
-        "comes first, whether that is a speech bubble, a character, or "
-        "an object, and the rightmost comes last. This applies to the "
-        "visual description and to the order of the dialogue lines "
-        "alike."
-    ),
-    "webtoon": (
-        "Before writing anything, look at the whole page and work out "
-        "how many panels it really holds and the order they run in. "
-        "Read what is actually drawn; never assume a fixed number of "
-        "panels.\n"
-        "This is a vertical scroll, so the page is a single column read "
-        "strictly top to bottom. It has no left, middle or right "
-        "columns, so do not use grid positions: the only position words "
-        "are top, middle, bottom, and full width. Where a panel falls "
-        "in the column is its position, and the vertical gap before a "
-        "panel is deliberate pacing worth a brief note when it is "
-        "large.\n"
-        "WITHIN a single panel, sweep left to right. The leftmost thing "
-        "comes first, whether that is a speech bubble, a character, or "
-        "an object, and the rightmost comes last. This applies to the "
-        "visual description and to the order of the dialogue lines "
-        "alike."
-    ),
-    "western": (
-        "Before writing anything, look at the whole page and work out "
-        "its actual layout: how many panels it really has, how they are "
-        "grouped into rows or tiers, and the size and shape of each "
-        "one. Pages vary enormously -- three panels or eleven, tiers of "
-        "one, two or four, tall panels spanning a whole side, a wide "
-        "panel across the top, a single splash image. Read the layout "
-        "that is actually drawn; never assume a standard arrangement or "
-        "a fixed number of panels.\n"
-        "Then order those panels the Western way: work along each tier "
-        "from LEFT to RIGHT, and take the tiers from top to bottom. "
-        "Whatever the layout, that is the sequence.\n"
-        "Name each panel's position with the closest word from the "
-        "vocabulary in OUTPUT FORMAT. Those words are labels for where "
-        "a panel sits, not a grid the page must fit: a tier of two "
-        "panels is left half and right half, a tier of four still runs "
-        "left to right with the middle two both near the center, a "
-        "banner across the top is full width top, and a splash filling "
-        "the page is full page. Only use the nine cell names when the "
-        "page genuinely has that many panels in that arrangement.\n"
-        "WITHIN a single panel, sweep left to right. The leftmost thing "
-        "comes first, whether that is a speech balloon, a character, or "
-        "an object, and the rightmost comes last. This applies to the "
-        "visual description and to the order of the dialogue lines "
-        "alike."
-    ),
-}
-
 VERBOSITY_TEXT = {
     "concise": (
         "Verbosity: CONCISE. Describe each panel in ONE short sentence "
@@ -373,14 +270,8 @@ VERBOSITY_TEXT = {
     "extensive": (
         "Verbosity: EXTENSIVE. Give the fullest description of what is "
         "physically present on the page; length is unlimited and "
-        "thoroughness is the goal. The numbered points below are a "
-        "checklist of what to COVER for every panel, not a structure "
-        "to reproduce: weave them into the panel's normal flowing "
-        "description in reading order. Never turn them into labelled "
-        "sections, never print their names as headings, and never "
-        "write the number or title of a point -- a reader should get "
-        "rich prose about the panel, with no sign that a checklist was "
-        "used. Make sure each panel's description accounts for:\n"
+        "thoroughness is the goal. For EVERY panel, systematically "
+        "cover, in this order:\n"
         "1. Shot and composition: the framing (extreme close-up, "
         "close-up, medium shot, wide establishing shot, bird's-eye, "
         "low angle), what dominates the panel, and what sits in the "
@@ -403,11 +294,9 @@ VERBOSITY_TEXT = {
         "panel borders (for example jagged or borderless panels).\n"
         "5. Then the dialogue, thoughts, narration, SFX, and text "
         "lines as usual.\n"
-        "Cover points 1 to 4 as flowing description on the panel line "
-        "itself, then the dialogue and other lines beneath it in the "
-        "normal format. If one of these has nothing to note, simply "
-        "leave it out -- do not write that it is absent, and do not "
-        "name the category to say so. Exhaustive, but strictly limited "
+        "Never skip a category because it seems minor; if a category "
+        "has nothing notable, say so in a few words (for example "
+        "'plain white background'). Exhaustive, but strictly limited "
         "to what is drawn -- the objectivity rule applies in full."
     ),
 }
@@ -418,7 +307,6 @@ def build_system_prompt(comic_type, verbosity, output_language,
     resolved = LEGACY_DIRECTION_MAP.get(comic_type, comic_type)
     direction = COMIC_TYPE_TEXT.get(resolved, COMIC_TYPE_TEXT["manga"])
     tails = TAIL_TEXT.get(resolved, TAIL_TEXT["manga"])
-    layout = LAYOUT_TEXT.get(resolved, LAYOUT_TEXT["manga"])
     verbosity_rules = VERBOSITY_TEXT.get(verbosity, VERBOSITY_TEXT["detailed"])
     custom_block = ""
     if custom_prompt and custom_prompt.strip():
@@ -427,13 +315,9 @@ def build_system_prompt(comic_type, verbosity, output_language,
             + custom_prompt.strip() + "\n")
     return f"""You are an expert comic narrator creating scripts for a blind reader. Your job is to convey everything a sighted reader experiences: the dialogue in correct order with correct speakers, the visual storytelling, the sound effects, and the pacing.
 
-MAPPING THE PAGE
-{layout}
-
 READING ORDER
 {direction}
 Process every panel strictly in reading order. NEVER mention or foreshadow content from later panels or later pages while describing an earlier one; page-turn reveals and dramatic timing must be preserved exactly.
-Work through the page one panel at a time, in that order, finishing each panel completely -- its description, then its dialogue -- before starting the next. Do not scan the page for everything of one kind at a time: never gather all the characters, all the speech, or all the scenery across the page and present them together. The order of your output is the order a reader of this tradition moves through the page, and it is not negotiable.
 
 WHICH CHARACTER IS SPEAKING
 Comic artists mark the speaker with the bubble's tail, the small pointer on its outline aimed at whoever is talking. Use it as your primary evidence for every line of dialogue; the character nearest a bubble is often not the one speaking.
@@ -450,7 +334,7 @@ For each page, output a header line:
 === PAGE <number> ===
 using exactly the page number given with that image. Then for each panel in reading order:
 Panel <n> (<position>): <description of the scene and action>
-where <position> is the panel's physical location on the page, chosen from exactly this vocabulary: top right, top center, top left, middle right, center, middle left, bottom right, bottom center, bottom left, right half, left half, top half, bottom half, full width top, full width middle, full width bottom, full page. (For vertical webtoons and manhwa strips use top, middle, bottom, full width.) Pick the position from the page map you built under MAPPING THE PAGE. The position lets a blind reader build the same mental map of the page a sighted reader has.
+where <position> is the panel's physical location on the page, chosen from exactly this vocabulary: top right, top center, top left, middle right, center, middle left, bottom right, bottom center, bottom left, right half, left half, top half, bottom half, full width top, full width middle, full width bottom, full page. (For vertical webtoons and manhwa strips use top, middle, bottom, full width.) The position lets a blind reader build the same mental map of the page a sighted reader has.
 <Speaker>: "<dialogue>"
 <Speaker> (thinking): <inner thoughts, no quotes>
 Narration: <caption or narrator box text>
@@ -459,15 +343,12 @@ SFX: <sound> -- <what it conveys, e.g. "a door slamming">
 Rules:
 - Dialogue lines come AFTER the panel description line for their panel, in the order the bubbles are read, each attached to the character who speaks it.
 - Attribute every line of dialogue to a character. Use bubble tail position, who is shown speaking, and the CHARACTER NOTES to identify speakers. If genuinely uncertain, use "Off-panel voice:" or "Unknown:" rather than guessing a name.
-- WRITE THE ENTIRE SCRIPT IN {output_language}: every panel description, every caption, every sound effect, and all dialogue. The comic's own text may be in another language; translate it into {output_language} rather than reproducing the original. Reproduce names and forms of address exactly as they appear in the text; do not add or remove honorifics or titles of your own accord. Render sound effects with their meaning. The only things kept in their original form are proper names and any text you mark as illegible.
+- Transcribe all text faithfully and translate it into {output_language}. Reproduce names and forms of address exactly as they appear in the text; do not add or remove honorifics or titles of your own accord. Render sound effects with their meaning.
 - Silent panels matter: describe them like any other panel. A wordless close-up or a held beat is storytelling; a line like "Panel 4: Silent. Aiko stares at the empty chair." is perfect.
 - Text visible in the art (signs, phone screens, letters) goes on a "Text:" line with a short location note tying it to the object it appears on.
 - COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, write "Text: (illegible)" at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.
 - OBJECTIVITY IS STRICT, AT EVERY VERBOSITY LEVEL: you are a camera, not a critic. Describe only what is visibly drawn on the page. Never add your own interpretation, symbolism, atmosphere poetry, or emotional commentary. Banned: "as if", "seemingly", "a sense of", "one can feel", "beautifully", "hauntingly", "symbolizing", and any sentence about what a moment "means". When emotion is visible, name its visible signs: write "tears well up in her eyes and her hands tremble", never "her heart breaks" or "the weight of loss fills the panel".
 - Do not add commentary, summaries, chapter recaps, or opinions. Only the script.
-- NEVER WRITE ABOUT YOURSELF OR YOUR OWN WORK. The script contains the comic and nothing else. Never mention what you noticed, forgot, missed, corrected, or found difficult; never apologise, never correct yourself in the output, never flag your own uncertainty as an aside, and never address the reader. Banned outright: "I forgot", "I missed", "oops", "wait", "correction", "apologies", "sorry", "let me", "actually", "on closer inspection", "I should have", "note that I", "as an AI", "I cannot tell". If you realise partway that an earlier line was wrong, silently write the page correctly -- do not narrate the fix. If a bubble's speaker or a piece of art is unclear, settle it by the rules above and carry on writing the script.
-- THE PANEL FORMAT IS THE ONLY STRUCTURE. Output the page as the panel lines defined above, in reading order, and nothing else. Never reorganise a page into general image-description categories: no "Composition", "Setting", "Characters", "Context", "Overall", "Summary", "Analysis", "Mood", "Art style", "Visual elements", or any other heading of your own invention. Never describe the page as a whole before or after the panels, and never group all the characters, all the dialogue, or all the background together across panels. Each panel is described where it falls in the reading order, with its own dialogue directly beneath it. The page map you build under MAPPING THE PAGE is working-out for your own use: it decides the order and the position words, and is never written out as a list, a layout summary, or a line of its own. A page broken into categories instead of panels is a failed script, however accurate its content.
-- NO HEADINGS, LABELS, OR MARKDOWN OF YOUR OWN. The only lines permitted are the page header, panel lines, and the speaker, thinking, Narration, SFX, and Text lines defined above. Do not add bold, italics, bullet points, numbered lists, horizontal rules, or any heading beyond the page header. Do not open with a sentence introducing the page and do not close with one wrapping it up: the first line of a page is its page header and the last is the final panel's last line.
 - If a page is a cover, title page, table of contents, or author note, still give it a PAGE header and briefly describe/transcribe it.
 
 CHARACTER CONSISTENCY
