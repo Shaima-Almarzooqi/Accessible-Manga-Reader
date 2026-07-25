@@ -440,14 +440,12 @@ class ReaderFrame(wx.Frame):
             return
         if not added:
             return
-        # The images on disk are the source of truth for the count.
+        # The images on disk are the source of truth for the count. Do
+        # NOT touch book.source here: the book's on-disk identity is a
+        # hash of that string, so changing it desyncs the book from its
+        # own folder and later re-imports look in the wrong place. The
+        # appended page images persist on disk regardless.
         self.book.detect_page_count()
-        # Record the added files so a later re-import of this book still
-        # rebuilds every page, keeping the source description in sync.
-        combined = self.book.source
-        if combined:
-            combined += "|"
-        self.book.source = combined + "|".join(sorted(paths))
         self.book.save()
 
         new_pages = list(range(first_new, self.book.page_count + 1))
@@ -461,6 +459,19 @@ class ReaderFrame(wx.Frame):
             dlg.ShowModal()
             dlg.Destroy()
         self._reload_after_reprocess()
+        # The book on disk now has more pages, and new scripts if they
+        # were processed. Tell the library window so its page count and
+        # "processed" status refresh instead of showing the old totals.
+        self._refresh_library()
+
+    def _refresh_library(self):
+        """Ask the library window, if this reader was opened from one, to
+        reload its list so a page count or processed status changed here
+        is reflected there. Safe to call when there is no such parent.
+        """
+        parent = self.GetParent()
+        if parent is not None and hasattr(parent, "refresh_books"):
+            parent.refresh_books(select_book=self.book)
 
     def on_reprocess_pages(self, event):
         """Send pages to the AI again from inside the reader.
@@ -505,6 +516,7 @@ class ReaderFrame(wx.Frame):
         # The script the reader is showing is now out of date, so
         # rebuild it and put the reader back where it was.
         self._reload_after_reprocess()
+        self._refresh_library()
 
     def _reload_after_reprocess(self):
         """Redraw the reader from the book's new scripts, keeping the

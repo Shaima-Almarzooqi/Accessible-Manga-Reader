@@ -10,9 +10,11 @@ newest version is at the top.
 - Import more pages from inside the reader. For a book built from
   image files, the Book menu now has Import more pages (Ctrl+I): pick
   more images and they are added after the last page, then offered for
-  processing straight away. Useful for growing a book you are already
-  reading without going back to the library. It is not shown for books
-  imported from an archive or PDF, which are fixed.
+  processing straight away. The added pages are saved to the book and
+  are there when you reopen it, and the library's page count and
+  processed status update right away. Useful for growing a book you
+  are already reading without going back to the library. It is not
+  shown for books imported from an archive or PDF, which are fixed.
 
 ### Changed
 

@@ -1981,6 +1981,96 @@ class TestAppendImagePages(unittest.TestCase):
         finally:
             shutil.rmtree(empty, ignore_errors=True)
 
+    def test_import_does_not_change_the_books_identity(self):
+        # The book's on-disk folder is a hash of its source string.
+        # Appending pages must NOT rewrite source, or the book desyncs
+        # from its own folder and a later re-import of the originals
+        # lands in the wrong place -- which showed up as imported pages
+        # vanishing when the book was reopened.
+        appdata = tempfile.mkdtemp()
+        old = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = appdata
+        try:
+            from core import config, extract as ex
+            source = "orig1.png|orig2.png"
+            book_id = ex.book_id_for_source(source)
+            workspace = os.path.join(config.books_dir(), book_id)
+            os.makedirs(os.path.join(workspace, "pages"))
+            book = library.create_book(
+                book_id, "T", source, source_kind="images")
+            book.workspace = workspace
+            for n in (1, 2):
+                Image.new("RGB", (10, 10), "white").save(
+                    os.path.join(workspace, "pages", "%04d.jpg" % n))
+            book.detect_page_count()
+            book.save()
+
+            # Reader import: append images and recount, WITHOUT touching
+            # source (this is the fixed behaviour).
+            ex.append_image_files(self.new_paths, workspace)
+            book.detect_page_count()
+            book.save()
+
+            reloaded = library.Book.load(workspace)
+            # Source is unchanged, so it still hashes to this folder.
+            self.assertEqual(reloaded.source, source)
+            self.assertEqual(ex.book_id_for_source(reloaded.source),
+                             os.path.basename(workspace))
+            self.assertEqual(reloaded.page_count, 5)
+        finally:
+            if old is None:
+                os.environ.pop("APPDATA", None)
+            else:
+                os.environ["APPDATA"] = old
+            shutil.rmtree(appdata, ignore_errors=True)
+
+    def test_imported_pages_persist_to_the_library(self):
+        # The reader-side import bug: pages added and processed inside
+        # the reader must survive when the library reloads books from
+        # disk, not just live in the reader's in-memory copy.
+        appdata = tempfile.mkdtemp()
+        old_appdata = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = appdata
+        try:
+            from core import config
+            workspace = os.path.join(config.books_dir(), "b1")
+            os.makedirs(os.path.join(workspace, "pages"))
+            book = library.create_book(
+                "b1", "Test", "seed", source_kind="images")
+            book.workspace = workspace
+            # Two seed pages, both processed.
+            for n in (1, 2):
+                Image.new("RGB", (10, 10), "white").save(
+                    os.path.join(workspace, "pages", "%04d.jpg" % n))
+            book.detect_page_count()
+            book.scripts = {1: "one", 2: "two"}
+            book.save()
+
+            # Simulate the reader import: append images, recount, save.
+            extract.append_image_files(self.new_paths, workspace)
+            book.detect_page_count()
+            book.save()
+            # Simulate processing the new pages (what ProcessingDialog
+            # drives via processor, which saves after each batch).
+            for n in (3, 4, 5):
+                book.scripts[n] = "page %d" % n
+            book.save()
+
+            # The library reloads from disk -- this is what refresh_books
+            # does. The reloaded book must show all five pages processed.
+            reloaded = [b for b in library.list_books()
+                        if b.workspace == workspace][0]
+            self.assertEqual(reloaded.page_count, 5)
+            self.assertEqual(reloaded.processed_count(), 5)
+            self.assertTrue(reloaded.is_complete())
+            self.assertEqual(reloaded.scripts.get(5), "page 5")
+        finally:
+            if old_appdata is None:
+                os.environ.pop("APPDATA", None)
+            else:
+                os.environ["APPDATA"] = old_appdata
+            shutil.rmtree(appdata, ignore_errors=True)
+
 
 class TestReprocessPageRange(unittest.TestCase):
     """Reprocessing a chosen range: clearing those pages' scripts and
