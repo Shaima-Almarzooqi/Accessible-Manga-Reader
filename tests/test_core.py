@@ -1911,6 +1911,79 @@ class TestAskConversationDocument(unittest.TestCase):
         self.assertNotIn("tabindex", doc)
 
 
+class TestJobRegistry(unittest.TestCase):
+    """Only one book processes at a time, and the app must know which,
+    so it can refuse actions that would disturb a running job. This is
+    what lets processing be modeless without the app tripping over
+    itself."""
+
+    class FakeBook:
+        def __init__(self, workspace, title):
+            self.workspace = workspace
+            self.title = title
+
+    def setUp(self):
+        from core import jobs
+        self.jobs = jobs
+        self.reg = jobs.JobRegistry()
+        self.a = self.FakeBook("/ws/a", "Book A")
+        self.b = self.FakeBook("/ws/b", "Book B")
+
+    def test_starts_idle(self):
+        self.assertFalse(self.reg.is_busy())
+        self.assertIsNone(self.reg.busy_reason())
+        self.assertIsNone(self.reg.blocked_reason(self.a))
+
+    def test_start_claims_the_slot(self):
+        self.assertTrue(self.reg.start(self.a))
+        self.assertTrue(self.reg.is_busy())
+        self.assertTrue(self.reg.is_processing(self.a))
+        self.assertFalse(self.reg.is_processing(self.b))
+
+    def test_only_one_job_at_a_time(self):
+        self.reg.start(self.a)
+        self.assertFalse(self.reg.start(self.b))
+        self.assertIsNotNone(self.reg.busy_reason())
+        self.assertIn("Book A", self.reg.busy_reason())
+
+    def test_same_book_cannot_start_twice(self):
+        self.reg.start(self.a)
+        self.assertFalse(self.reg.start(self.a))
+
+    def test_finish_frees_the_slot(self):
+        self.reg.start(self.a)
+        self.assertTrue(self.reg.finish(self.a))
+        self.assertFalse(self.reg.is_busy())
+        self.assertTrue(self.reg.start(self.b))
+
+    def test_a_late_finish_cannot_clear_a_newer_job(self):
+        # An old dialog finishing after a new job started must not
+        # release the new job's slot.
+        self.reg.start(self.a)
+        self.reg.finish(self.a)
+        self.reg.start(self.b)
+        self.assertFalse(self.reg.finish(self.a))
+        self.assertTrue(self.reg.is_processing(self.b))
+
+    def test_the_processing_book_is_blocked(self):
+        self.reg.start(self.a)
+        reason = self.reg.blocked_reason(self.a)
+        self.assertIsNotNone(reason)
+        self.assertIn("Book A", reason)
+
+    def test_other_books_stay_usable_while_one_processes(self):
+        # The whole point: reading another book must remain possible.
+        self.reg.start(self.a)
+        self.assertIsNone(self.reg.blocked_reason(self.b))
+
+    def test_blocked_reason_handles_no_book(self):
+        self.reg.start(self.a)
+        self.assertIsNone(self.reg.blocked_reason(None))
+
+    def test_module_exposes_a_shared_registry(self):
+        self.assertIsInstance(self.jobs.registry, self.jobs.JobRegistry)
+
+
 class TestAppendImagePages(unittest.TestCase):
     """Adding more image files to an image-built book from the reader:
     new pages are numbered after the existing ones, and the pages
