@@ -74,8 +74,15 @@ class ProcessingWindow(wx.Frame):
         self._closed = False
         self._finished_flag = False
         self._notified = False
-        self._shown_pages = set()
         self.result = None
+        # Converted pages, and how they are presented. One page at a
+        # time is the default: a single growing wall of text cannot be
+        # navigated, and appending to it moves the caret out from under
+        # someone who is reading.
+        self.one_page = bool(settings.get("converted_pages_one_page", True))
+        self._converted = {}   # page number -> display text
+        self._order = []       # converted page numbers, ascending
+        self._showing = None   # page number on display, or None
 
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -89,12 +96,25 @@ class ProcessingWindow(wx.Frame):
 
         # Pages land here as they are converted, so the book can be read
         # while the rest is still being processed.
-        pages_label = wx.StaticText(panel, label="Converted &pages:")
-        sizer.Add(pages_label, 0, wx.LEFT, 8)
+        self.pages_label = wx.StaticText(panel, label="Converted &pages:")
+        sizer.Add(self.pages_label, 0, wx.LEFT, 8)
         self.pages_view = wx.TextCtrl(
             panel, style=wx.TE_MULTILINE | wx.TE_READONLY,
             size=(560, 200))
         sizer.Add(self.pages_view, 2, wx.EXPAND | wx.ALL, 8)
+
+        if self.one_page:
+            # These also supply the Alt+P and Alt+N shortcuts, and give
+            # laptops without Page Up and Page Down a way to move.
+            page_nav = wx.BoxSizer(wx.HORIZONTAL)
+            self.prev_page_button = wx.Button(panel, label="&Previous page")
+            self.prev_page_button.Bind(wx.EVT_BUTTON,
+                                       self.on_previous_converted)
+            page_nav.Add(self.prev_page_button, 0, wx.RIGHT, 6)
+            self.next_page_button = wx.Button(panel, label="&Next page")
+            self.next_page_button.Bind(wx.EVT_BUTTON, self.on_next_converted)
+            page_nav.Add(self.next_page_button, 0)
+            sizer.Add(page_nav, 0, wx.LEFT | wx.BOTTOM, 8)
 
         self.gauge = wx.Gauge(panel, range=100)
         sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
@@ -161,21 +181,68 @@ class ProcessingWindow(wx.Frame):
     # ----- UI thread ---------------------------------------------------------
 
     def _show_new_pages(self):
-        """Append any pages converted since this was last called."""
+        """Take in any pages converted since this was last called."""
         numbers = sorted(n for n in self.book.scripts
                          if 1 <= n <= self.book.page_count
-                         and n not in self._shown_pages)
+                         and n not in self._converted)
         if not numbers:
             return
-        chunks = []
         for number in numbers:
-            self._shown_pages.add(number)
             script = self.book.scripts.get(number, "")
             if not self.settings.get("show_panel_labels", True):
                 script = prompts.strip_panel_labels(script)
-            chunks.append("Page %d of %d\n%s\n"
-                          % (number, self.book.page_count, script))
-        self.pages_view.AppendText("\n".join(chunks))
+            self._converted[number] = "Page %d of %d\n%s" % (
+                number, self.book.page_count, script)
+        self._order = sorted(self._converted)
+        if not self.one_page:
+            self.pages_view.AppendText(
+                "\n".join(self._converted[n] for n in numbers) + "\n")
+            return
+        if self._showing is None:
+            self._display_page(self._order[0])
+        else:
+            # Someone may be reading: leave the text alone and let the
+            # label report that more pages are available. The page on
+            # display is tracked by its number, not its position, so a
+            # page recovered out of order cannot shift it.
+            self._update_pages_label()
+
+    def _display_page(self, number):
+        if number not in self._converted:
+            wx.Bell()
+            return
+        self._showing = number
+        self.pages_view.SetValue(self._converted[number])
+        self.pages_view.SetInsertionPoint(0)
+        self._update_pages_label()
+
+    def _update_pages_label(self):
+        if not self.one_page:
+            return
+        if self._showing is None or not self._order:
+            self.pages_label.SetLabel("Converted &pages: none yet")
+            return
+        position = self._order.index(self._showing) + 1
+        self.pages_label.SetLabel(
+            "Converted &pages: showing page %d, %d of %d converted"
+            % (self._showing, position, len(self._order)))
+
+    def _step_converted(self, delta):
+        if self._showing is None or not self._order:
+            wx.Bell()
+            return
+        index = self._order.index(self._showing) + delta
+        if not 0 <= index < len(self._order):
+            wx.Bell()
+            return
+        self._display_page(self._order[index])
+        self.pages_view.SetFocus()
+
+    def on_next_converted(self, event):
+        self._step_converted(1)
+
+    def on_previous_converted(self, event):
+        self._step_converted(-1)
 
     def _append(self, message, done, total):
         self.log.AppendText(message + "\n")
@@ -195,8 +262,8 @@ class ProcessingWindow(wx.Frame):
         missing = [n for n in range(1, self.book.page_count + 1)
                    if n not in self.book.scripts]
         if missing:
-            self.pages_view.AppendText(
-                "\nNot converted yet: page%s %s. Choose Process again "
+            self.log.AppendText(
+                "Not converted yet: page%s %s. Choose Process again "
                 "to retry %s.\n"
                 % ("" if len(missing) == 1 else "s",
                    ", ".join(str(n) for n in missing),
@@ -301,6 +368,12 @@ class ProcessingWindow(wx.Frame):
                 self.on_read_now(event)
             else:
                 self._close_now()
+        elif (self.one_page and code == wx.WXK_PAGEDOWN
+              and wx.Window.FindFocus() is self.pages_view):
+            self._step_converted(1)
+        elif (self.one_page and code == wx.WXK_PAGEUP
+              and wx.Window.FindFocus() is self.pages_view):
+            self._step_converted(-1)
         elif keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
             return
         else:

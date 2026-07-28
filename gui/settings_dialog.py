@@ -186,6 +186,13 @@ class SettingsDialog(wx.Dialog):
             bool(self.settings.get("show_panel_labels", True)))
         general_sizer.Add(self.panel_labels, 0, wx.ALL, 6)
 
+        self.one_page_converted = wx.CheckBox(
+            general_panel,
+            label="Show &one page at a time in the processing window")
+        self.one_page_converted.SetValue(
+            bool(self.settings.get("converted_pages_one_page", True)))
+        general_sizer.Add(self.one_page_converted, 0, wx.ALL, 6)
+
         self.check_updates = wx.CheckBox(
             general_panel,
             label="Check for &updates when the app starts")
@@ -385,6 +392,8 @@ class SettingsDialog(wx.Dialog):
         self.settings["show_panel_labels"] = self.panel_labels.GetValue()
         self.settings["ask_instructions_before_processing"] = (
             self.ask_instructions.GetValue())
+        self.settings["converted_pages_one_page"] = (
+            self.one_page_converted.GetValue())
         self.settings["check_updates_on_start"] = self.check_updates.GetValue()
         self.settings["include_beta_updates"] = self.include_betas.GetValue()
         event.Skip()  # lets the dialog close with wx.ID_OK

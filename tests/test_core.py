@@ -2032,6 +2032,33 @@ class TestAlignToBatch(unittest.TestCase):
             {5: "a", 6: "b"})
 
 
+class TestConvertedPagesSetting(unittest.TestCase):
+    """The processing window shows converted pages one at a time by
+    default, so the box can be navigated and does not move under a
+    reader as more pages land."""
+
+    def test_one_page_at_a_time_is_the_default(self):
+        self.assertTrue(config.DEFAULT_SETTINGS["converted_pages_one_page"])
+
+    def test_setting_survives_a_save_and_load(self):
+        appdata = tempfile.mkdtemp()
+        old = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = appdata
+        try:
+            settings = config.load_settings()
+            self.assertTrue(settings["converted_pages_one_page"])
+            settings["converted_pages_one_page"] = False
+            config.save_settings(settings)
+            self.assertFalse(
+                config.load_settings()["converted_pages_one_page"])
+        finally:
+            if old is None:
+                os.environ.pop("APPDATA", None)
+            else:
+                os.environ["APPDATA"] = old
+            shutil.rmtree(appdata, ignore_errors=True)
+
+
 class TestJobRegistry(unittest.TestCase):
     """Only one book processes at a time, and the app must know which,
     so it can refuse actions that would disturb a running job. This is

@@ -75,6 +75,7 @@ In the reader:
 * PageDown / PageUp — next / previous page or panel
 * Ctrl+PageDown / Ctrl+PageUp — next / previous page in any mode
 * Alt+P / Alt+N — previous / next
+* Ctrl+Home / Ctrl+End — first / last page
 * Alt+G or Ctrl+G — go to a page
 * Ctrl+F — find (entire-book mode)
 * Ctrl+E — save the whole book as a text file

@@ -60,6 +60,7 @@ DEFAULT_SETTINGS = {
     # Show "Panel N (position)" markers in the reader text. Off gives a
     # continuous narrative; the cached scripts are unchanged either way.
     "show_panel_labels": True,
+    "converted_pages_one_page": True,
     "image_max_dimension": 1568,
     "image_jpeg_quality": 85,
     # Update notifications: checked on a background thread at startup.

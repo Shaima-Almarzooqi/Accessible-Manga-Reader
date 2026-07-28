@@ -122,6 +122,16 @@ reading one you already had open.</p>
 <p>The processing window also has a Converted pages box, after the
 progress log, which fills in as each page is finished. You can read
 there straight away rather than waiting for the whole book.</p>
+<p>It shows one page at a time, like the reader does. Move between the
+pages converted so far with Alt plus N for the next and Alt plus P for
+the previous, or with Page Down and Page Up while you are in the box.
+There are Previous page and Next page buttons as well. The label above
+the box tells you which page you are on and how many have been
+converted so far. Pages that finish while you are reading do not move
+you: they simply become available, and the label count goes up.</p>
+<p>If you would rather see every converted page in one long list, turn
+off "Show one page at a time in the processing window" on the General
+tab of Settings.</p>
 <p>In your library, the book being processed is listed as "being
 processed now", so you can tell at a glance which one is busy.</p>
 <p>One book is processed at a time. If you start another while one is
@@ -309,6 +319,8 @@ beta versions, in Settings.</p>
 <li>Page Down and Page Up: next and previous page or panel</li>
 <li>Ctrl plus Page Down and Ctrl plus Page Up: next and previous page in
 any mode</li>
+<li>Ctrl plus Home: first page</li>
+<li>Ctrl plus End: last page</li>
 <li>Alt plus G, or Ctrl plus G: go to a page</li>
 <li>Ctrl plus F: find text</li>
 <li>Ctrl plus L: show or hide panel labels</li>

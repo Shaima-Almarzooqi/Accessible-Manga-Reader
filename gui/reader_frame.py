@@ -82,8 +82,10 @@ class ReaderFrame(wx.Frame):
 
         controls = wx.BoxSizer(wx.HORIZONTAL)
         for label, handler in [
+                ("&First", self.on_first_page),
                 ("&Previous", self.on_previous),
                 ("&Next", self.on_next),
+                ("&Last", self.on_last_page),
                 ("&Go to page...", self.on_go_to_page),
                 # No Alt mnemonic here on purpose: Ctrl+E (in the Book
                 # menu) is the single shortcut for saving.
@@ -117,6 +119,10 @@ class ReaderFrame(wx.Frame):
                   nav.Append(wx.ID_ANY, "&Next\tCtrl+PageDown"))
         self.Bind(wx.EVT_MENU, self.on_previous,
                   nav.Append(wx.ID_ANY, "&Previous\tCtrl+PageUp"))
+        self.Bind(wx.EVT_MENU, self.on_first_page,
+                  nav.Append(wx.ID_ANY, "&First page\tCtrl+Home"))
+        self.Bind(wx.EVT_MENU, self.on_last_page,
+                  nav.Append(wx.ID_ANY, "&Last page\tCtrl+End"))
         self.Bind(wx.EVT_MENU, self.on_go_to_page,
                   nav.Append(wx.ID_ANY, "&Go to page...\tCtrl+G"))
         self.Bind(wx.EVT_MENU, self.on_find,
@@ -324,6 +330,26 @@ class ReaderFrame(wx.Frame):
         else:
             event.Skip()
 
+    def _jump_to_page(self, number):
+        """Move to a page in whichever view is active, and put focus back
+        on the text so a screen reader reads from the new position."""
+        if not 1 <= number <= self.book.page_count:
+            wx.Bell()
+            return
+        if self.view == VIEW_BOOK:
+            offset = self.page_offsets.get(number, 0)
+            self.text.SetInsertionPoint(offset)
+            self.text.ShowPosition(offset)
+        else:
+            self._go_page(number)
+        self.text.SetFocus()
+
+    def on_first_page(self, event):
+        self._jump_to_page(1)
+
+    def on_last_page(self, event):
+        self._jump_to_page(self.book.page_count)
+
     def on_go_to_page(self, event):
         dialog = wx.TextEntryDialog(
             self, "Page number (1 to %d):" % self.book.page_count,
@@ -334,13 +360,7 @@ class ReaderFrame(wx.Frame):
             except ValueError:
                 number = 0
             if 1 <= number <= self.book.page_count:
-                if self.view == VIEW_BOOK:
-                    offset = self.page_offsets.get(number, 0)
-                    self.text.SetInsertionPoint(offset)
-                    self.text.ShowPosition(offset)
-                else:
-                    self._go_page(number)
-                self.text.SetFocus()
+                self._jump_to_page(number)
             else:
                 wx.MessageBox("There is no page %s." % dialog.GetValue(),
                               "Go to page", wx.OK | wx.ICON_INFORMATION, self)

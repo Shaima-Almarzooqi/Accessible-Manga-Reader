@@ -7,11 +7,20 @@ newest version is at the top.
 
 ### Added
 
-- You can now read while a book is being processed. Processing now
-  opens in its own window, so you can Alt+Tab back to your library and
-  open another book, or carry on reading the one you had open. It also
-  shows a Converted pages box that fills in as each page is done, so
-  you can start reading a book before the whole run has finished.
+- You can now read while a book is being processed. Processing opens
+  in its own window, so you can Alt+Tab back to your library and open
+  another book, or carry on reading the one you had open.
+- First page and last page in the reader, on Ctrl plus Home and Ctrl
+  plus End, in the Navigate menu, and as First and Last buttons for
+  keyboards without Home and End.
+- A Converted pages box in the processing window, which fills in as
+  each page is done, so you can start reading a book before the whole
+  run has finished. It shows one page at a time, like the reader: move
+  between the pages converted so far with Alt plus N and Alt plus P,
+  with Page Down and Page Up, or with the Previous page and Next page
+  buttons. Pages that finish while you are reading become available
+  without moving you. A new General setting shows every converted page
+  in one long list instead.
 - A second download. Alongside the usual single .exe there is now a
   .zip containing the app as a folder. The folder version does not
   unpack itself every time it starts, so it opens much faster and is
