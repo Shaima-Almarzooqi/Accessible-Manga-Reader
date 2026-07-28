@@ -14,7 +14,9 @@ newest version is at the top.
   Word document, or a PDF. The EPUB and the Word document carry a
   heading for every page and panel, so a reading app, Word's navigation
   pane and your screen reader can all move around the book by heading.
-  The PDF lists every page and panel in its bookmarks pane.
+  The PDF is tagged, so a screen reader can move through it by
+  heading as well, and every page and panel is listed in its
+  bookmarks pane.
 
 ### Changed
 

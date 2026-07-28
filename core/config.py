@@ -133,6 +133,49 @@ SUGGESTED_LANGUAGES = [
     "Vietnamese",
 ]
 
+# BCP-47 codes for the languages above. Exports carry this in their
+# lang attribute: a screen reader chooses its voice from it, and a
+# tagged PDF is not valid without one. The name itself ("Arabic") is not
+# a code and must never be used directly.
+LANGUAGE_CODES = {
+    "English": "en", "Arabic": "ar", "Chinese (Simplified)": "zh-Hans",
+    "Chinese (Traditional)": "zh-Hant", "Dutch": "nl", "French": "fr",
+    "German": "de", "Hindi": "hi", "Indonesian": "id", "Italian": "it",
+    "Japanese": "ja", "Korean": "ko", "Persian": "fa", "Polish": "pl",
+    "Portuguese": "pt", "Russian": "ru", "Spanish": "es",
+    "Swedish": "sv", "Turkish": "tr", "Urdu": "ur",
+    "Vietnamese": "vi", "Hebrew": "he",
+}
+
+# Scripts that read right to left, so exports can set dir="rtl".
+RTL_LANGUAGE_CODES = {"ar", "fa", "ur", "he"}
+
+
+def language_code(name):
+    """The BCP-47 code for a language name.
+
+    Anything already code-shaped is passed through, so a language typed
+    in by hand still works. Unknown names fall back to English rather
+    than producing an invalid document.
+    """
+    if not name:
+        return "en"
+    if name in LANGUAGE_CODES:
+        return LANGUAGE_CODES[name]
+    trimmed = name.strip()
+    parts = trimmed.split("-")
+    # A language tag starts with a two or three letter subtag, which is
+    # what separates "pt-BR" from a language name like "Klingon".
+    if (2 <= len(parts[0]) <= 3 and parts[0].isalpha()
+            and all(part.isalnum() for part in parts)):
+        return trimmed
+    return "en"
+
+
+def is_rtl(code):
+    return code.split("-")[0].lower() in RTL_LANGUAGE_CODES
+
+
 SERVICE_LABELS = [
     ("gemini", "Gemini by Google (free tier available)"),
     ("openrouter", "OpenRouter (one key, many models, free ones available)"),

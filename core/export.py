@@ -23,7 +23,7 @@ import os
 import xml.sax.saxutils as _xml
 import zipfile
 
-from . import html_export, prompts
+from . import config, html_export, prompts
 
 
 def _escape(text):
@@ -79,7 +79,8 @@ def write_text(book, path, show_panel_labels=True, language="en"):
 def write_html(book, path, show_panel_labels=True, language="en"):
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(html_export.build_html(
-            book, show_panel_labels=show_panel_labels, language=language))
+            book, show_panel_labels=show_panel_labels,
+            language=config.language_code(language)))
 
 
 # ----- EPUB ----------------------------------------------------------------
@@ -133,6 +134,7 @@ def write_epub(book, path, show_panel_labels=True, language="en"):
     plus a little metadata, and doing it here keeps the app dependency
     free and the markup exactly as accessible as we want it.
     """
+    language = config.language_code(language)
     items = book_outline(book, show_panel_labels=show_panel_labels)
     title = book.title or "Book"
 
@@ -247,6 +249,7 @@ def write_docx(book, path, show_panel_labels=True, language="en"):
     XML, and writing it here avoids a dependency while guaranteeing real
     heading styles rather than text that merely looks big.
     """
+    language = config.language_code(language)
     items = book_outline(book, show_panel_labels=show_panel_labels)
     body = []
     for kind, text in items:
@@ -375,6 +378,42 @@ def _write_block(pdf, text, height, unicode_ok):
 
 
 def write_pdf(book, path, show_panel_labels=True, language="en"):
+    """Save the book as a PDF.
+
+    Two routes are tried. WeasyPrint turns the HTML the app already
+    produces into a genuinely tagged (PDF/UA) file, where a screen
+    reader can move by heading exactly as it does in the web page
+    export -- that is the one worth having. It needs native libraries
+    that may not be present, so when it is unavailable the export falls
+    back to a simpler PDF that carries a navigable outline but no tags.
+    """
+    if _write_tagged_pdf(book, path, show_panel_labels, language):
+        return
+    _write_outline_pdf(book, path, show_panel_labels, language)
+
+
+def _write_tagged_pdf(book, path, show_panel_labels, language):
+    """Render the book's HTML to a tagged PDF. True when it worked.
+
+    PDF/UA needs a heading hierarchy, a document title and a language,
+    all of which build_html already produces, so there is nothing extra
+    to describe here.
+    """
+    try:
+        from weasyprint import HTML
+    except Exception:
+        return False  # native libraries missing; caller falls back
+    try:
+        document = html_export.build_html(
+            book, show_panel_labels=show_panel_labels,
+            language=config.language_code(language))
+        HTML(string=document).write_pdf(path, pdf_variant="pdf/ua-1")
+    except Exception:
+        return False
+    return True
+
+
+def _write_outline_pdf(book, path, show_panel_labels=True, language="en"):
     """Save the book as a PDF with a navigable outline.
 
     Every page and panel heading becomes an outline entry, so a PDF

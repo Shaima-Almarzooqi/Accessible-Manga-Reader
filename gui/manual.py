@@ -251,7 +251,8 @@ Export in the list's context menu. The formats are:</p>
 list of pages to jump between.</li>
 <li>Word document, with real heading styles, so Word's navigation pane
 and your screen reader's heading commands both work.</li>
-<li>PDF, with every page and panel listed in the bookmarks pane.</li>
+<li>PDF, tagged so a screen reader can move through it by heading,
+with every page and panel also listed in the bookmarks pane.</li>
 </ul>
 <p>Ctrl plus E still saves as a text file and Ctrl plus Shift plus E as
 HTML.</p>

@@ -29,6 +29,14 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      # Supplies the GTK libraries WeasyPrint needs for tagged PDF
+      # export. PyInstaller's weasyprint hook collects them into the
+      # build. Allowed to fail: without GTK the app simply falls back
+      # to the simpler PDF export, so a build is still usable.
+      - name: Install GTK runtime
+        continue-on-error: true
+        run: choco install -y gtk-runtime --no-progress
+
       - name: Run tests
         run: python run_tests.py
 
