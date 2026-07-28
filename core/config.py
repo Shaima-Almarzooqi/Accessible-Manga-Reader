@@ -1,4 +1,4 @@
-"""Configuration, versioning, and data directories."""
+﻿"""Configuration, versioning, and data directories."""
 
 import json
 import os
@@ -23,7 +23,7 @@ DEFAULT_SETTINGS = {
     # "Refresh model list" button in Settings to fetch what YOUR key can use.
     "gemini_model": "gemini-3.5-flash",
     "anthropic_api_keys": [],
-    "anthropic_model": "claude-sonnet-4-6",
+    "anthropic_model": "claude-sonnet-5",
     "openai_api_keys": [],
     "openai_model": "gpt-5.6",
     "openrouter_api_keys": [],
@@ -84,9 +84,9 @@ SUGGESTED_MODELS = {
         "gemini-2.5-flash-lite",
     ],
     "anthropic": [
-        "claude-sonnet-4-6",
+        "claude-sonnet-5",
+        "claude-opus-5",
         "claude-fable-5",
-        "claude-opus-4-8",
         "claude-haiku-4-5-20251001",
     ],
     "openai": [

@@ -29,6 +29,8 @@ newest version is at the top.
 
 ### Changed
 
+- The Anthropic model list now offers Claude Sonnet 5 and Claude Opus
+  5, and Sonnet 5 is the default for that service.
 - Page headings in whole book view, and in books saved as text, now
   read "Page 4 of 40" instead of "=== Page 4 of 40 ===", so a screen
   reader no longer reads out the equals signs on every page.
