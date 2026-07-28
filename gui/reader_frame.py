@@ -529,10 +529,12 @@ class ReaderFrame(wx.Frame):
                 return
             pages_to_do = cleared
         self.book.save()
-        start_processing(self, self.book, self.settings,
-                         pages=pages_to_do,
-                         on_finished=lambda result, read_now:
-                         self._after_processing())
+        if start_processing(self, self.book, self.settings,
+                            pages=pages_to_do,
+                            on_finished=lambda result, read_now:
+                            self._after_processing()):
+            # So the library shows this book as being processed.
+            self._refresh_library()
 
     def _reload_after_reprocess(self):
         """Redraw the reader from the book's new scripts, keeping the

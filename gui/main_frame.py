@@ -181,6 +181,11 @@ class MainFrame(wx.Frame):
                 status = "ready to read, %d pages" % book.page_count
             else:
                 status = "%d of %d pages processed" % (done, book.page_count)
+            # Processing runs in its own window now, so the list has to
+            # say which book is busy; otherwise this line reads as a
+            # stalled count with no explanation.
+            if jobs.registry.is_processing(book):
+                status = "being processed now, " + status
             items.append("%s (%s)" % (book.title or "Untitled", status))
         self.book_list.Set(items)
         if self.books:
@@ -414,9 +419,10 @@ class MainFrame(wx.Frame):
                 return
         # Modeless: the library stays usable while this runs, so another
         # book can be read meanwhile.
-        start_processing(self, book, self.settings,
-                         on_finished=lambda result, read_now:
-                         self._after_processing(book, read_now))
+        if start_processing(self, book, self.settings,
+                            on_finished=lambda result, read_now:
+                            self._after_processing(book, read_now)):
+            self.refresh_books(select_book=book)
 
     def _busy_with(self, book):
         """True, after saying so, when this book is being processed and
@@ -523,9 +529,10 @@ class MainFrame(wx.Frame):
             return
         book.save()
         self.refresh_books(select_book=book)
-        start_processing(self, book, self.settings, pages=cleared,
-                         on_finished=lambda result, read_now:
-                         self._after_processing(book, read_now))
+        if start_processing(self, book, self.settings, pages=cleared,
+                            on_finished=lambda result, read_now:
+                            self._after_processing(book, read_now)):
+            self.refresh_books(select_book=book)
 
     def on_read(self, event):
         book = self._selected_book()

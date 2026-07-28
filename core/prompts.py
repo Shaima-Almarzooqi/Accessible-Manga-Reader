@@ -1,4 +1,4 @@
-"""Prompt construction and response parsing.
+﻿"""Prompt construction and response parsing.
 
 The model receives a batch of page images and returns one script per page
 in a strict, machine-parseable plain-text format, followed by an updated
@@ -491,7 +491,13 @@ def build_user_text(page_numbers, character_notes, book_title="",
             "and identification):\n" + user_instructions.strip())
     parts.append(
         f"You are given {len(page_numbers)} page image(s), in order: "
-        f"pages {pages_list}. Label your output with exactly these page numbers.")
+        f"pages {pages_list}. Produce EXACTLY {len(page_numbers)} page "
+        f"section(s), one for each image, each opening with its own "
+        f"\"=== PAGE n ===\" line using exactly these page numbers: "
+        f"{pages_list}. Never describe two images under a single page "
+        f"header, and never renumber from 1 -- even when consecutive "
+        f"pages continue the same scene, each image is a separate page "
+        f"and gets its own header.")
     if character_notes.strip():
         parts.append("CHARACTER NOTES so far:\n" + character_notes.strip())
     else:

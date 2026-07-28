@@ -9,9 +9,9 @@ newest version is at the top.
 
 - You can now read while a book is being processed. Processing now
   opens in its own window, so you can Alt+Tab back to your library and
-  open another book, or carry on reading the one you had open. It also shows a Converted pages box that fills in as each
-  page is done, so you can start reading a book before the whole run
-  has finished.
+  open another book, or carry on reading the one you had open. It also
+  shows a Converted pages box that fills in as each page is done, so
+  you can start reading a book before the whole run has finished.
 - A second download. Alongside the usual single .exe there is now a
   .zip containing the app as a folder. The folder version does not
   unpack itself every time it starts, so it opens much faster and is
@@ -20,6 +20,9 @@ newest version is at the top.
 
 ### Changed
 
+- Your library now shows which book is being processed, so the entry
+  reads "being processed now" rather than appearing to sit at an
+  unchanging page count.
 - Only one book is processed at a time. Starting another while one is
   running now shows a message instead. A book being processed cannot be
   deleted, reprocessed, renamed, or have its pages freed until it

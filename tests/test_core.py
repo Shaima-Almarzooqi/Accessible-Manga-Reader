@@ -1911,6 +1911,127 @@ class TestAskConversationDocument(unittest.TestCase):
         self.assertNotIn("tabindex", doc)
 
 
+class TestMergedBatchRecovery(unittest.TestCase):
+    """When a model describes two images under one page header, the
+    second page used to vanish. It is now re-requested on its own,
+    where there is no other image for it to be merged with -- so
+    batching several pages per request stays safe."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tmp, "pages"))
+        for n in (1, 2):
+            Image.new("RGB", (10, 10), "white").save(
+                os.path.join(self.tmp, "pages", "%04d.jpg" % n))
+        self.book = library.Book(self.tmp)
+        self.book.detect_page_count()
+        self.settings = {
+            "service": "gemini", "gemini_api_keys": ["k"],
+            "pages_per_request": 2, "request_delay_seconds": 0,
+            "comic_type": "manga", "verbosity": "detailed",
+            "output_language": "English",
+        }
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run_with(self, responses):
+        """Run process_book against a client returning canned responses."""
+        from core import api_client, processor as proc
+        calls = []
+
+        class StubClient:
+            def request_scripts(inner, system_prompt, content,
+                                cancel_check=None):
+                calls.append(content)
+                return responses[len(calls) - 1]
+
+        original = api_client.create_client
+        api_client.create_client = lambda s: StubClient()
+        try:
+            result = proc.process_book(self.book, self.settings)
+        finally:
+            api_client.create_client = original
+        return result, calls
+
+    def test_merged_second_page_is_recovered(self):
+        merged = "=== PAGE 1 ===\nPanel 1 (top right): both pages here.\n"
+        alone = "=== PAGE 2 ===\nPanel 1 (top right): page two alone.\n"
+        result, calls = self._run_with([merged, alone])
+        # Two requests: the batch, then the recovery for page 2.
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.book.processed_count(), 2)
+        self.assertIn("page two alone", self.book.scripts[2])
+        self.assertEqual(result.pages_failed, [])
+
+    def test_a_normal_batch_makes_only_one_request(self):
+        good = ("=== PAGE 1 ===\nPanel 1 (top right): one.\n"
+                "=== PAGE 2 ===\nPanel 1 (top right): two.\n")
+        result, calls = self._run_with([good])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.book.processed_count(), 2)
+
+    def test_page_still_missing_after_recovery_is_reported(self):
+        merged = "=== PAGE 1 ===\nPanel 1 (top right): both pages here.\n"
+        empty = "=== PAGE 9 ===\nPanel 1 (top right): wrong page.\n"
+        result, calls = self._run_with([merged, empty])
+        # The recovery answered with a single block, so it is mapped
+        # positionally onto page 2 rather than being lost.
+        self.assertEqual(self.book.processed_count(), 2)
+
+
+class TestAlignToBatch(unittest.TestCase):
+    """Models sometimes number their output from 1 whatever pages they
+    were sent, so a request for page 2 comes back labelled page 1. That
+    used to be discarded, leaving the page unprocessed with no clue why.
+    Position is the reliable signal: the images go in order and the
+    model is told so."""
+
+    def test_correct_numbering_is_left_alone(self):
+        scripts = {3: "c", 4: "d"}
+        self.assertEqual(processor.align_to_batch(scripts, [3, 4]), scripts)
+
+    def test_renumbered_from_one_is_remapped(self):
+        # The reported failure: a batch of pages 3 and 4 answered as
+        # pages 1 and 2.
+        scripts = {1: "third page", 2: "fourth page"}
+        self.assertEqual(
+            processor.align_to_batch(scripts, [3, 4]),
+            {3: "third page", 4: "fourth page"})
+
+    def test_single_page_batch_is_remapped(self):
+        # With one page per request, every batch after the first failed.
+        self.assertEqual(
+            processor.align_to_batch({1: "page two"}, [2]),
+            {2: "page two"})
+
+    def test_order_is_preserved_when_remapping(self):
+        scripts = {1: "a", 2: "b", 3: "c"}
+        self.assertEqual(
+            processor.align_to_batch(scripts, [7, 8, 9]),
+            {7: "a", 8: "b", 9: "c"})
+
+    def test_a_genuinely_partial_response_is_not_misfiled(self):
+        # One block for a two-page batch really is a missing page, and
+        # must stay missing rather than being assigned to the wrong one.
+        scripts = {1: "only one page came back"}
+        self.assertEqual(
+            processor.align_to_batch(scripts, [5, 6]), scripts)
+
+    def test_empty_response_is_untouched(self):
+        self.assertEqual(processor.align_to_batch({}, [1, 2]), {})
+
+    def test_nonsense_labels_still_map_by_position(self):
+        # Two blocks came back for a two-page batch, but one carries a
+        # page number that was never requested. The count matches and
+        # the images went in order, so position decides -- the labels
+        # are exactly what cannot be trusted here.
+        scripts = {5: "a", 9: "b"}
+        self.assertEqual(
+            processor.align_to_batch(scripts, [5, 6]),
+            {5: "a", 6: "b"})
+
+
 class TestJobRegistry(unittest.TestCase):
     """Only one book processes at a time, and the app must know which,
     so it can refuse actions that would disturb a running job. This is

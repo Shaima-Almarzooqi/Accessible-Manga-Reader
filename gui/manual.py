@@ -122,6 +122,8 @@ reading one you already had open.</p>
 <p>The processing window also has a Converted pages box, after the
 progress log, which fills in as each page is finished. You can read
 there straight away rather than waiting for the whole book.</p>
+<p>In your library, the book being processed is listed as "being
+processed now", so you can tell at a glance which one is busy.</p>
 <p>One book is processed at a time. If you start another while one is
 running, the app tells you which book is still going. A book being
 processed cannot be deleted, reprocessed, renamed, or have its pages

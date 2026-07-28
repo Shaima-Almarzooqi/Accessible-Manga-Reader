@@ -1,4 +1,4 @@
-"""Batch processor.
+﻿"""Batch processor.
 
 Walks a book's unprocessed pages in batches, sends each batch to the API,
 parses the returned scripts, updates the running character notes, and
@@ -40,6 +40,32 @@ def make_batches(page_numbers, batch_size):
     if current:
         batches.append(current)
     return batches
+
+
+def align_to_batch(scripts, batch):
+    """Map a model's page numbering onto the pages we actually asked for.
+
+    Models sometimes number their output from 1 ("=== PAGE 1 ===") no
+    matter which pages were sent, so a batch of page 2 comes back
+    labelled page 1 and would otherwise be discarded as unparseable.
+
+    When the response contains exactly as many page blocks as the batch
+    but the numbers do not match, the blocks are taken in order and
+    assigned to the batch's pages: the images were sent in order and the
+    model was told so, which makes position the reliable signal and the
+    label the unreliable one.
+
+    Anything else is returned untouched, so a genuinely partial response
+    is still reported as partial rather than being silently misfiled.
+    """
+    if not scripts:
+        return scripts
+    if all(number in scripts for number in batch):
+        return scripts
+    if len(scripts) != len(batch):
+        return scripts
+    ordered = [scripts[key] for key in sorted(scripts)]
+    return dict(zip(batch, ordered))
 
 
 def process_book(book, settings, on_progress=None, cancel_check=None,
@@ -115,6 +141,22 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
             "quiet gaps between announcements are normal."
             % (total, len(batches)), 0, total)
 
+    def request_one_page(number):
+        """Ask for a single page on its own, returning its script or None.
+
+        Used to recover a page the model merged into a neighbour's
+        section: sent alone, there is no other image to merge it with.
+        """
+        paths = [book.page_image_path(number)]
+        text = prompts.build_user_text(
+            [number], book.character_notes, book.title,
+            user_instructions=book.user_instructions)
+        content = api_client.build_content([number], paths, text)
+        response = client.request_scripts(
+            system_prompt, content, cancel_check=cancel_check)
+        got, _ = prompts.parse_response(response)
+        return align_to_batch(got, [number]).get(number)
+
     for batch_index, batch in enumerate(batches):
         if cancel_check and cancel_check():
             result.cancelled = True
@@ -136,6 +178,7 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
             response_text = client.request_scripts(
                 system_prompt, content, cancel_check=cancel_check)
             scripts, notes = prompts.parse_response(response_text)
+            scripts = align_to_batch(scripts, batch)
         except api_client.ApiError as error:
             if "Cancelled" in str(error):
                 result.cancelled = True
@@ -168,6 +211,28 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
             # overwrite work done by a newer one.
             result.cancelled = True
             return result
+
+        # Models sometimes describe two images under one page header,
+        # which would silently lose the second page. Ask for anything
+        # missing on its own rather than dropping it -- alone, there is
+        # nothing for it to be merged with.
+        missing = [n for n in batch if n not in scripts]
+        if missing and len(batch) > 1:
+            for number in missing:
+                if cancel_check and cancel_check():
+                    result.cancelled = True
+                    return result
+                if on_progress:
+                    on_progress(
+                        "Page %d came back combined with another page; "
+                        "asking for it on its own." % number,
+                        result.pages_done, total)
+                try:
+                    recovered = request_one_page(number)
+                except Exception:
+                    recovered = None  # leave it for a later Process again
+                if recovered:
+                    scripts[number] = recovered
 
         for number in batch:
             if number in scripts:
