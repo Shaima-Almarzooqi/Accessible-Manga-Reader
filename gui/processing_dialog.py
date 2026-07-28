@@ -1,14 +1,17 @@
-"""Processing dialog.
+﻿"""Processing dialog.
 
 Runs processor.process_book on a worker thread and shows progress in a
 read-only log control plus a gauge (which feeds NVDA's progress bar
 output) and a live percentage in the window title (so NVDA+T always
 answers "how far along?").
 
-The window is MODELESS: the library and any open readers stay usable
-while a book is processed, so you can read one book while another is
-converted. core.jobs tracks the single job in flight so the rest of the
-app can refuse actions that would disturb it.
+This is a wx.Frame, not a dialog, and that matters: a dialog is owned
+by its parent, so it floats above the main window and gets no taskbar
+or Alt+Tab entry. As a frame it is a genuinely separate window -- the
+library and any open readers stay reachable while a book is processed,
+so you can Alt+Tab away and read one book while another is converted.
+core.jobs tracks the single job in flight so the rest of the app can
+refuse actions that would disturb it.
 
 A second read-only control shows the pages converted so far, so a book
 can be read as it is produced instead of waiting for the whole run.
@@ -48,19 +51,21 @@ def start_processing(parent, book, settings, pages=None, on_finished=None):
         return False
     if not jobs.registry.start(book):
         return False
-    dialog = ProcessingDialog(parent, book, settings, pages=pages,
+    window = ProcessingWindow(parent, book, settings, pages=pages,
                               on_finished=on_finished)
-    dialog.Show()
+    window.Show()
     return True
 
 
-class ProcessingDialog(wx.Dialog):
+class ProcessingWindow(wx.Frame):
     def __init__(self, parent, book, settings, pages=None, on_finished=None):
         """pages: explicit 1-based page numbers to process, or None for
         every page that is still unprocessed. Used when reprocessing a
         range, where the caller has already cleared those pages."""
-        super().__init__(parent, title="Processing " + (book.title or "book"),
-                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        super().__init__(parent,
+                         title="Processing " + (book.title or "book"),
+                         size=(640, 620),
+                         style=wx.DEFAULT_FRAME_STYLE)
         self.book = book
         self.settings = settings
         self.pages = pages
@@ -110,7 +115,7 @@ class ProcessingDialog(wx.Dialog):
         panel.SetSizer(sizer)
         outer = wx.BoxSizer(wx.VERTICAL)
         outer.Add(panel, 1, wx.EXPAND)
-        self.SetSizerAndFit(outer)
+        self.SetSizer(outer)
         self.log.SetFocus()
 
         # Show anything already converted before this run started.
@@ -185,6 +190,17 @@ class ProcessingDialog(wx.Dialog):
         self.result = result
         self._finished_flag = True
         self._show_new_pages()
+        # A page the model did not return leaves a gap in the list
+        # above, which looks like a display fault unless it is named.
+        missing = [n for n in range(1, self.book.page_count + 1)
+                   if n not in self.book.scripts]
+        if missing:
+            self.pages_view.AppendText(
+                "\nNot converted yet: page%s %s. Choose Process again "
+                "to retry %s.\n"
+                % ("" if len(missing) == 1 else "s",
+                   ", ".join(str(n) for n in missing),
+                   "it" if len(missing) == 1 else "them"))
         # The job slot is freed as soon as the work stops, so another
         # book can be started even if this window is left open to read.
         jobs.registry.finish(self.book)

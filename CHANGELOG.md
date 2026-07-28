@@ -7,10 +7,9 @@ newest version is at the top.
 
 ### Added
 
-- You can now read while a book is being processed. The processing
-  window no longer locks the rest of the app, so you can go back to
-  your library and open another book, or carry on reading the one you
-  had open. It also shows a Converted pages box that fills in as each
+- You can now read while a book is being processed. Processing now
+  opens in its own window, so you can Alt+Tab back to your library and
+  open another book, or carry on reading the one you had open. It also shows a Converted pages box that fills in as each
   page is done, so you can start reading a book before the whole run
   has finished.
 - A second download. Alongside the usual single .exe there is now a

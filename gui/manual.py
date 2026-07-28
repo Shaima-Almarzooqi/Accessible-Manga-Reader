@@ -115,9 +115,10 @@ selects it. It also appears after a cancelled run, since the pages
 already saved can be read straight away.</p>
 
 <h3>Reading while a book is processed</h3>
-<p>The processing window does not lock the rest of the app. While a book
-is being converted you can switch back to your library and open a
-different book, or carry on reading one you already had open.</p>
+<p>Processing opens in its own window, so it does not lock the rest of
+the app. While a book is being converted you can switch back to your
+library with Alt plus Tab and open a different book, or carry on
+reading one you already had open.</p>
 <p>The processing window also has a Converted pages box, after the
 progress log, which fills in as each page is finished. You can read
 there straight away rather than waiting for the whole book.</p>

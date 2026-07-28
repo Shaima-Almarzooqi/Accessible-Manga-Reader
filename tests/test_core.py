@@ -2170,7 +2170,7 @@ class TestAppendImagePages(unittest.TestCase):
             extract.append_image_files(self.new_paths, workspace)
             book.detect_page_count()
             book.save()
-            # Simulate processing the new pages (what ProcessingDialog
+            # Simulate processing the new pages (what ProcessingWindow
             # drives via processor, which saves after each batch).
             for n in (3, 4, 5):
                 book.scripts[n] = "page %d" % n
