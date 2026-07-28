@@ -2215,6 +2215,50 @@ class TestExportFormats(unittest.TestCase):
         self.assertIn(b"/Lang", raw)
         self.assertIn(b"/Title", raw)
 
+    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
+    def test_pdf_handles_curly_punctuation(self):
+        # The reported failure: a PDF's built-in fonts cover only
+        # Latin-1, so an ordinary curly apostrophe aborted the export.
+        self.book.scripts = {
+            1: "Panel 1 (top right): Conan\u2019s glasses \u2014 "
+               "\u201cLate,\u201d he said\u2026",
+        }
+        path = self._path("curly.pdf")
+        self.export.write_pdf(self.book, path)
+        self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
+
+    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
+    def test_pdf_handles_a_non_latin_script(self):
+        # Books can be exported in any output language.
+        self.book.scripts = {
+            1: "Panel 1 (top right): \u0645\u0631\u062d\u0628\u0627.",
+        }
+        path = self._path("arabic.pdf")
+        self.export.write_pdf(self.book, path, language="ar")
+        self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
+
+    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
+    def test_pdf_still_saves_without_any_unicode_font(self):
+        # On a machine with none of the fonts we look for, the export
+        # must degrade rather than fail.
+        original = self.export._UNICODE_FONTS[:]
+        self.export._UNICODE_FONTS[:] = [("/nonexistent-font.ttf", None)]
+        try:
+            self.book.scripts = {
+                1: "Panel 1 (top right): Conan\u2019s hat \u2014 done\u2026",
+            }
+            path = self._path("degraded.pdf")
+            self.export.write_pdf(self.book, path)
+            self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
+        finally:
+            self.export._UNICODE_FONTS[:] = original
+
+    def test_smart_punctuation_has_plain_equivalents(self):
+        plain = self.export._plain("Conan\u2019s \u2014 \u201cx\u201d\u2026")
+        self.assertEqual(plain, "Conan's -- \"x\"...")
+        # And nothing survives that a Latin-1 font could not draw.
+        plain.encode("latin-1")
+
     # ----- plain text ------------------------------------------------------
 
     def test_text_export_can_drop_panel_labels(self):

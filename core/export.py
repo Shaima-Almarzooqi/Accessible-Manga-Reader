@@ -271,6 +271,109 @@ def write_docx(book, path, show_panel_labels=True, language="en"):
 
 # ----- PDF -----------------------------------------------------------------
 
+# A PDF's built-in fonts only cover Latin-1, which fails on something as
+# ordinary as a curly apostrophe, never mind Arabic or Japanese. A font
+# is borrowed from the system rather than bundled, to keep the download
+# small. Arial and Segoe UI both cover Latin, Greek, Cyrillic, Arabic
+# and Hebrew; the CJK fonts are added as fallbacks for anything they
+# miss. The non-Windows paths matter when the app is run from source.
+# Each entry is (regular, bold). Bold is optional: without it headings
+# are still larger, and the outline is what carries navigation anyway.
+_UNICODE_FONTS = [
+    (r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
+    (r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf"),
+    (r"C:\Windows\Fonts\tahoma.ttf", r"C:\Windows\Fonts\tahomabd.ttf"),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ("/Library/Fonts/Arial Unicode.ttf", None),
+]
+
+_FALLBACK_FONTS = [
+    r"C:\Windows\Fonts\msgothic.ttc",     # Japanese
+    r"C:\Windows\Fonts\malgun.ttf",       # Korean
+    r"C:\Windows\Fonts\simsun.ttc",       # Simplified Chinese
+    r"C:\Windows\Fonts\msjh.ttc",         # Traditional Chinese
+    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+]
+
+# Used only when no Unicode font can be found at all, so that an export
+# still succeeds instead of failing on punctuation.
+_PLAIN_EQUIVALENTS = {
+    0x2018: "'", 0x2019: "'", 0x201A: "'", 0x201B: "'",
+    0x201C: '"', 0x201D: '"', 0x201E: '"', 0x2032: "'", 0x2033: '"',
+    0x2013: "-", 0x2014: "--", 0x2212: "-", 0x2026: "...",
+    0x00A0: " ", 0x2022: "*", 0x00AB: '"', 0x00BB: '"',
+}
+
+
+def _existing(paths):
+    return [p for p in paths if os.path.exists(p)]
+
+
+def _register_pdf_fonts(pdf):
+    """Give the document a Unicode font plus fallbacks.
+
+    Returns (family, bold_available). family is None when the system has
+    none of the fonts we know about, and the caller must fall back to a
+    built-in Latin-1 font.
+    """
+    regular = bold = None
+    for candidate, candidate_bold in _UNICODE_FONTS:
+        if os.path.exists(candidate):
+            regular = candidate
+            if candidate_bold and os.path.exists(candidate_bold):
+                bold = candidate_bold
+            break
+    if regular is None:
+        return None, False
+
+    pdf.add_font("body", fname=regular)
+    has_bold = False
+    if bold:
+        try:
+            pdf.add_font("body", style="B", fname=bold)
+            has_bold = True
+        except Exception:
+            has_bold = False
+
+    fallbacks = []
+    for index, font in enumerate(_existing(_FALLBACK_FONTS)):
+        name = "fallback%d" % index
+        try:
+            pdf.add_font(name, fname=font)
+        except Exception:
+            continue  # a font we cannot read is simply not offered
+        fallbacks.append(name)
+    if fallbacks:
+        pdf.set_fallback_fonts(fallbacks)
+    return "body", has_bold
+
+
+def _plain(text):
+    """Text reduced to what a built-in PDF font can render."""
+    text = text.translate(_PLAIN_EQUIVALENTS)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def _write_block(pdf, text, height, unicode_ok):
+    """Write one paragraph or heading, never failing on a character.
+
+    Even with fallbacks a glyph may be missing everywhere, which fpdf2
+    reports rather than silently dropping. Losing a character is a far
+    better outcome than losing the whole export.
+    """
+    if not unicode_ok:
+        text = _plain(text)
+    try:
+        pdf.multi_cell(0, height, text, new_x="LMARGIN", new_y="NEXT")
+    except Exception:
+        try:
+            pdf.multi_cell(0, height, _plain(text),
+                           new_x="LMARGIN", new_y="NEXT")
+        except Exception:
+            pass  # skip a line rather than abandon the document
+
+
 def write_pdf(book, path, show_panel_labels=True, language="en"):
     """Save the book as a PDF with a navigable outline.
 
@@ -291,16 +394,24 @@ def write_pdf(book, path, show_panel_labels=True, language="en"):
     pdf.set_lang(language)
     pdf.set_auto_page_break(True, margin=15)
     pdf.add_page()
+    family, has_bold = _register_pdf_fonts(pdf)
+    unicode_ok = family is not None
+    if not unicode_ok:
+        family, has_bold = "helvetica", True
+    heading_style = "B" if has_bold else ""
+
     for kind, text in items:
         if kind == "p":
-            pdf.set_font("helvetica", size=11)
-            pdf.multi_cell(0, 6, text, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font(family, size=11)
+            _write_block(pdf, text, 6, unicode_ok)
             pdf.ln(2)
             continue
         level = int(kind[1])
-        pdf.start_section(text, level=level - 1)
-        pdf.set_font("helvetica", style="B", size={1: 18, 2: 14, 3: 12}[level])
-        pdf.multi_cell(0, 8, text, new_x="LMARGIN", new_y="NEXT")
+        pdf.start_section(_plain(text) if not unicode_ok else text,
+                          level=level - 1)
+        pdf.set_font(family, style=heading_style,
+                     size={1: 18, 2: 14, 3: 12}[level])
+        _write_block(pdf, text, 8, unicode_ok)
         pdf.ln(2)
     pdf.output(path)
 
@@ -310,7 +421,7 @@ def write_pdf(book, path, show_panel_labels=True, language="en"):
 # label, extension, wildcard, writer
 FORMATS = [
     ("Text file", ".txt", "Text files (*.txt)|*.txt", write_text),
-    ("Web page", ".html", "HTML files (*.html)|*.html", write_html),
+    ("HTML", ".html", "HTML files (*.html)|*.html", write_html),
     ("EPUB book", ".epub", "EPUB books (*.epub)|*.epub", write_epub),
     ("Word document", ".docx",
      "Word documents (*.docx)|*.docx", write_docx),

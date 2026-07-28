@@ -21,7 +21,7 @@ _SHORTCUTS = {".txt": "\tCtrl+E", ".html": "\tCtrl+Shift+E"}
 # Mnemonics chosen to be unique within the menu.
 _MNEMONICS = {
     ".txt": "&Text file",
-    ".html": "&Web page",
+    ".html": "&HTML",
     ".epub": "&EPUB book",
     ".docx": "Word &document",
     ".pdf": "&PDF",
