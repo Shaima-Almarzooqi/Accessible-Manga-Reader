@@ -37,6 +37,34 @@ jobs:
         continue-on-error: true
         run: choco install -y gtk-runtime --no-progress
 
+      # PyInstaller's weasyprint hook finds the GTK libraries with
+      # ctypes.util.find_library, which searches PATH. Chocolatey does
+      # not reliably put GTK's bin directory there, so locate it and add
+      # it explicitly. Also reports what was found, so a build that ends
+      # up without tagged PDF says why.
+      - name: Put GTK on PATH
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem -Path 'C:\Program Files','C:\Program Files (x86)','C:\tools' `
+            -Filter 'libgobject-2.0-0.dll' -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if ($found) {
+            $bin = $found.Directory.FullName
+            Write-Host "GTK libraries found in $bin"
+            Add-Content -Path $env:GITHUB_PATH -Value $bin
+            Get-ChildItem $bin -Filter 'lib*-*.dll' | Select-Object -First 12 |
+              ForEach-Object { Write-Host "  $($_.Name)" }
+            $fonts = Join-Path (Split-Path $bin -Parent) 'etc\fonts'
+            Write-Host "fontconfig config present: $(Test-Path $fonts) ($fonts)"
+          } else {
+            Write-Host 'GTK libraries NOT found - PDF export will fall back.'
+          }
+
+      - name: Check WeasyPrint can load
+        continue-on-error: true
+        run: python -c "import weasyprint; print('WeasyPrint loaded OK', weasyprint.__version__)"
+
       - name: Run tests
         run: python run_tests.py
 
