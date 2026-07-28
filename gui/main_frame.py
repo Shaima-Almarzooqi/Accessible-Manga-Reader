@@ -14,6 +14,7 @@ import wx
 from core import config, extract, jobs, library, updates
 from .html_view import show_html_view
 from .processing_dialog import start_processing
+from . import export_menu
 from .reprocess_dialog import ReprocessDialog, SCOPE_WHOLE_BOOK
 from .reader_frame import ReaderFrame
 from .settings_dialog import SettingsDialog
@@ -120,6 +121,10 @@ class MainFrame(wx.Frame):
             wx.ID_ANY, "Reprocess pa&ges...",
             "Clear the processed pages and process the whole book again, "
             "for example after changing AI instructions or verbosity"))
+        book_menu.AppendSubMenu(
+            export_menu.build_export_menu(
+                self, self._selected_book, lambda: self.settings),
+            "&Export", "Save the selected book in another format")
         self.Bind(wx.EVT_MENU, self.on_free_space, book_menu.Append(
             wx.ID_ANY, "&Free up space (remove page images)...",
             "Delete the stored page images of a fully processed book; "
@@ -736,6 +741,10 @@ class MainFrame(wx.Frame):
                       menu.Append(wx.ID_ANY, "AI &instructions..."))
             self.Bind(wx.EVT_MENU, self.on_reprocess,
                       menu.Append(wx.ID_ANY, "Reprocess pa&ges..."))
+            menu.AppendSubMenu(
+                export_menu.build_export_menu(
+                    self, self._selected_book, lambda: self.settings),
+                "&Export")
             self.Bind(wx.EVT_MENU, self.on_rename,
                       menu.Append(wx.ID_ANY, "Re&name..."))
             self.Bind(wx.EVT_MENU, self.on_delete,

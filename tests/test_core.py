@@ -2060,6 +2060,172 @@ class TestConvertedPagesSetting(unittest.TestCase):
             shutil.rmtree(appdata, ignore_errors=True)
 
 
+try:
+    import fpdf  # noqa: F401
+    FPDF_SUPPORT = True
+except ImportError:
+    FPDF_SUPPORT = False
+
+
+class TestExportFormats(unittest.TestCase):
+    """Every export format is built from one shared outline, so a book
+    reads the same whichever way it is saved. Headings are what make an
+    exported book navigable with a screen reader, so each format is
+    checked for them specifically."""
+
+    def setUp(self):
+        from core import export
+        self.export = export
+        self.tmp = tempfile.mkdtemp()
+        workspace = os.path.join(self.tmp, "ws")
+        os.makedirs(os.path.join(workspace, "pages"))
+        self.book = library.Book(workspace)
+        self.book.title = "Detective Conan"
+        self.book.page_count = 2
+        self.book.scripts = {
+            1: 'Panel 1 (top right): A street.\nAiko: "Late."\n'
+               "Panel 2 (top left): A clock.",
+            2: "Panel 1 (top right): Kenta runs.",
+        }
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _path(self, name):
+        return os.path.join(self.tmp, name)
+
+    # ----- the shared outline -------------------------------------------
+
+    def test_outline_nests_title_pages_and_panels(self):
+        kinds = [kind for kind, _ in self.export.book_outline(self.book)]
+        self.assertEqual(kinds[0], "h1")
+        self.assertEqual(kinds.count("h2"), 2)   # one per page
+        self.assertEqual(kinds.count("h3"), 3)   # panels across both pages
+        self.assertIn("p", kinds)
+
+    def test_outline_without_panel_labels_has_no_panel_headings(self):
+        items = self.export.book_outline(self.book, show_panel_labels=False)
+        self.assertEqual([k for k, _ in items].count("h3"), 0)
+        self.assertEqual([k for k, _ in items].count("h2"), 2)
+
+    def test_unprocessed_pages_are_named_not_skipped(self):
+        self.book.scripts = {1: "Panel 1 (top right): A street."}
+        texts = [t for _, t in self.export.book_outline(self.book)]
+        self.assertTrue(any("not been processed" in t for t in texts))
+
+    def test_every_format_shares_one_signature(self):
+        self.assertEqual(len(self.export.FORMATS), 5)
+        for label, extension, wildcard, writer in self.export.FORMATS:
+            self.assertTrue(extension.startswith("."))
+            self.assertIn("*" + extension, wildcard)
+            path = self._path("book" + extension)
+            if extension == ".pdf" and not FPDF_SUPPORT:
+                continue
+            writer(self.book, path, show_panel_labels=True, language="en")
+            self.assertGreater(os.path.getsize(path), 0, label)
+
+    # ----- EPUB ----------------------------------------------------------
+
+    def _epub(self):
+        path = self._path("b.epub")
+        self.export.write_epub(self.book, path)
+        return zipfile.ZipFile(path)
+
+    def test_epub_mimetype_is_first_and_uncompressed(self):
+        # Required by the EPUB specification; readers reject it otherwise.
+        archive = self._epub()
+        self.assertEqual(archive.namelist()[0], "mimetype")
+        self.assertEqual(archive.infolist()[0].compress_type,
+                         zipfile.ZIP_STORED)
+        self.assertEqual(archive.read("mimetype"), b"application/epub+zip")
+
+    def test_epub_parts_are_well_formed_xml(self):
+        import xml.dom.minidom as dom
+        archive = self._epub()
+        for name in ("META-INF/container.xml", "OEBPS/package.opf",
+                     "OEBPS/nav.xhtml", "OEBPS/content.xhtml"):
+            dom.parseString(archive.read(name))
+
+    def test_epub_has_a_heading_for_every_page_and_panel(self):
+        content = self._epub().read("OEBPS/content.xhtml").decode()
+        self.assertEqual(content.count("<h1>"), 1)
+        self.assertEqual(content.count("<h2 id="), 2)
+        self.assertEqual(content.count("<h3>"), 3)
+
+    def test_epub_navigation_links_to_each_page(self):
+        nav = self._epub().read("OEBPS/nav.xhtml").decode()
+        self.assertEqual(nav.count("<li>"), 2)
+        self.assertIn('epub:type="toc"', nav)
+
+    def test_epub_carries_the_language(self):
+        path = self._path("ar.epub")
+        self.export.write_epub(self.book, path, language="ar")
+        content = zipfile.ZipFile(path).read("OEBPS/content.xhtml").decode()
+        self.assertIn('lang="ar"', content)
+
+    def test_epub_escapes_markup_in_the_script(self):
+        self.book.scripts = {1: "Panel 1 (top right): a <b> & an ampersand."}
+        content = self._epub().read("OEBPS/content.xhtml").decode()
+        self.assertNotIn("<b>", content)
+        self.assertIn("&amp;", content)
+
+    # ----- Word ----------------------------------------------------------
+
+    def _docx(self):
+        path = self._path("b.docx")
+        self.export.write_docx(self.book, path)
+        return zipfile.ZipFile(path)
+
+    def test_docx_parts_are_well_formed_xml(self):
+        import xml.dom.minidom as dom
+        archive = self._docx()
+        for name in archive.namelist():
+            dom.parseString(archive.read(name))
+
+    def test_docx_uses_real_heading_styles(self):
+        # Text that merely looks big is not navigable; Word's own
+        # Heading styles are what the navigation pane and screen readers
+        # respond to.
+        document = self._docx().read("word/document.xml").decode()
+        self.assertIn('w:val="Heading1"', document)
+        self.assertIn('w:val="Heading2"', document)
+        self.assertIn('w:val="Heading3"', document)
+
+    def test_docx_headings_declare_an_outline_level(self):
+        styles = self._docx().read("word/styles.xml").decode()
+        self.assertEqual(styles.count("outlineLvl"), 3)
+
+    def test_docx_has_the_parts_word_requires(self):
+        names = self._docx().namelist()
+        for required in ("[Content_Types].xml", "_rels/.rels",
+                         "word/document.xml", "word/styles.xml"):
+            self.assertIn(required, names)
+
+    # ----- PDF -----------------------------------------------------------
+
+    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
+    def test_pdf_is_valid_and_navigable(self):
+        path = self._path("b.pdf")
+        self.export.write_pdf(self.book, path)
+        raw = open(path, "rb").read()
+        self.assertTrue(raw.startswith(b"%PDF"))
+        # The outline is what makes the pages reachable from a reader's
+        # bookmarks pane.
+        self.assertIn(b"/Outlines", raw)
+        self.assertIn(b"/Lang", raw)
+        self.assertIn(b"/Title", raw)
+
+    # ----- plain text ------------------------------------------------------
+
+    def test_text_export_can_drop_panel_labels(self):
+        with_labels = self._path("a.txt")
+        without = self._path("b.txt")
+        self.export.write_text(self.book, with_labels, show_panel_labels=True)
+        self.export.write_text(self.book, without, show_panel_labels=False)
+        self.assertIn("Panel 1", open(with_labels, encoding="utf-8").read())
+        self.assertNotIn("Panel 1", open(without, encoding="utf-8").read())
+
+
 class TestJobRegistry(unittest.TestCase):
     """Only one book processes at a time, and the app must know which,
     so it can refuse actions that would disturb a running job. This is

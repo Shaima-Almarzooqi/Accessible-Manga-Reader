@@ -3,6 +3,24 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 0.20.0
+
+### Added
+
+- An Export menu, so a processed book can be saved in more formats. It
+  is in the Book menu of both the reader and your library, and on the
+  context menu in the book list. As well as the text file and web page
+  that were there before, a book can now be saved as an EPUB book, a
+  Word document, or a PDF. The EPUB and the Word document carry a
+  heading for every page and panel, so a reading app, Word's navigation
+  pane and your screen reader can all move around the book by heading.
+  The PDF lists every page and panel in its bookmarks pane.
+
+### Changed
+
+- Saving as a text file or a web page has moved into the new Export
+  menu. Ctrl plus E and Ctrl plus Shift plus E still work.
+
 ## 0.19.0
 
 ### Added

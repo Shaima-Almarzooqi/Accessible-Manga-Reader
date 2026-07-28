@@ -39,6 +39,7 @@ from core import config, extract, html_export, jobs, prompts
 from .ask_dialog import AskDialog
 from .html_view import show_html_view
 from .processing_dialog import start_processing
+from . import export_menu
 from .reprocess_dialog import ReprocessDialog, SCOPE_WHOLE_BOOK
 
 from . import keys as keyhelp
@@ -87,9 +88,7 @@ class ReaderFrame(wx.Frame):
                 ("&Next", self.on_next),
                 ("&Last", self.on_last_page),
                 ("&Go to page...", self.on_go_to_page),
-                # No Alt mnemonic here on purpose: Ctrl+E (in the Book
-                # menu) is the single shortcut for saving.
-                ("Save as text...", self.on_export),
+                ("E&xport...", self.on_export),
                 ("&Ask...", self.on_ask_page),
                 ("&HTML view", self.on_html_view),
                 ("&Close", lambda e: self.Close())]:
@@ -168,10 +167,10 @@ class ReaderFrame(wx.Frame):
                     wx.ID_ANY, "&Import more pages...\tCtrl+I",
                     "Add more image files to the end of this book"))
         book_menu.AppendSeparator()
-        self.Bind(wx.EVT_MENU, self.on_export,
-                  book_menu.Append(wx.ID_ANY, "&Save as text file...\tCtrl+E"))
-        self.Bind(wx.EVT_MENU, self.on_save_html, book_menu.Append(
-            wx.ID_ANY, "Save as &HTML file...\tCtrl+Shift+E"))
+        book_menu.AppendSubMenu(
+            export_menu.build_export_menu(
+                self, lambda: self.book, lambda: self.settings),
+            "&Export", "Save this book in another format")
         self.Bind(wx.EVT_MENU, lambda e: self.Close(),
                   book_menu.Append(wx.ID_ANY, "&Close reader\tEscape"))
         menubar.Append(book_menu, "&Book")
@@ -408,22 +407,11 @@ class ReaderFrame(wx.Frame):
     # ----- export and close ---------------------------------------------------
 
     def on_export(self, event):
-        default_name = (self.book.title or "book") + ".txt"
-        dialog = wx.FileDialog(
-            self, "Save the whole book as a text file",
-            defaultFile=default_name,
-            wildcard="Text files (*.txt)|*.txt",
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
-        if dialog.ShowModal() == wx.ID_OK:
-            try:
-                with open(dialog.GetPath(), "w", encoding="utf-8") as f:
-                    f.write(self.full_text)
-                wx.MessageBox("Saved successfully.", "Save as text",
-                              wx.OK | wx.ICON_INFORMATION, self)
-            except OSError as error:
-                wx.MessageBox("Saving failed: %s" % error, "Save as text",
-                              wx.OK | wx.ICON_ERROR, self)
-        dialog.Destroy()
+        """Offer every export format, the same list as the Book menu."""
+        menu = export_menu.build_export_menu(
+            self, lambda: self.book, lambda: self.settings)
+        self.PopupMenu(menu)
+        menu.Destroy()
 
     def on_ask_page(self, event):
         if not self.book.has_page_images():
@@ -617,23 +605,6 @@ class ReaderFrame(wx.Frame):
             "The built-in HTML view is not available on this system, so "
             "the document was opened in your web browser instead.",
             "HTML view", wx.OK | wx.ICON_INFORMATION, self)
-
-    def on_save_html(self, event):
-        default_name = (self.book.title or "book") + ".html"
-        dialog = wx.FileDialog(
-            self, "Save as HTML file", defaultFile=default_name,
-            wildcard="HTML files (*.html)|*.html",
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
-        if dialog.ShowModal() == wx.ID_OK:
-            try:
-                with open(dialog.GetPath(), "w", encoding="utf-8") as f:
-                    f.write(self._build_html())
-                wx.MessageBox("Saved successfully.", "Save as HTML",
-                              wx.OK | wx.ICON_INFORMATION, self)
-            except OSError as error:
-                wx.MessageBox("Saving failed: %s" % error, "Save as HTML",
-                              wx.OK | wx.ICON_ERROR, self)
-        dialog.Destroy()
 
     def on_close(self, event):
         if self.view == VIEW_BOOK:

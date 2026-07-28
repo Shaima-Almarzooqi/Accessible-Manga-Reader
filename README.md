@@ -78,7 +78,7 @@ In the reader:
 * Ctrl+Home / Ctrl+End — first / last page
 * Alt+G or Ctrl+G — go to a page
 * Ctrl+F — find (entire-book mode)
-* Ctrl+E — save the whole book as a text file
+* Ctrl+E — save the whole book as a text file (Book menu, Export, for every format)
 * Ctrl+Q — ask the AI about the current page (it looks at the page image again to answer; uses your AI service like processing does)
 * Ctrl+R — reprocess this page, a page range, or the whole book
 * Ctrl+I — import more image pages (image-built books only)

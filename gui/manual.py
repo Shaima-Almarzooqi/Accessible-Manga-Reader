@@ -239,9 +239,22 @@ book as an HTML file to keep or open elsewhere.</p>
 
 <h2>Other things you can do</h2>
 
-<h3>Save a book as text</h3>
-<p>In the reader, press Ctrl plus E to save the whole book as a plain
-text file you can keep, share, or open in any program.</p>
+<h3>Save a book in another format</h3>
+<p>A processed book can be saved to a file to keep, share, or read
+somewhere else. Choose Export from the Book menu, either in the reader
+or in your library with the book selected. You can also right arrow onto
+Export in the list's context menu. The formats are:</p>
+<ul>
+<li>Text file, plain text that opens in any program.</li>
+<li>Web page, an HTML file with a heading for each page and panel.</li>
+<li>EPUB book, for reading in any book reading app, with headings and a
+list of pages to jump between.</li>
+<li>Word document, with real heading styles, so Word's navigation pane
+and your screen reader's heading commands both work.</li>
+<li>PDF, with every page and panel listed in the bookmarks pane.</li>
+</ul>
+<p>Ctrl plus E still saves as a text file and Ctrl plus Shift plus E as
+a web page.</p>
 
 <h3>Change how detailed the descriptions are</h3>
 <p>In Settings, on the General tab, the Verbosity option controls how
@@ -328,6 +341,7 @@ any mode</li>
 <li>Ctrl plus R: reprocess this page, a range, or the whole book</li>
 <li>Ctrl plus I: import more image pages (for books built from images)</li>
 <li>Ctrl plus E: save as a text file</li>
+<li>Ctrl plus Shift plus E: save as a web page</li>
 <li>Ctrl plus H: open the HTML view</li>
 <li>Alt plus C, or Escape: close the reader</li>
 </ul>

@@ -5,3 +5,6 @@ pillow>=10.0
 # PDF import. pypdfium2 ships wheels for every Windows architecture,
 # including ARM64, so PDF import works on all builds.
 pypdfium2>=4
+
+# PDF export. Pure Python, so it works on every architecture.
+fpdf2>=2.8
