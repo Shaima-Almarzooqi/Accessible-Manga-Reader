@@ -1,7 +1,30 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
+
+## 0.19.0
+
+### Added
+
+- You can now read while a book is being processed. The processing
+  window no longer locks the rest of the app, so you can go back to
+  your library and open another book, or carry on reading the one you
+  had open. It also shows a Converted pages box that fills in as each
+  page is done, so you can start reading a book before the whole run
+  has finished.
+- A second download. Alongside the usual single .exe there is now a
+  .zip containing the app as a folder. The folder version does not
+  unpack itself every time it starts, so it opens much faster and is
+  less likely to be wrongly flagged by antivirus software. Use whichever
+  you prefer: the .exe is one file, the .zip starts quicker.
+
+### Changed
+
+- Only one book is processed at a time. Starting another while one is
+  running now shows a message instead. A book being processed cannot be
+  deleted, reprocessed, renamed, or have its pages freed until it
+  finishes, and quitting the app while it is still working asks first.
 
 ## 0.18.0
 

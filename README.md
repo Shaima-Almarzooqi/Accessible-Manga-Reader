@@ -1,4 +1,4 @@
-# Accessible Manga Reader
+﻿# Accessible Manga Reader
 
 Manga read aloud properly for blind readers.
 
@@ -8,7 +8,12 @@ It follows each tradition's own reading grammar, set by the comic type in Settin
 
 ## Install
 
-Download the executable for your computer from the [latest release](../../releases) and run it.
+Download from the [latest release](../../releases) and run it. Two formats are offered for each processor type, and they are the same app:
+
+* **`.exe`** — one single file. Simplest, but it unpacks itself every time it starts, so it is slower to open.
+* **`.zip`** — the app as a folder. Extract it anywhere and run the program inside. It opens much faster and is less likely to be wrongly flagged by antivirus software.
+
+Pick `x64` for most Windows PCs, or `arm64` for Windows on ARM (Snapdragon).
 
 * `AccessibleMangaReader-x64.exe` — for most Windows PCs.
 * `AccessibleMangaReader-arm64.exe` — for Windows on ARM machines (Snapdragon).

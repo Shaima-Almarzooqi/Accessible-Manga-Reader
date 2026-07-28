@@ -51,26 +51,29 @@ jobs:
           --name AccessibleMangaReader-${{ matrix.arch }}
           main.py
 
+      # Same name as the exe, built to a separate path so the two do
+      # not collide, then zipped to AccessibleMangaReader-<arch>.zip.
       - name: Build folder version
         run: >
           pyinstaller --onedir --windowed --clean --noupx
           --exclude-module tkinter
-          --name AccessibleMangaReader-${{ matrix.arch }}-folder
+          --distpath dist-folder --workpath build-folder
+          --name AccessibleMangaReader-${{ matrix.arch }}
           main.py
 
       - name: Zip folder version
         shell: pwsh
         run: >
           Compress-Archive
-          -Path "dist/AccessibleMangaReader-${{ matrix.arch }}-folder/*"
-          -DestinationPath "dist/AccessibleMangaReader-${{ matrix.arch }}-folder.zip"
+          -Path "dist-folder/AccessibleMangaReader-${{ matrix.arch }}/*"
+          -DestinationPath "dist/AccessibleMangaReader-${{ matrix.arch }}.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: AccessibleMangaReader-${{ matrix.arch }}
           path: |
             dist/AccessibleMangaReader-${{ matrix.arch }}.exe
-            dist/AccessibleMangaReader-${{ matrix.arch }}-folder.zip
+            dist/AccessibleMangaReader-${{ matrix.arch }}.zip
           if-no-files-found: error
 
   release:

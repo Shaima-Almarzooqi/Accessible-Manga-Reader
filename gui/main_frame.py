@@ -1,4 +1,4 @@
-"""Main window: the library.
+﻿"""Main window: the library.
 
 A list of imported books with their processing status, plus commands to
 import new content (CBZ/ZIP archive, PDF, folder of images, or a
@@ -11,9 +11,9 @@ import webbrowser
 
 import wx
 
-from core import config, extract, library, updates
+from core import config, extract, jobs, library, updates
 from .html_view import show_html_view
-from .processing_dialog import ProcessingDialog
+from .processing_dialog import start_processing
 from .reprocess_dialog import ReprocessDialog, SCOPE_WHOLE_BOOK
 from .reader_frame import ReaderFrame
 from .settings_dialog import SettingsDialog
@@ -67,6 +67,22 @@ class MainFrame(wx.Frame):
         if self.settings.get("check_updates_on_start", True):
             threading.Thread(target=self._check_updates_worker,
                              daemon=True).start()
+
+        self.Bind(wx.EVT_CLOSE, self.on_main_close)
+
+    def on_main_close(self, event):
+        """Quitting while a book is being processed would abandon the
+        run, so say so first. Pages already converted are safe."""
+        if jobs.registry.is_busy():
+            answer = wx.MessageBox(
+                "'%s' is still being processed. Quit anyway? Pages "
+                "already converted are saved, and you can carry on "
+                "later with Process again."
+                % (jobs.registry.current_title() or "A book"),
+                "Still processing", wx.YES_NO | wx.ICON_QUESTION, self)
+            if answer != wx.YES:
+                return
+        event.Skip()
 
     # ----- menu ------------------------------------------------------------
 
@@ -396,18 +412,35 @@ class MainFrame(wx.Frame):
             instructions.Destroy()
             if not proceed:
                 return
-        dialog = ProcessingDialog(self, book, self.settings)
-        outcome = dialog.ShowModal()
-        dialog.Destroy()
+        # Modeless: the library stays usable while this runs, so another
+        # book can be read meanwhile.
+        start_processing(self, book, self.settings,
+                         on_finished=lambda result, read_now:
+                         self._after_processing(book, read_now))
+
+    def _busy_with(self, book):
+        """True, after saying so, when this book is being processed and
+        must not be changed underneath the run."""
+        reason = jobs.registry.blocked_reason(book)
+        if reason:
+            wx.MessageBox(reason, "Processing in progress",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            return True
+        return False
+
+    def _after_processing(self, book, read_now):
+        """Runs when a processing window closes, since the work no
+        longer blocks this window and cannot be waited for inline."""
         self.refresh_books(select_book=book)
-        if outcome == wx.ID_OPEN:
-            # Read now was chosen in the processing dialog.
+        if read_now:
             reader = ReaderFrame(self, book, self.settings)
             reader.Show()
 
     def on_free_space(self, event):
         book = self._selected_book()
         if not book:
+            return
+        if self._busy_with(book):
             return
         if not book.has_page_images():
             wx.MessageBox(
@@ -437,6 +470,8 @@ class MainFrame(wx.Frame):
     def on_reprocess(self, event):
         book = self._selected_book()
         if not book:
+            return
+        if self._busy_with(book):
             return
         if not book.has_page_images():
             wx.MessageBox(
@@ -488,13 +523,9 @@ class MainFrame(wx.Frame):
             return
         book.save()
         self.refresh_books(select_book=book)
-        dialog = ProcessingDialog(self, book, self.settings, pages=cleared)
-        outcome = dialog.ShowModal()
-        dialog.Destroy()
-        self.refresh_books(select_book=book)
-        if outcome == wx.ID_OPEN:
-            reader = ReaderFrame(self, book, self.settings)
-            reader.Show()
+        start_processing(self, book, self.settings, pages=cleared,
+                         on_finished=lambda result, read_now:
+                         self._after_processing(book, read_now))
 
     def on_read(self, event):
         book = self._selected_book()
@@ -535,6 +566,8 @@ class MainFrame(wx.Frame):
         book = self._selected_book()
         if not book:
             return
+        if self._busy_with(book):
+            return
         dialog = InstructionsDialog(self, book)
         result = dialog.ShowModal()
         if result in (wx.ID_OK, wx.ID_APPLY):
@@ -564,6 +597,9 @@ class MainFrame(wx.Frame):
             wx.MessageBox("Select at least one item to remove.",
                           config.APP_NAME, wx.OK | wx.ICON_INFORMATION, self)
             return
+        for book in selected:
+            if self._busy_with(book):
+                return
         if len(selected) > 1:
             answer = wx.MessageBox(
                 "Remove these %d items and all their processed pages "

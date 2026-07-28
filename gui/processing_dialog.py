@@ -5,6 +5,14 @@ read-only log control plus a gauge (which feeds NVDA's progress bar
 output) and a live percentage in the window title (so NVDA+T always
 answers "how far along?").
 
+The window is MODELESS: the library and any open readers stay usable
+while a book is processed, so you can read one book while another is
+converted. core.jobs tracks the single job in flight so the rest of the
+app can refuse actions that would disturb it.
+
+A second read-only control shows the pages converted so far, so a book
+can be read as it is produced instead of waiting for the whole run.
+
 Cancelling: the first press of Cancel tells the processor to stop and
 immediately relabels the button "Close now" -- the window can be closed
 right away without waiting for the in-flight network request, whose
@@ -16,13 +24,38 @@ import threading
 
 import wx
 
-from core import processor
+from core import jobs, processor, prompts
 
 from . import keys as keyhelp
 
 
+def start_processing(parent, book, settings, pages=None, on_finished=None):
+    """Begin processing `book` in a modeless window.
+
+    Returns True when a run was started. Returns False, after saying
+    why, when another book is already being processed: only one job runs
+    at a time, which keeps API quota predictable and stops two runs
+    writing to the same book at once.
+
+    on_finished(result, read_now) is called on the UI thread when the
+    window closes, with read_now True if the user asked to start
+    reading. It is called exactly once.
+    """
+    reason = jobs.registry.busy_reason()
+    if reason:
+        wx.MessageBox(reason, "Already processing",
+                      wx.OK | wx.ICON_INFORMATION, parent)
+        return False
+    if not jobs.registry.start(book):
+        return False
+    dialog = ProcessingDialog(parent, book, settings, pages=pages,
+                              on_finished=on_finished)
+    dialog.Show()
+    return True
+
+
 class ProcessingDialog(wx.Dialog):
-    def __init__(self, parent, book, settings, pages=None):
+    def __init__(self, parent, book, settings, pages=None, on_finished=None):
         """pages: explicit 1-based page numbers to process, or None for
         every page that is still unprocessed. Used when reprocessing a
         range, where the caller has already cleared those pages."""
@@ -31,9 +64,12 @@ class ProcessingDialog(wx.Dialog):
         self.book = book
         self.settings = settings
         self.pages = pages
+        self.on_finished = on_finished
         self._cancel = threading.Event()
         self._closed = False
         self._finished_flag = False
+        self._notified = False
+        self._shown_pages = set()
         self.result = None
 
         panel = wx.Panel(self)
@@ -43,8 +79,17 @@ class ProcessingDialog(wx.Dialog):
         sizer.Add(log_label, 0, wx.LEFT | wx.TOP, 8)
         self.log = wx.TextCtrl(
             panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
-            size=(560, 220))
+            size=(560, 140))
         sizer.Add(self.log, 1, wx.EXPAND | wx.ALL, 8)
+
+        # Pages land here as they are converted, so the book can be read
+        # while the rest is still being processed.
+        pages_label = wx.StaticText(panel, label="Converted &pages:")
+        sizer.Add(pages_label, 0, wx.LEFT, 8)
+        self.pages_view = wx.TextCtrl(
+            panel, style=wx.TE_MULTILINE | wx.TE_READONLY,
+            size=(560, 200))
+        sizer.Add(self.pages_view, 2, wx.EXPAND | wx.ALL, 8)
 
         self.gauge = wx.Gauge(panel, range=100)
         sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
@@ -67,6 +112,9 @@ class ProcessingDialog(wx.Dialog):
         outer.Add(panel, 1, wx.EXPAND)
         self.SetSizerAndFit(outer)
         self.log.SetFocus()
+
+        # Show anything already converted before this run started.
+        self._show_new_pages()
 
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
@@ -107,8 +155,26 @@ class ProcessingDialog(wx.Dialog):
 
     # ----- UI thread ---------------------------------------------------------
 
+    def _show_new_pages(self):
+        """Append any pages converted since this was last called."""
+        numbers = sorted(n for n in self.book.scripts
+                         if 1 <= n <= self.book.page_count
+                         and n not in self._shown_pages)
+        if not numbers:
+            return
+        chunks = []
+        for number in numbers:
+            self._shown_pages.add(number)
+            script = self.book.scripts.get(number, "")
+            if not self.settings.get("show_panel_labels", True):
+                script = prompts.strip_panel_labels(script)
+            chunks.append("Page %d of %d\n%s\n"
+                          % (number, self.book.page_count, script))
+        self.pages_view.AppendText("\n".join(chunks))
+
     def _append(self, message, done, total):
         self.log.AppendText(message + "\n")
+        self._show_new_pages()
         if total:
             percent = int(done * 100 / total)
             self.gauge.SetValue(percent)
@@ -118,6 +184,10 @@ class ProcessingDialog(wx.Dialog):
     def _finished(self, result):
         self.result = result
         self._finished_flag = True
+        self._show_new_pages()
+        # The job slot is freed as soon as the work stops, so another
+        # book can be started even if this window is left open to read.
+        jobs.registry.finish(self.book)
         if result.error:
             self.log.AppendText("Stopped: %s\n" % result.error)
         elif result.cancelled:
@@ -149,19 +219,27 @@ class ProcessingDialog(wx.Dialog):
 
     # ----- cancel / close ------------------------------------------------------
 
-    def _close_now(self):
+    def _shut(self, read_now):
+        """Release the job slot, tell the caller once, and go away."""
         self._closed = True
-        self.EndModal(wx.ID_CLOSE)
+        jobs.registry.finish(self.book)
+        if not self._notified:
+            self._notified = True
+            if self.on_finished:
+                self.on_finished(self.result, read_now)
+        self.Destroy()
+
+    def _close_now(self):
+        self._shut(False)
 
     def on_read_now(self, event):
-        """Close the dialog asking the caller to open the reader.
+        """Close the window asking the caller to open the reader.
 
         The reader is opened by the library window rather than here, so
-        this dialog can be destroyed first and the reader is never
+        this window can be destroyed first and the reader is never
         parented to a window that is about to disappear.
         """
-        self._closed = True
-        self.EndModal(wx.ID_OPEN)
+        self._shut(True)
 
     def on_cancel(self, event):
         if self._finished_flag or not self._thread.is_alive():
@@ -173,10 +251,27 @@ class ProcessingDialog(wx.Dialog):
                 "Cancelling. Progress so far is saved; the request "
                 "currently in flight will be discarded. You can close "
                 "this window now.\n")
-            self.cancel_button.SetLabel("Close &now")
-            self.cancel_button.SetFocus()
-        else:
+            self.cancel_button.SetLabel("&Close now")
+            return
+        self._close_now()
+
+    def on_close(self, event):
+        """The window frame's close button."""
+        if self._finished_flag or not self._thread.is_alive():
             self._close_now()
+            return
+        # Still running: closing stops the run, so say so rather than
+        # abandoning it silently.
+        answer = wx.MessageBox(
+            "'%s' is still being processed. Stop it and close this "
+            "window? Pages already converted are saved, and you can "
+            "carry on later with Process again."
+            % (self.book.title or "This book"),
+            "Stop processing", wx.YES_NO | wx.ICON_QUESTION, self)
+        if answer != wx.YES:
+            return
+        self._cancel.set()
+        self._close_now()
 
     def _on_char_hook(self, event):
         code = event.GetKeyCode()
@@ -194,12 +289,3 @@ class ProcessingDialog(wx.Dialog):
             return
         else:
             event.Skip()
-
-    def on_close(self, event):
-        if self._finished_flag or not self._thread.is_alive():
-            self._close_now()
-        elif not self._cancel.is_set():
-            self.on_cancel(event)
-            event.Veto()
-        else:
-            self._close_now()

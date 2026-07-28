@@ -1,4 +1,4 @@
-"""The in-app user manual, shown from the Help menu.
+﻿"""The in-app user manual, shown from the Help menu.
 
 Rendered as an HTML document so screen reader browse mode can navigate
 it by heading (H, and the number keys for heading levels). The text is
@@ -113,6 +113,19 @@ come back later and continue.</p>
 can start reading without going back to your library. Pressing Enter
 selects it. It also appears after a cancelled run, since the pages
 already saved can be read straight away.</p>
+
+<h3>Reading while a book is processed</h3>
+<p>The processing window does not lock the rest of the app. While a book
+is being converted you can switch back to your library and open a
+different book, or carry on reading one you already had open.</p>
+<p>The processing window also has a Converted pages box, after the
+progress log, which fills in as each page is finished. You can read
+there straight away rather than waiting for the whole book.</p>
+<p>One book is processed at a time. If you start another while one is
+running, the app tells you which book is still going. A book being
+processed cannot be deleted, reprocessed, renamed, or have its pages
+freed until it finishes, and quitting the app while it is still working
+asks you first.</p>
 
 <h2>Step 5: Read</h2>
 <p>Select Read now in the processing window, or select the book in your

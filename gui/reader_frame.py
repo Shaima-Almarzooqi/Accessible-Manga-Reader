@@ -1,4 +1,4 @@
-"""Reader window with three display modes:
+﻿"""Reader window with three display modes:
 
   book:  the entire processed book as one continuous document (caret
          position remembered between sessions).
@@ -34,11 +34,11 @@ import webbrowser
 
 import wx
 
-from core import config, extract, html_export, prompts
+from core import config, extract, html_export, jobs, prompts
 
 from .ask_dialog import AskDialog
 from .html_view import show_html_view
-from .processing_dialog import ProcessingDialog
+from .processing_dialog import start_processing
 from .reprocess_dialog import ReprocessDialog, SCOPE_WHOLE_BOOK
 
 from . import keys as keyhelp
@@ -415,6 +415,8 @@ class ReaderFrame(wx.Frame):
         """
         if self.book.source_kind != "images":
             return
+        if self._busy_with_book():
+            return
         dialog = wx.FileDialog(
             self, "Import more image files (they are added after the "
             "current last page)",
@@ -454,14 +456,30 @@ class ReaderFrame(wx.Frame):
             % (added, first_new, self.book.page_count),
             "Import more pages", wx.YES_NO | wx.ICON_QUESTION, self)
         if answer == wx.YES:
-            dlg = ProcessingDialog(self, self.book, self.settings,
-                                   pages=new_pages)
-            dlg.ShowModal()
-            dlg.Destroy()
+            # Modeless, so this reader stays usable while the new pages
+            # are converted; the refresh happens when that window closes.
+            start_processing(self, self.book, self.settings,
+                             pages=new_pages,
+                             on_finished=lambda result, read_now:
+                             self._after_processing())
+        self._after_processing()
+
+    def _busy_with_book(self):
+        """True, after saying so, when this book is being processed and
+        must not be changed underneath the run."""
+        reason = jobs.registry.blocked_reason(self.book)
+        if reason:
+            wx.MessageBox(reason, "Processing in progress",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            return True
+        return False
+
+    def _after_processing(self):
+        """Rebuild this reader from the book's new scripts and refresh
+        the library. Runs when a processing window closes, since that
+        work no longer blocks this window.
+        """
         self._reload_after_reprocess()
-        # The book on disk now has more pages, and new scripts if they
-        # were processed. Tell the library window so its page count and
-        # "processed" status refresh instead of showing the old totals.
         self._refresh_library()
 
     def _refresh_library(self):
@@ -486,6 +504,8 @@ class ReaderFrame(wx.Frame):
                 "book and import the original file to reprocess it.",
                 "Reprocess pages", wx.OK | wx.ICON_INFORMATION, self)
             return
+        if self._busy_with_book():
+            return
         if self.view == VIEW_BOOK:
             self.current_page = self._page_at_caret()
         dialog = ReprocessDialog(self, self.book,
@@ -509,14 +529,10 @@ class ReaderFrame(wx.Frame):
                 return
             pages_to_do = cleared
         self.book.save()
-        dialog = ProcessingDialog(self, self.book, self.settings,
-                                  pages=pages_to_do)
-        dialog.ShowModal()
-        dialog.Destroy()
-        # The script the reader is showing is now out of date, so
-        # rebuild it and put the reader back where it was.
-        self._reload_after_reprocess()
-        self._refresh_library()
+        start_processing(self, self.book, self.settings,
+                         pages=pages_to_do,
+                         on_finished=lambda result, read_now:
+                         self._after_processing())
 
     def _reload_after_reprocess(self):
         """Redraw the reader from the book's new scripts, keeping the
