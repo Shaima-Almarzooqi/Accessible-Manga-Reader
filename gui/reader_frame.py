@@ -43,7 +43,7 @@ from .reprocess_dialog import ReprocessDialog, SCOPE_WHOLE_BOOK
 
 from . import keys as keyhelp
 
-PAGE_MARKER_RE = re.compile(r"^=== Page (\d+) of \d+ ===", re.MULTILINE)
+PAGE_MARKER_RE = re.compile(r"^Page (\d+) of \d+$", re.MULTILINE)
 
 VIEW_BOOK = "book"
 VIEW_PAGE = "page"
@@ -277,12 +277,16 @@ class ReaderFrame(wx.Frame):
         self.current_page = number
         self.current_panel = panel_index
         self._render()
+        # Focus follows the page: pressing a navigation button should
+        # leave you reading the new page, not sitting on the button.
+        self.text.SetFocus()
 
     def on_next(self, event):
         if self.view == VIEW_PANEL:
             if self.current_panel + 1 < self._panel_count(self.current_page):
                 self.current_panel += 1
                 self._render()
+                self.text.SetFocus()
             else:
                 self._go_page(self.current_page + 1)
         elif self.view == VIEW_PAGE:
@@ -295,6 +299,7 @@ class ReaderFrame(wx.Frame):
             if self.current_panel > 0:
                 self.current_panel -= 1
                 self._render()
+                self.text.SetFocus()
             elif self.current_page > 1:
                 previous = self.current_page - 1
                 self._go_page(previous, self._panel_count(previous) - 1)
@@ -311,6 +316,16 @@ class ReaderFrame(wx.Frame):
                 self._go_page(current)
 
     def _on_char_hook(self, event):
+        code = event.GetKeyCode()
+        # The text control treats Ctrl+Home and Ctrl+End as start and
+        # end of the text and swallows them before the menu accelerator
+        # can fire, so they are handled here instead.
+        if event.ControlDown() and code == wx.WXK_HOME:
+            self.on_first_page(event)
+            return
+        if event.ControlDown() and code == wx.WXK_END:
+            self.on_last_page(event)
+            return
         # The text area needs arrows for reading; buttons must not
         # navigate with them (Tab does that).
         if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):

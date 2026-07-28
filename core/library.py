@@ -1,4 +1,4 @@
-"""Book library: metadata, cached scripts, and resume support.
+﻿"""Book library: metadata, cached scripts, and resume support.
 
 Each book workspace contains a book.json:
 {
@@ -161,7 +161,9 @@ class Book:
             lines.append(self.title)
             lines.append("")
         for n in range(1, self.page_count + 1):
-            lines.append("=== Page %d of %d ===" % (n, self.page_count))
+            # No decoration: a screen reader would read the equals
+            # signs aloud on every page turn.
+            lines.append("Page %d of %d" % (n, self.page_count))
             script = self.scripts.get(n)
             lines.append(script if script else "(This page has not been processed yet.)")
             lines.append("")

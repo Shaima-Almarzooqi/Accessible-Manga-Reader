@@ -29,6 +29,11 @@ newest version is at the top.
 
 ### Changed
 
+- Page headings in whole book view, and in books saved as text, now
+  read "Page 4 of 40" instead of "=== Page 4 of 40 ===", so a screen
+  reader no longer reads out the equals signs on every page.
+- The Previous and Next buttons in the reader move focus to the page
+  text, so you can read straight away instead of tabbing to it.
 - Your library now shows which book is being processed, so the entry
   reads "being processed now" rather than appearing to sit at an
   unchanging page count.

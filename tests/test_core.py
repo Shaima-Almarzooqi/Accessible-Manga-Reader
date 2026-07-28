@@ -236,7 +236,8 @@ class TestLibrary(WorkspaceTestCase):
         book = self._book_with_pages(2)
         book.scripts[1] = "Panel 1: dawn over the city."
         text = book.full_text()
-        self.assertIn("=== Page 1 of 2 ===", text)
+        self.assertIn("Page 1 of 2", text)
+        self.assertNotIn("===", text)
         self.assertIn("dawn over the city", text)
         self.assertIn("not been processed yet", text)
 
@@ -1493,9 +1494,9 @@ class TestPanelLabelStripping(unittest.TestCase):
         self.assertIn("The sign says Panel 3 is next.", stripped)
 
     def test_page_markers_untouched(self):
-        text = "=== Page 2 of 9 ===\nPanel 1 (top left): x."
+        text = "Page 2 of 9\nPanel 1 (top left): x."
         stripped = prompts.strip_panel_labels(text)
-        self.assertIn("=== Page 2 of 9 ===", stripped)
+        self.assertIn("Page 2 of 9", stripped)
 
     def test_default_setting_shows_labels(self):
         self.assertTrue(config.DEFAULT_SETTINGS["show_panel_labels"])
