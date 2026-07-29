@@ -23,6 +23,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
 import xml.sax.saxutils as _xml
 import zipfile
 
@@ -444,7 +445,6 @@ def _write_tagged_pdf(book, path, show_panel_labels, language,
             handle.write(document)
         base_command = [
             "--disable-gpu",
-            "--export-tagged-pdf",
             "--generate-pdf-document-outline",
             "--no-pdf-header-footer",
             "--no-first-run",
@@ -452,8 +452,21 @@ def _write_tagged_pdf(book, path, show_panel_labels, language,
             "--print-to-pdf=" + produced,
             pathlib.Path(source).as_uri(),
         ]
-        for headless_mode in ("--headless=new", "--headless"):
-            attempt = {"headless_mode": headless_mode}
+        # Tagging is the default in current Chromium. The explicit switch
+        # is retained as a retry for older versions and managed installs;
+        # the final attempt also uses the legacy headless spelling.
+        browser_attempts = (
+            ("--headless=new", False),
+            ("--headless=new", True),
+            ("--headless", True),
+        )
+        for attempt_number, (headless_mode, legacy_tagging) in enumerate(
+                browser_attempts, start=1):
+            attempt = {
+                "headless_mode": headless_mode,
+                "tagging_mode": (
+                    "legacy-switch" if legacy_tagging else "default"),
+            }
             diagnostics["attempts"].append(attempt)
             try:
                 if os.path.exists(produced):
@@ -462,10 +475,13 @@ def _write_tagged_pdf(book, path, show_panel_labels, language,
                 # can briefly keep the first profile locked even after
                 # the command returns.
                 profile = os.path.join(
-                    workspace, "profile-" + headless_mode.split("=")[-1])
+                    workspace, "profile-%d" % attempt_number)
+                command = [
+                    browser, headless_mode, "--user-data-dir=" + profile]
+                if legacy_tagging:
+                    command.append("--export-tagged-pdf")
                 completed = subprocess.run(
-                    [browser, headless_mode,
-                     "--user-data-dir=" + profile] + base_command,
+                    command + base_command,
                     timeout=300, check=False,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     text=True, encoding="utf-8", errors="replace")
@@ -481,13 +497,24 @@ def _write_tagged_pdf(book, path, show_panel_labels, language,
             attempt["output_exists"] = os.path.exists(produced)
             if attempt["output_exists"]:
                 attempt["output_bytes"] = os.path.getsize(produced)
-            validation = {}
-            attempt["validation"] = validation
-            if (attempt["output_exists"]
-                    and has_structure_tree(produced, validation)):
+            tagged = False
+            if attempt["output_exists"]:
+                # Normally the browser has fully closed the file when it
+                # exits. Antivirus scanning can briefly make a fresh PDF
+                # unreadable, so retry only load/validator errors.
+                for validation_number in range(3):
+                    validation = {}
+                    attempt["validation"] = validation
+                    tagged = has_structure_tree(produced, validation)
+                    if tagged or "validator_error" not in validation:
+                        break
+                    if validation_number < 2:
+                        time.sleep(0.25 * (validation_number + 1))
+            if tagged:
                 shutil.copyfile(produced, path)
                 diagnostics["success"] = True
                 diagnostics["selected_mode"] = headless_mode
+                diagnostics["selected_tagging"] = attempt["tagging_mode"]
                 return True
         diagnostics["success"] = False
         return False

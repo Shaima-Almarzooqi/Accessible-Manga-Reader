@@ -2265,6 +2265,7 @@ class TestExportFormats(unittest.TestCase):
 
     def test_browser_route_requests_tags_bookmarks_and_no_headers(self):
         commands = []
+        validations = []
         original_browser = self.export._find_browser
         original_run = self.export.subprocess.run
         original_check = self.export.has_structure_tree
@@ -2279,10 +2280,15 @@ class TestExportFormats(unittest.TestCase):
             return type("Result", (), {
                 "returncode": 0, "stdout": "", "stderr": ""})()
 
+        def fake_check(path, diagnostics=None):
+            validations.append(path)
+            # Exercise the compatibility retry: current-browser default
+            # tagging declines, then the legacy switch succeeds.
+            return len(validations) > 1
+
         self.export._find_browser = lambda: "browser"
         self.export.subprocess.run = fake_run
-        self.export.has_structure_tree = (
-            lambda path, diagnostics=None: True)
+        self.export.has_structure_tree = fake_check
         path = self._path("browser.pdf")
         diagnostics = {}
         try:
@@ -2293,12 +2299,19 @@ class TestExportFormats(unittest.TestCase):
             self.export.subprocess.run = original_run
             self.export.has_structure_tree = original_check
         self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
-        command = commands[0]
-        self.assertIn("--export-tagged-pdf", command)
-        self.assertIn("--generate-pdf-document-outline", command)
-        self.assertIn("--no-pdf-header-footer", command)
+        self.assertNotIn("--export-tagged-pdf", commands[0])
+        self.assertIn("--export-tagged-pdf", commands[1])
+        self.assertIn("--generate-pdf-document-outline", commands[1])
+        self.assertIn("--no-pdf-header-footer", commands[1])
+        profiles = [
+            next(item for item in command
+                 if item.startswith("--user-data-dir="))
+            for command in commands
+        ]
+        self.assertNotEqual(profiles[0], profiles[1])
         self.assertTrue(diagnostics["success"])
         self.assertEqual(diagnostics["direction"], "rtl")
+        self.assertEqual(diagnostics["selected_tagging"], "legacy-switch")
 
     def test_pdf_failure_reports_a_packaged_validator_error(self):
         message = self.export._pdf_failure_message({

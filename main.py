@@ -43,13 +43,22 @@ def _run_pdf_export_self_test(report_path):
 
     class Book:
         title = "\u0643\u062a\u0627\u0628 \u0627\u0644\u0627\u062e\u062a\u0628\u0627\u0631"
-        page_count = 1
+        page_count = 12
         workspace = "pdf-export-self-test"
-        scripts = {
-            1: "Panel 1 (top right): "
-               "\u0645\u0631\u062d\u0628\u0627 \u0628\u0627\u0644\u0639\u0627\u0644\u0645. "
-               "English 123.",
-        }
+        scripts = {}
+
+    # Enough Arabic and mixed-direction content to force several PDF
+    # pages. This catches failures hidden by a one-page smoke test.
+    Book.scripts = {
+        page: "\n".join(
+            "Panel %d (top right): "
+            "\u0645\u0631\u062d\u0628\u0627 \u0628\u0627\u0644\u0639\u0627\u0644\u0645. "
+            "\u0647\u0630\u0647 \u0627\u0644\u0635\u0641\u062d\u0629 %d "
+            "\u0648\u0644\u0648\u062d\u062a\u0647\u0627 %d. English 123."
+            % (panel, page, panel)
+            for panel in range(1, 7))
+        for page in range(1, Book.page_count + 1)
+    }
 
     report_path = os.path.abspath(report_path)
     output_path = os.path.splitext(report_path)[0] + ".pdf"
