@@ -5,6 +5,12 @@ newest version is at the top.
 
 ## 0.20.0
 
+### Fixed
+
+- The choices in the Reprocess pages and Ask about this page windows
+  can be moved between with the arrow keys again. They could be read
+  but not changed, so only the first choice was reachable.
+
 ### Added
 
 - An Export menu, so a processed book can be saved in more formats. It

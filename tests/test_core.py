@@ -2263,7 +2263,7 @@ class TestExportFormats(unittest.TestCase):
         finally:
             self.export._find_browsers = original
 
-    def test_browser_route_requests_tags_bookmarks_and_no_headers(self):
+    def test_browser_route_requests_tags_and_no_headers(self):
         commands = []
         validations = []
         original_browsers = self.export._find_browsers
@@ -2301,7 +2301,11 @@ class TestExportFormats(unittest.TestCase):
         self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
         self.assertNotIn("--export-tagged-pdf", commands[0])
         self.assertIn("--export-tagged-pdf", commands[1])
-        self.assertIn("--generate-pdf-document-outline", commands[1])
+        # Bookmarks are deliberately NOT requested: the flag makes one
+        # per heading, and a full volume has over a thousand panel
+        # headings, which a PDF reader must build before showing the
+        # first page. Heading navigation comes from the tag tree.
+        self.assertNotIn("--generate-pdf-document-outline", commands[1])
         self.assertIn("--no-pdf-header-footer", commands[1])
         profiles = [
             next(item for item in command
@@ -2458,6 +2462,92 @@ class TestExportFormats(unittest.TestCase):
         self.export.write_text(self.book, without, show_panel_labels=False)
         self.assertIn("Panel 1", open(with_labels, encoding="utf-8").read())
         self.assertNotIn("Panel 1", open(without, encoding="utf-8").read())
+
+
+try:
+    import wx  # noqa: F401
+    WX_AVAILABLE = True
+except Exception:
+    WX_AVAILABLE = False
+
+
+@unittest.skipUnless(WX_AVAILABLE, "wxPython not installed")
+class TestArrowKeyHandling(unittest.TestCase):
+    """Arrows must reach a radio box's choices.
+
+    Windows builds a radio box from a group box plus one native radio
+    button per choice, and those children are not wx windows, so the
+    focused window is reported as nothing recognisable. The helper used
+    to swallow the key in that case, which left the choices in the
+    Reprocess and Ask dialogs unreachable with a screen reader.
+    """
+
+    class FakeEvent:
+        def __init__(self, code, alt=False, ctrl=False):
+            self._code, self._alt, self._ctrl = code, alt, ctrl
+
+        def GetKeyCode(self):
+            return self._code
+
+        def AltDown(self):
+            return self._alt
+
+        def ControlDown(self):
+            return self._ctrl
+
+    def setUp(self):
+        from gui import keys
+        self.keys = keys
+        self.down = self.FakeEvent(list(keys.DOWN_KEYS)[0])
+
+    def test_unknown_focus_never_swallows_the_key(self):
+        self.assertFalse(
+            self.keys.consume_arrow_navigation(self.down, None))
+
+    def test_a_radio_box_child_is_recognised_by_its_parent(self):
+        from unittest import mock
+        import wx
+        box = mock.MagicMock(spec=wx.RadioBox)
+        box.GetParent.return_value = None
+        child = mock.MagicMock()
+        child.GetParent.return_value = box
+        self.assertFalse(
+            self.keys.consume_arrow_navigation(self.down, child))
+
+    def test_the_radio_box_itself_is_still_recognised(self):
+        from unittest import mock
+        import wx
+        box = mock.MagicMock(spec=wx.RadioBox)
+        box.GetParent.return_value = None
+        self.assertFalse(
+            self.keys.consume_arrow_navigation(self.down, box))
+
+    def test_an_ordinary_control_still_has_arrows_swallowed(self):
+        # The helper's original purpose: Tab, not arrows, moves between
+        # buttons.
+        from unittest import mock
+        plain = mock.MagicMock()
+        plain.GetParent.return_value = None
+        self.assertTrue(
+            self.keys.consume_arrow_navigation(self.down, plain))
+
+    def test_a_control_inside_a_notebook_page_is_unaffected(self):
+        # Only composite controls are looked for up the chain: walking
+        # up for a notebook would let arrows move focus inside a tab.
+        from unittest import mock
+        import wx
+        notebook = mock.MagicMock(spec=wx.Notebook)
+        notebook.GetParent.return_value = None
+        button = mock.MagicMock()
+        button.GetParent.return_value = notebook
+        self.assertTrue(
+            self.keys.consume_arrow_navigation(self.down, button))
+
+    def test_modified_arrows_are_left_alone(self):
+        for event in (self.FakeEvent(list(self.keys.DOWN_KEYS)[0], alt=True),
+                      self.FakeEvent(list(self.keys.DOWN_KEYS)[0], ctrl=True)):
+            self.assertFalse(
+                self.keys.consume_arrow_navigation(event, None))
 
 
 class TestJobRegistry(unittest.TestCase):

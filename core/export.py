@@ -456,7 +456,13 @@ def _write_tagged_pdf(book, path, show_panel_labels, language,
             handle.write(document)
         base_command = [
             "--disable-gpu",
-            "--generate-pdf-document-outline",
+            # No --generate-pdf-document-outline. It turns every heading
+            # into a bookmark, and a full volume has well over a thousand
+            # panel headings; a reader has to build that whole tree
+            # before showing the first page, which made the file slow to
+            # open. Nothing is lost for navigation: a screen reader moves
+            # by heading using the tag tree, which is what makes this
+            # export worth having.
             "--no-pdf-header-footer",
             "--no-first-run",
             "--no-default-browser-check",

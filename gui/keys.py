@@ -34,6 +34,30 @@ ARROW_USING_CONTROLS = (
 ) + ((wx.html2.WebView,) if wx.html2 is not None else ())
 
 
+# Controls that Windows builds out of several native windows, so the
+# window reported as focused can be a child rather than the control
+# itself. A wx.RadioBox is a group box plus one native radio button per
+# choice, and those children are not wx windows.
+COMPOSITE_ARROW_CONTROLS = (wx.RadioBox,)
+
+
+def _needs_arrows(focus):
+    """True when the focused window, or a composite control containing
+    it, uses arrow keys itself."""
+    if isinstance(focus, ARROW_USING_CONTROLS):
+        return True
+    # Only composite controls are looked for up the chain. Walking up
+    # for anything in ARROW_USING_CONTROLS would let arrows loose inside
+    # a notebook page, where they would move focus between controls --
+    # exactly what this helper exists to prevent.
+    parent = focus.GetParent() if focus is not None else None
+    while parent is not None:
+        if isinstance(parent, COMPOSITE_ARROW_CONTROLS):
+            return True
+        parent = parent.GetParent()
+    return False
+
+
 def consume_arrow_navigation(event, focus):
     """True when this arrow key press should be swallowed so that Tab
     remains the only way to move between controls."""
@@ -41,7 +65,13 @@ def consume_arrow_navigation(event, focus):
         return False
     if event.AltDown() or event.ControlDown():
         return False
-    if isinstance(focus, ARROW_USING_CONTROLS):
+    if focus is None:
+        # Nothing identifiable has focus, which is what Windows reports
+        # while a radio box's own native button is focused. Swallowing a
+        # key we cannot account for is the dangerous choice: it left the
+        # choices in the Reprocess and Ask dialogs unreachable.
+        return False
+    if _needs_arrows(focus):
         return False
     return True
 
