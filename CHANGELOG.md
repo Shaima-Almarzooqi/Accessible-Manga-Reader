@@ -14,14 +14,21 @@ newest version is at the top.
   Word document, or a PDF. The EPUB and the Word document carry a
   heading for every page and panel, so a reading app, Word's navigation
   pane and your screen reader can all move around the book by heading.
-  The PDF is tagged, so a screen reader can move through it by
-  heading as well, and every page and panel is listed in its
-  bookmarks pane.
+  The PDF is tagged too, so a screen reader can move through it by
+  heading, and its headings are included in the bookmarks pane. It is
+  created using Microsoft Edge, which comes with Windows, so saving as
+  PDF needs Edge or Chrome installed.
 
 ### Changed
 
 - Saving as a text file or HTML has moved into the new Export
   menu. Ctrl plus E and Ctrl plus Shift plus E still work.
+- Exports now declare whether their language reads right to left or
+  left to right. Arabic, Persian, Urdu, Hebrew and other RTL scripts
+  are laid out from the correct side, while LTR languages remain
+  unchanged. Browser-based PDF export also uses system font fallback
+  and complex-text shaping, so joined Arabic letters and mixed Arabic
+  and Latin text render correctly.
 
 ## 0.19.0
 

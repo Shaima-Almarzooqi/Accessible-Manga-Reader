@@ -251,8 +251,11 @@ Export in the list's context menu. The formats are:</p>
 list of pages to jump between.</li>
 <li>Word document, with real heading styles, so Word's navigation pane
 and your screen reader's heading commands both work.</li>
-<li>PDF, tagged so a screen reader can move through it by heading,
-with every page and panel also listed in the bookmarks pane.</li>
+<li>PDF, tagged so a screen reader can move through it by heading, with
+the headings also listed in the bookmarks pane. This one is created
+using Microsoft Edge, which comes with Windows, so it needs Edge or
+Chrome to be installed. The file itself is an ordinary PDF that opens
+in whatever you normally use.</li>
 </ul>
 <p>Ctrl plus E still saves as a text file and Ctrl plus Shift plus E as
 HTML.</p>
@@ -278,7 +281,10 @@ different language, its text is translated into your chosen one rather
 than copied, so a Japanese manga can be read entirely in Arabic.
 Character names are written in your language's own alphabet, so a name
 appears in Arabic letters when you choose Arabic, and keeps the same
-spelling throughout the book.</p>
+spelling throughout the book. Saved HTML, EPUB, Word and PDF documents
+also use the language's proper text direction: Arabic and other
+right-to-left scripts start at the right, while left-to-right languages
+start at the left.</p>
 
 <h3>Choose the comic type</h3>
 <p>On the General tab, Comic type tells the app how the pages should be

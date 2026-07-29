@@ -2060,21 +2060,6 @@ class TestConvertedPagesSetting(unittest.TestCase):
             shutil.rmtree(appdata, ignore_errors=True)
 
 
-try:
-    import fpdf  # noqa: F401
-    FPDF_SUPPORT = True
-except ImportError:
-    FPDF_SUPPORT = False
-
-try:
-    import weasyprint  # noqa: F401
-    WEASYPRINT_SUPPORT = True
-except Exception:
-    # Importing it can fail on a machine without the native libraries,
-    # which is exactly the case the fallback exists for.
-    WEASYPRINT_SUPPORT = False
-
-
 class TestExportFormats(unittest.TestCase):
     """Every export format is built from one shared outline, so a book
     reads the same whichever way it is saved. Headings are what make an
@@ -2127,7 +2112,9 @@ class TestExportFormats(unittest.TestCase):
             self.assertTrue(extension.startswith("."))
             self.assertIn("*" + extension, wildcard)
             path = self._path("book" + extension)
-            if extension == ".pdf" and not FPDF_SUPPORT:
+            if extension == ".pdf":
+                # PDF needs a browser to render it, which a test machine
+                # may not have; the renderer is exercised separately.
                 continue
             writer(self.book, path, show_panel_labels=True, language="en")
             self.assertGreater(os.path.getsize(path), 0, label)
@@ -2171,6 +2158,16 @@ class TestExportFormats(unittest.TestCase):
         content = zipfile.ZipFile(path).read("OEBPS/content.xhtml").decode()
         self.assertIn('lang="ar"', content)
 
+    def test_epub_sets_rtl_and_ltr_direction(self):
+        for language, expected in (("Arabic", "rtl"), ("English", "ltr"),
+                                   ("fa", "rtl"), ("ja", "ltr")):
+            path = self._path(language.replace(" ", "-") + ".epub")
+            self.export.write_epub(self.book, path, language=language)
+            archive = zipfile.ZipFile(path)
+            for name in ("OEBPS/content.xhtml", "OEBPS/nav.xhtml"):
+                content = archive.read(name).decode()
+                self.assertIn('dir="%s"' % expected, content)
+
     def test_epub_escapes_markup_in_the_script(self):
         self.book.scripts = {1: "Panel 1 (top right): a <b> & an ampersand."}
         content = self._epub().read("OEBPS/content.xhtml").decode()
@@ -2209,47 +2206,116 @@ class TestExportFormats(unittest.TestCase):
                          "word/document.xml", "word/styles.xml"):
             self.assertIn(required, names)
 
+    def test_docx_marks_rtl_paragraphs_and_runs(self):
+        path = self._path("ar.docx")
+        self.export.write_docx(self.book, path, language="Arabic")
+        document = zipfile.ZipFile(path).read("word/document.xml").decode()
+        self.assertIn("<w:bidi/>", document)
+        self.assertIn("<w:rtl/>", document)
+        self.assertIn('w:bidi="ar"', document)
+
+    def test_docx_leaves_ltr_paragraphs_ltr(self):
+        document = self._docx().read("word/document.xml").decode()
+        self.assertNotIn("<w:bidi/>", document)
+        self.assertNotIn("<w:rtl/>", document)
+
     # ----- PDF -----------------------------------------------------------
 
-    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
-    def test_outline_pdf_is_valid_and_navigable(self):
-        # The fallback route, used when the tagged one is unavailable.
-        # Its outline is what makes pages reachable from a reader's
-        # bookmarks pane.
-        path = self._path("outline.pdf")
-        self.export._write_outline_pdf(self.book, path)
-        raw = open(path, "rb").read()
-        self.assertTrue(raw.startswith(b"%PDF"))
-        self.assertIn(b"/Outlines", raw)
-        self.assertIn(b"/Lang", raw)
-        self.assertIn(b"/Title", raw)
+    def test_pdf_refuses_rather_than_saving_an_untagged_file(self):
+        # Dropping to an untagged PDF would produce a file that cannot
+        # be navigated by heading, which is the reason to offer PDF.
+        original_writer = self.export._write_tagged_pdf
+        original_browser = self.export._find_browser
+        self.export._write_tagged_pdf = lambda *args, **kwargs: False
+        self.export._find_browser = lambda: "browser"
+        try:
+            with self.assertRaises(RuntimeError):
+                self.export.write_pdf(self.book, self._path("no.pdf"))
+        finally:
+            self.export._write_tagged_pdf = original_writer
+            self.export._find_browser = original_browser
 
-    def test_write_pdf_produces_a_pdf_by_whichever_route(self):
-        path = self._path("either.pdf")
-        if not (FPDF_SUPPORT or WEASYPRINT_SUPPORT):
-            self.skipTest("no PDF backend installed")
-        self.export.write_pdf(self.book, path)
+    def test_pdf_failure_names_a_format_that_will_work(self):
+        original_writer = self.export._write_tagged_pdf
+        original_browser = self.export._find_browser
+        self.export._write_tagged_pdf = lambda *args, **kwargs: False
+        self.export._find_browser = lambda: "browser"
+        try:
+            with self.assertRaises(RuntimeError) as raised:
+                self.export.write_pdf(self.book, self._path("no2.pdf"))
+            self.assertIn("EPUB", str(raised.exception))
+        finally:
+            self.export._write_tagged_pdf = original_writer
+            self.export._find_browser = original_browser
+
+    def test_structure_tree_check_survives_a_bad_file(self):
+        path = self._path("not-a.pdf")
+        with open(path, "wb") as handle:
+            handle.write(b"not a pdf at all")
+        self.assertFalse(self.export.has_structure_tree(path))
+
+    def test_tagged_route_declines_when_no_browser_is_present(self):
+        original = self.export._find_browser
+        self.export._find_browser = lambda: None
+        try:
+            self.assertFalse(self.export._write_tagged_pdf(
+                self.book, self._path("none.pdf"), True, "English"))
+        finally:
+            self.export._find_browser = original
+
+    def test_browser_route_requests_tags_bookmarks_and_no_headers(self):
+        commands = []
+        original_browser = self.export._find_browser
+        original_run = self.export.subprocess.run
+        original_check = self.export.has_structure_tree
+
+        def fake_run(command, **kwargs):
+            commands.append(command)
+            target = next(
+                item.split("=", 1)[1] for item in command
+                if item.startswith("--print-to-pdf="))
+            with open(target, "wb") as handle:
+                handle.write(b"%PDF test")
+
+        self.export._find_browser = lambda: "browser"
+        self.export.subprocess.run = fake_run
+        self.export.has_structure_tree = lambda path: True
+        path = self._path("browser.pdf")
+        try:
+            self.assertTrue(self.export._write_tagged_pdf(
+                self.book, path, True, "Arabic"))
+        finally:
+            self.export._find_browser = original_browser
+            self.export.subprocess.run = original_run
+            self.export.has_structure_tree = original_check
         self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
+        command = commands[0]
+        self.assertIn("--export-tagged-pdf", command)
+        self.assertIn("--generate-pdf-document-outline", command)
+        self.assertIn("--no-pdf-header-footer", command)
 
-    @unittest.skipUnless(WEASYPRINT_SUPPORT, "WeasyPrint not installed")
-    def test_tagged_pdf_route_carries_a_structure_tree(self):
-        # This is the route worth having: a real structure tree lets a
-        # screen reader move by heading, which an outline alone does not.
-        from weasyprint import HTML
-        from core import html_export
-        path = self._path("tagged.pdf")
-        HTML(string=html_export.build_html(self.book, language="en")
-             ).write_pdf(path, pdf_variant="pdf/ua-1",
-                         uncompressed_pdf=True)
-        raw = open(path, "rb").read()
-        for marker in (b"/StructTreeRoot", b"/MarkInfo", b"/Marked true",
-                       b"/Lang", b"/H1", b"/H2", b"/H3", b"/P"):
-            self.assertIn(marker, raw)
-
-    @unittest.skipUnless(WEASYPRINT_SUPPORT, "WeasyPrint not installed")
-    def test_tagged_route_is_preferred_when_available(self):
-        self.assertTrue(self.export._write_tagged_pdf(
-            self.book, self._path("pref.pdf"), True, "English"))
+    @unittest.skipUnless(PDF_SUPPORT, "pypdfium2 not installed")
+    def test_real_browser_pdf_keeps_arabic_text_and_tags(self):
+        if not self.export._find_browser():
+            self.skipTest("Edge or Chrome not installed")
+        self.book.title = "\u0643\u062a\u0627\u0628 \u0627\u0644\u0627\u062e\u062a\u0628\u0627\u0631"
+        self.book.scripts = {
+            1: "Panel 1 (top right): "
+               "\u0645\u0631\u062d\u0628\u0627 \u0628\u0627\u0644\u0639\u0627\u0644\u0645. "
+               "English 123.",
+        }
+        path = self._path("arabic.pdf")
+        self.export.write_pdf(self.book, path, language="Arabic")
+        self.assertTrue(self.export.has_structure_tree(path))
+        import pypdfium2 as pdfium
+        document = pdfium.PdfDocument(path)
+        try:
+            extracted = "".join(
+                page.get_textpage().get_text_range() for page in document)
+        finally:
+            document.close()
+        self.assertIn("\u0645\u0631\u062d\u0628\u0627", extracted)
+        self.assertIn("English 123", extracted)
 
     def test_language_names_become_codes(self):
         # The menu passes a language NAME. A document needs a code: a
@@ -2262,6 +2328,9 @@ class TestExportFormats(unittest.TestCase):
         self.assertEqual(config.language_code("Klingon"), "en")
         self.assertEqual(config.language_code(""), "en")
         self.assertTrue(config.is_rtl("ar"))
+        self.assertTrue(config.is_rtl("fa"))
+        self.assertTrue(config.is_rtl("en-Arab"))
+        self.assertFalse(config.is_rtl("ar-Latn"))
         self.assertFalse(config.is_rtl("en"))
 
     def test_html_export_uses_a_language_code_not_a_name(self):
@@ -2269,71 +2338,22 @@ class TestExportFormats(unittest.TestCase):
         self.export.write_html(self.book, path, language="Arabic")
         markup = open(path, encoding="utf-8").read()
         self.assertIn('lang="ar"', markup)
+        self.assertIn('dir="rtl"', markup)
         self.assertNotIn('lang="Arabic"', markup)
+
+    def test_html_export_marks_ltr_languages_too(self):
+        path = self._path("en.html")
+        self.export.write_html(self.book, path, language="English")
+        markup = open(path, encoding="utf-8").read()
+        self.assertIn('lang="en" dir="ltr"', markup)
 
     def test_epub_uses_a_language_code_not_a_name(self):
         path = self._path("ar2.epub")
         self.export.write_epub(self.book, path, language="Arabic")
         content = zipfile.ZipFile(path).read("OEBPS/content.xhtml").decode()
         self.assertIn('lang="ar"', content)
+        self.assertIn('dir="rtl"', content)
         self.assertNotIn('lang="Arabic"', content)
-
-    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
-    def test_pdf_falls_back_when_the_tagged_route_is_unavailable(self):
-        # The tagged route needs native libraries that may be missing.
-        # When they are, a PDF must still be produced.
-        original = self.export._write_tagged_pdf
-        self.export._write_tagged_pdf = lambda *a, **k: False
-        try:
-            path = self._path("fallback.pdf")
-            self.export.write_pdf(self.book, path)
-            self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
-        finally:
-            self.export._write_tagged_pdf = original
-
-    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
-    def test_pdf_handles_curly_punctuation(self):
-        # The reported failure: a PDF's built-in fonts cover only
-        # Latin-1, so an ordinary curly apostrophe aborted the export.
-        self.book.scripts = {
-            1: "Panel 1 (top right): Conan\u2019s glasses \u2014 "
-               "\u201cLate,\u201d he said\u2026",
-        }
-        path = self._path("curly.pdf")
-        self.export.write_pdf(self.book, path)
-        self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
-
-    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
-    def test_pdf_handles_a_non_latin_script(self):
-        # Books can be exported in any output language.
-        self.book.scripts = {
-            1: "Panel 1 (top right): \u0645\u0631\u062d\u0628\u0627.",
-        }
-        path = self._path("arabic.pdf")
-        self.export.write_pdf(self.book, path, language="ar")
-        self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
-
-    @unittest.skipUnless(FPDF_SUPPORT, "fpdf2 not installed")
-    def test_pdf_still_saves_without_any_unicode_font(self):
-        # On a machine with none of the fonts we look for, the export
-        # must degrade rather than fail.
-        original = self.export._UNICODE_FONTS[:]
-        self.export._UNICODE_FONTS[:] = [("/nonexistent-font.ttf", None)]
-        try:
-            self.book.scripts = {
-                1: "Panel 1 (top right): Conan\u2019s hat \u2014 done\u2026",
-            }
-            path = self._path("degraded.pdf")
-            self.export.write_pdf(self.book, path)
-            self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
-        finally:
-            self.export._UNICODE_FONTS[:] = original
-
-    def test_smart_punctuation_has_plain_equivalents(self):
-        plain = self.export._plain("Conan\u2019s \u2014 \u201cx\u201d\u2026")
-        self.assertEqual(plain, "Conan's -- \"x\"...")
-        # And nothing survives that a Latin-1 font could not draw.
-        plain.encode("latin-1")
 
     # ----- plain text ------------------------------------------------------
 

@@ -6,9 +6,7 @@ pillow>=10.0
 # including ARM64, so PDF import works on all builds.
 pypdfium2>=4
 
-# PDF export. Pure Python, so it works on every architecture.
-fpdf2>=2.8
-
-# Tagged (PDF/UA) export. Needs the GTK runtime present when the
-# app is built; without it the PDF export falls back to fpdf2.
-weasyprint>=62
+# Tagged PDF export uses Microsoft Edge (or another installed Chromium
+# browser) as the renderer. pypdfium2 above verifies that the result has
+# the structure tree a screen reader needs, so no second PDF dependency
+# or bundled native rendering runtime is required.

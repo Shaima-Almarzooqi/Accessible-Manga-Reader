@@ -14,7 +14,7 @@ its h2, with the panel prefixes stripped and every line a paragraph.
 
 import html
 
-from . import prompts
+from . import config, prompts
 
 PAGE_STYLE = """
 body { font-family: sans-serif; max-width: 46em; margin: 1em auto;
@@ -34,10 +34,13 @@ def _paragraphs(text):
 
 def build_html(book, show_panel_labels=True, language="en"):
     """Return a complete HTML document for the whole book."""
+    language = config.language_code(language)
+    direction = "rtl" if config.is_rtl(language) else "ltr"
     title = html.escape(book.title or "Book")
     parts = [
         "<!DOCTYPE html>",
-        '<html lang="%s">' % html.escape(language),
+        '<html lang="%s" dir="%s">'
+        % (html.escape(language), direction),
         "<head>",
         '<meta charset="utf-8">',
         "<title>%s</title>" % title,

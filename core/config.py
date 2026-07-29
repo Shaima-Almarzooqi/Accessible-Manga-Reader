@@ -144,11 +144,23 @@ LANGUAGE_CODES = {
     "Japanese": "ja", "Korean": "ko", "Persian": "fa", "Polish": "pl",
     "Portuguese": "pt", "Russian": "ru", "Spanish": "es",
     "Swedish": "sv", "Turkish": "tr", "Urdu": "ur",
-    "Vietnamese": "vi", "Hebrew": "he",
+    "Vietnamese": "vi", "Hebrew": "he", "Pashto": "ps",
+    "Sindhi": "sd", "Uyghur": "ug", "Yiddish": "yi",
+    "Divehi": "dv", "Kurdish (Sorani)": "ckb", "Dari": "prs",
 }
 
-# Scripts that read right to left, so exports can set dir="rtl".
-RTL_LANGUAGE_CODES = {"ar", "fa", "ur", "he"}
+# Languages and script subtags that read right to left, so exports can
+# declare their direction instead of leaving layout to a renderer's
+# guess. A script subtag takes precedence: ar-Latn is LTR, while an
+# otherwise LTR language explicitly written as en-Arab is RTL.
+RTL_LANGUAGE_CODES = {
+    "ar", "ckb", "dv", "fa", "he", "nqo", "prs", "ps", "sd", "syr",
+    "ug", "ur", "yi",
+}
+RTL_SCRIPT_CODES = {
+    "adlm", "arab", "hebr", "mand", "nkoo", "rohg", "samr", "syrc",
+    "thaa",
+}
 
 
 def language_code(name):
@@ -173,7 +185,15 @@ def language_code(name):
 
 
 def is_rtl(code):
-    return code.split("-")[0].lower() in RTL_LANGUAGE_CODES
+    if not code:
+        return False
+    parts = code.replace("_", "-").split("-")
+    # A four-letter subtag is an ISO 15924 script code.
+    scripts = [part.lower() for part in parts[1:]
+               if len(part) == 4 and part.isalpha()]
+    if scripts:
+        return scripts[0] in RTL_SCRIPT_CODES
+    return parts[0].lower() in RTL_LANGUAGE_CODES
 
 
 SERVICE_LABELS = [

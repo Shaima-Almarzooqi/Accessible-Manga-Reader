@@ -11,15 +11,18 @@ so each format carries them properly:
         best of these formats for reading with assistive technology.
   DOCX  Word's own Heading 1/2/3 styles, so the navigation pane and
         screen-reader heading commands both work.
-  PDF   a document outline (the bookmarks pane), a title and a language.
-        Note that this is NOT a tagged (PDF/UA) file: producing one
-        needs commercial tooling. Saving the Word export as PDF from
-        Word gives a fully tagged file if that is required.
+  PDF   tagged, by printing the HTML with the system's Chromium browser
+        (Edge, which comes with Windows). Its structure tree and document
+        outline make the headings available to assistive technology.
   HTML  handled by core.html_export.
   TXT   plain text, from the book's own full_text().
 """
 
 import os
+import pathlib
+import shutil
+import subprocess
+import tempfile
 import xml.sax.saxutils as _xml
 import zipfile
 
@@ -109,6 +112,7 @@ def _epub_body(items):
 def _epub_nav(items, language):
     """A navigation document listing every page, so a reading app can
     jump straight to one."""
+    direction = "rtl" if config.is_rtl(language) else "ltr"
     links = []
     for index, (kind, text) in enumerate(items):
         if kind == "h2":
@@ -118,13 +122,13 @@ def _epub_nav(items, language):
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<html xmlns="http://www.w3.org/1999/xhtml"\n'
         '      xmlns:epub="http://www.idpf.org/2007/ops" lang="%s"'
-        ' xml:lang="%s">\n'
+        ' xml:lang="%s" dir="%s">\n'
         "<head><title>Contents</title></head>\n"
         "<body>\n"
         '<nav epub:type="toc" id="toc"><h1>Contents</h1>\n'
         "<ol>\n%s\n</ol>\n</nav>\n"
         "</body>\n</html>\n"
-        % (language, language, "\n".join(links)))
+        % (language, language, direction, "\n".join(links)))
 
 
 def write_epub(book, path, show_panel_labels=True, language="en"):
@@ -135,6 +139,7 @@ def write_epub(book, path, show_panel_labels=True, language="en"):
     free and the markup exactly as accessible as we want it.
     """
     language = config.language_code(language)
+    direction = "rtl" if config.is_rtl(language) else "ltr"
     items = book_outline(book, show_panel_labels=show_panel_labels)
     title = book.title or "Book"
 
@@ -150,9 +155,11 @@ def write_epub(book, path, show_panel_labels=True, language="en"):
 
     content = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<html xmlns="http://www.w3.org/1999/xhtml" lang="%s" xml:lang="%s">\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" lang="%s"'
+        ' xml:lang="%s" dir="%s">\n'
         "<head><title>%s</title></head>\n<body>\n%s\n</body>\n</html>\n"
-        % (language, language, _escape(title), "\n".join(body_parts)))
+        % (language, language, direction, _escape(title),
+           "\n".join(body_parts)))
 
     package = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -250,15 +257,29 @@ def write_docx(book, path, show_panel_labels=True, language="en"):
     heading styles rather than text that merely looks big.
     """
     language = config.language_code(language)
+    rtl = config.is_rtl(language)
     items = book_outline(book, show_panel_labels=show_panel_labels)
     body = []
     for kind, text in items:
-        style = "" if kind == "p" else (
-            '<w:pPr><w:pStyle w:val="Heading%s"/></w:pPr>' % kind[1])
+        paragraph_properties = []
+        if kind != "p":
+            paragraph_properties.append(
+                '<w:pStyle w:val="Heading%s"/>' % kind[1])
+        if rtl:
+            paragraph_properties.append("<w:bidi/>")
+        style = ("<w:pPr>%s</w:pPr>"
+                 % "".join(paragraph_properties)
+                 if paragraph_properties else "")
+        run_properties = '<w:lang w:val="%s"' % _escape(language)
+        if rtl:
+            run_properties += ' w:bidi="%s"' % _escape(language)
+        run_properties += "/>"
+        if rtl:
+            run_properties += "<w:rtl/>"
         body.append(
-            "<w:p>%s<w:r><w:rPr><w:lang w:val=\"%s\"/></w:rPr>"
+            "<w:p>%s<w:r><w:rPr>%s</w:rPr>"
             "<w:t xml:space=\"preserve\">%s</w:t></w:r></w:p>"
-            % (style, _escape(language), _escape(text)))
+            % (style, run_properties, _escape(text)))
     document = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<w:document xmlns:w="%s"><w:body>\n%s\n</w:body></w:document>\n'
@@ -274,185 +295,149 @@ def write_docx(book, path, show_panel_labels=True, language="en"):
 
 # ----- PDF -----------------------------------------------------------------
 
-# A PDF's built-in fonts only cover Latin-1, which fails on something as
-# ordinary as a curly apostrophe, never mind Arabic or Japanese. A font
-# is borrowed from the system rather than bundled, to keep the download
-# small. Arial and Segoe UI both cover Latin, Greek, Cyrillic, Arabic
-# and Hebrew; the CJK fonts are added as fallbacks for anything they
-# miss. The non-Windows paths matter when the app is run from source.
-# Each entry is (regular, bold). Bold is optional: without it headings
-# are still larger, and the outline is what carries navigation anyway.
-_UNICODE_FONTS = [
-    (r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
-    (r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf"),
-    (r"C:\Windows\Fonts\tahoma.ttf", r"C:\Windows\Fonts\tahomabd.ttf"),
-    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-    ("/Library/Fonts/Arial Unicode.ttf", None),
-]
-
-_FALLBACK_FONTS = [
-    r"C:\Windows\Fonts\msgothic.ttc",     # Japanese
-    r"C:\Windows\Fonts\malgun.ttf",       # Korean
-    r"C:\Windows\Fonts\simsun.ttc",       # Simplified Chinese
-    r"C:\Windows\Fonts\msjh.ttc",         # Traditional Chinese
-    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
-]
-
-# Used only when no Unicode font can be found at all, so that an export
-# still succeeds instead of failing on punctuation.
-_PLAIN_EQUIVALENTS = {
-    0x2018: "'", 0x2019: "'", 0x201A: "'", 0x201B: "'",
-    0x201C: '"', 0x201D: '"', 0x201E: '"', 0x2032: "'", 0x2033: '"',
-    0x2013: "-", 0x2014: "--", 0x2212: "-", 0x2026: "...",
-    0x00A0: " ", 0x2022: "*", 0x00AB: '"', 0x00BB: '"',
-}
-
-
-def _existing(paths):
-    return [p for p in paths if os.path.exists(p)]
-
-
-def _register_pdf_fonts(pdf):
-    """Give the document a Unicode font plus fallbacks.
-
-    Returns (family, bold_available). family is None when the system has
-    none of the fonts we know about, and the caller must fall back to a
-    built-in Latin-1 font.
-    """
-    regular = bold = None
-    for candidate, candidate_bold in _UNICODE_FONTS:
-        if os.path.exists(candidate):
-            regular = candidate
-            if candidate_bold and os.path.exists(candidate_bold):
-                bold = candidate_bold
-            break
-    if regular is None:
-        return None, False
-
-    pdf.add_font("body", fname=regular)
-    has_bold = False
-    if bold:
-        try:
-            pdf.add_font("body", style="B", fname=bold)
-            has_bold = True
-        except Exception:
-            has_bold = False
-
-    fallbacks = []
-    for index, font in enumerate(_existing(_FALLBACK_FONTS)):
-        name = "fallback%d" % index
-        try:
-            pdf.add_font(name, fname=font)
-        except Exception:
-            continue  # a font we cannot read is simply not offered
-        fallbacks.append(name)
-    if fallbacks:
-        pdf.set_fallback_fonts(fallbacks)
-    return "body", has_bold
-
-
-def _plain(text):
-    """Text reduced to what a built-in PDF font can render."""
-    text = text.translate(_PLAIN_EQUIVALENTS)
-    return text.encode("latin-1", "replace").decode("latin-1")
-
-
-def _write_block(pdf, text, height, unicode_ok):
-    """Write one paragraph or heading, never failing on a character.
-
-    Even with fallbacks a glyph may be missing everywhere, which fpdf2
-    reports rather than silently dropping. Losing a character is a far
-    better outcome than losing the whole export.
-    """
-    if not unicode_ok:
-        text = _plain(text)
-    try:
-        pdf.multi_cell(0, height, text, new_x="LMARGIN", new_y="NEXT")
-    except Exception:
-        try:
-            pdf.multi_cell(0, height, _plain(text),
-                           new_x="LMARGIN", new_y="NEXT")
-        except Exception:
-            pass  # skip a line rather than abandon the document
-
-
 def write_pdf(book, path, show_panel_labels=True, language="en"):
-    """Save the book as a PDF.
+    """Save the book as a tagged PDF.
 
-    Two routes are tried. WeasyPrint turns the HTML the app already
-    produces into a genuinely tagged (PDF/UA) file, where a screen
-    reader can move by heading exactly as it does in the web page
-    export -- that is the one worth having. It needs native libraries
-    that may not be present, so when it is unavailable the export falls
-    back to a simpler PDF that carries a navigable outline but no tags.
+    The book's own HTML is printed by the system's Chromium browser.
+    Microsoft Edge is Chromium and ships with supported Windows
+    versions, so no rendering engine or fonts need to be bundled. The
+    HTML language and direction are retained, allowing Chromium's text
+    shaping and system-font fallback to handle Arabic and other scripts.
+
+    There is deliberately no untagged fallback. A PDF without a
+    structure tree cannot be navigated by heading, which is the main
+    reason to offer this format; EPUB and Word are better alternatives
+    if the browser cannot produce the accessible PDF.
     """
     if _write_tagged_pdf(book, path, show_panel_labels, language):
         return
-    _write_outline_pdf(book, path, show_panel_labels, language)
+    if _find_browser() is None:
+        raise RuntimeError(
+            "a tagged PDF is created using Microsoft Edge, which comes "
+            "with Windows, and Edge or Chrome could not be found. Try "
+            "saving as EPUB or as a Word document instead.")
+    raise RuntimeError(
+        "the PDF came back without the heading structure a screen reader "
+        "needs, so it was not saved. Try saving as EPUB or as a Word "
+        "document instead.")
+
+
+# Chromium has supported tagged headless PDF output since 2020. New
+# versions enable tagging by default; --export-tagged-pdf also enables
+# it on older versions. Edge is included on Windows 10/11 (including
+# ARM), while the other paths keep source runs useful elsewhere.
+_BROWSERS = [
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.join(os.environ.get("LOCALAPPDATA", ""),
+                 r"Microsoft\Edge\Application\msedge.exe"),
+    os.path.join(os.environ.get("LOCALAPPDATA", ""),
+                 r"Google\Chrome\Application\chrome.exe"),
+    "/usr/bin/microsoft-edge",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+]
+
+
+def _find_browser():
+    for candidate in _BROWSERS:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    for name in ("msedge", "microsoft-edge", "chrome", "chromium",
+                 "google-chrome"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
+def has_structure_tree(path):
+    """True when a PDF carries the tag tree a screen reader navigates."""
+    try:
+        import pypdfium2 as pdfium
+        import pypdfium2.raw as raw
+    except Exception:
+        return False
+    try:
+        document = pdfium.PdfDocument(path)
+    except Exception:
+        return False
+    try:
+        is_tagged = getattr(raw, "FPDFCatalog_IsTagged", None)
+        if is_tagged is not None and not is_tagged(document.raw):
+            return False
+        for page in document:
+            tree = raw.FPDF_StructTree_GetForPage(page.raw)
+            if not tree:
+                continue
+            try:
+                if raw.FPDF_StructTree_CountChildren(tree) > 0:
+                    return True
+            finally:
+                raw.FPDF_StructTree_Close(tree)
+        return False
+    except Exception:
+        return False
+    finally:
+        try:
+            document.close()
+        except Exception:
+            pass
 
 
 def _write_tagged_pdf(book, path, show_panel_labels, language):
-    """Render the book's HTML to a tagged PDF. True when it worked.
+    """Print the book's HTML to a checked, tagged PDF.
 
-    PDF/UA needs a heading hierarchy, a document title and a language,
-    all of which build_html already produces, so there is nothing extra
-    to describe here.
+    build_html supplies semantic headings plus the BCP-47 language and
+    explicit RTL/LTR direction. Chromium turns that accessibility tree
+    into PDF tags, shapes complex scripts such as Arabic, and falls back
+    through installed fonts for characters outside the primary font.
     """
-    try:
-        from weasyprint import HTML
-    except Exception:
-        return False  # native libraries missing; caller falls back
-    try:
-        document = html_export.build_html(
-            book, show_panel_labels=show_panel_labels,
-            language=config.language_code(language))
-        HTML(string=document).write_pdf(path, pdf_variant="pdf/ua-1")
-    except Exception:
+    browser = _find_browser()
+    if not browser:
         return False
-    return True
 
-
-def _write_outline_pdf(book, path, show_panel_labels=True, language="en"):
-    """Save the book as a PDF with a navigable outline.
-
-    Every page and panel heading becomes an outline entry, so a PDF
-    reader's bookmarks pane can be used to jump around the book. The
-    document also carries a title and a language, and the text runs in a
-    single column so reading order is unambiguous.
-
-    This is not a tagged (PDF/UA) file -- see the module docstring.
-    """
-    from fpdf import FPDF  # imported lazily: only this export needs it
-
-    items = book_outline(book, show_panel_labels=show_panel_labels)
-    title = book.title or "Book"
-
-    pdf = FPDF()
-    pdf.set_title(title)
-    pdf.set_lang(language)
-    pdf.set_auto_page_break(True, margin=15)
-    pdf.add_page()
-    family, has_bold = _register_pdf_fonts(pdf)
-    unicode_ok = family is not None
-    if not unicode_ok:
-        family, has_bold = "helvetica", True
-    heading_style = "B" if has_bold else ""
-
-    for kind, text in items:
-        if kind == "p":
-            pdf.set_font(family, size=11)
-            _write_block(pdf, text, 6, unicode_ok)
-            pdf.ln(2)
-            continue
-        level = int(kind[1])
-        pdf.start_section(_plain(text) if not unicode_ok else text,
-                          level=level - 1)
-        pdf.set_font(family, style=heading_style,
-                     size={1: 18, 2: 14, 3: 12}[level])
-        _write_block(pdf, text, 8, unicode_ok)
-        pdf.ln(2)
-    pdf.output(path)
+    document = html_export.build_html(
+        book, show_panel_labels=show_panel_labels, language=language)
+    workspace = tempfile.mkdtemp(prefix="amr-pdf-")
+    source = os.path.join(workspace, "book.html")
+    produced = os.path.join(workspace, "book.pdf")
+    try:
+        with open(source, "w", encoding="utf-8") as handle:
+            handle.write(document)
+        base_command = [
+            "--disable-gpu",
+            "--export-tagged-pdf",
+            "--generate-pdf-document-outline",
+            "--no-pdf-header-footer",
+            "--no-first-run",
+            "--no-default-browser-check",
+            # A throwaway profile avoids disturbing, or waiting for, the
+            # browser the reader may already have open.
+            "--user-data-dir=" + os.path.join(workspace, "profile"),
+            "--print-to-pdf=" + produced,
+            pathlib.Path(source).as_uri(),
+        ]
+        for headless_mode in ("--headless=new", "--headless"):
+            try:
+                if os.path.exists(produced):
+                    os.remove(produced)
+                subprocess.run(
+                    [browser, headless_mode] + base_command,
+                    timeout=300, check=False,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                continue
+            if os.path.exists(produced) and has_structure_tree(produced):
+                shutil.copyfile(produced, path)
+                return True
+        return False
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
 
 
 # ----- what the menus offer ------------------------------------------------
