@@ -345,16 +345,26 @@ _BROWSERS = [
 ]
 
 
-def _find_browser():
+def _find_browsers():
+    """Every installed supported browser, in preferred order."""
+    found = []
     for candidate in _BROWSERS:
         if candidate and os.path.exists(candidate):
-            return candidate
+            found.append(os.path.normcase(os.path.abspath(candidate)))
     for name in ("msedge", "microsoft-edge", "chrome", "chromium",
                  "google-chrome"):
-        found = shutil.which(name)
-        if found:
-            return found
-    return None
+        candidate = shutil.which(name)
+        if candidate:
+            found.append(os.path.normcase(os.path.abspath(candidate)))
+    # A browser can be found both at its standard path and on PATH.
+    # dict preserves discovery order while removing duplicates.
+    return list(dict.fromkeys(found))
+
+
+def _find_browser():
+    """The preferred installed browser, retained for callers/tests."""
+    browsers = _find_browsers()
+    return browsers[0] if browsers else None
 
 
 def has_structure_tree(path, diagnostics=None):
@@ -424,10 +434,11 @@ def _write_tagged_pdf(book, path, show_panel_labels, language,
     """
     if diagnostics is None:
         diagnostics = {}
-    browser = _find_browser()
-    diagnostics["browser"] = browser
+    browsers = _find_browsers()
+    diagnostics["browsers"] = browsers
+    diagnostics["browser"] = browsers[0] if browsers else None
     diagnostics["attempts"] = []
-    if not browser:
+    if not browsers:
         diagnostics["success"] = False
         return False
 
@@ -460,62 +471,68 @@ def _write_tagged_pdf(book, path, show_panel_labels, language,
             ("--headless=new", True),
             ("--headless", True),
         )
-        for attempt_number, (headless_mode, legacy_tagging) in enumerate(
-                browser_attempts, start=1):
-            attempt = {
-                "headless_mode": headless_mode,
-                "tagging_mode": (
-                    "legacy-switch" if legacy_tagging else "default"),
-            }
-            diagnostics["attempts"].append(attempt)
-            try:
-                if os.path.exists(produced):
-                    os.remove(produced)
-                # Each retry gets its own profile. An Edge child process
-                # can briefly keep the first profile locked even after
-                # the command returns.
-                profile = os.path.join(
-                    workspace, "profile-%d" % attempt_number)
-                command = [
-                    browser, headless_mode, "--user-data-dir=" + profile]
-                if legacy_tagging:
-                    command.append("--export-tagged-pdf")
-                completed = subprocess.run(
-                    command + base_command,
-                    timeout=300, check=False,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    text=True, encoding="utf-8", errors="replace")
-                attempt["return_code"] = completed.returncode
-                if completed.stdout:
-                    attempt["stdout"] = completed.stdout[-2000:]
-                if completed.stderr:
-                    attempt["stderr"] = completed.stderr[-2000:]
-            except Exception as error:
-                attempt["browser_error"] = (
-                    "%s: %s" % (type(error).__name__, error))
-                continue
-            attempt["output_exists"] = os.path.exists(produced)
-            if attempt["output_exists"]:
-                attempt["output_bytes"] = os.path.getsize(produced)
-            tagged = False
-            if attempt["output_exists"]:
-                # Normally the browser has fully closed the file when it
-                # exits. Antivirus scanning can briefly make a fresh PDF
-                # unreadable, so retry only load/validator errors.
-                for validation_number in range(3):
-                    validation = {}
-                    attempt["validation"] = validation
-                    tagged = has_structure_tree(produced, validation)
-                    if tagged or "validator_error" not in validation:
-                        break
-                    if validation_number < 2:
-                        time.sleep(0.25 * (validation_number + 1))
-            if tagged:
-                shutil.copyfile(produced, path)
-                diagnostics["success"] = True
-                diagnostics["selected_mode"] = headless_mode
-                diagnostics["selected_tagging"] = attempt["tagging_mode"]
-                return True
+        attempt_number = 0
+        for browser in browsers:
+            for headless_mode, legacy_tagging in browser_attempts:
+                attempt_number += 1
+                attempt = {
+                    "browser": browser,
+                    "headless_mode": headless_mode,
+                    "tagging_mode": (
+                        "legacy-switch" if legacy_tagging else "default"),
+                }
+                diagnostics["attempts"].append(attempt)
+                try:
+                    if os.path.exists(produced):
+                        os.remove(produced)
+                    # Each retry gets its own profile. A Chromium child
+                    # process can briefly keep the previous profile locked
+                    # even after its command returns.
+                    profile = os.path.join(
+                        workspace, "profile-%d" % attempt_number)
+                    command = [
+                        browser, headless_mode,
+                        "--user-data-dir=" + profile]
+                    if legacy_tagging:
+                        command.append("--export-tagged-pdf")
+                    completed = subprocess.run(
+                        command + base_command,
+                        timeout=300, check=False,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        text=True, encoding="utf-8", errors="replace")
+                    attempt["return_code"] = completed.returncode
+                    if completed.stdout:
+                        attempt["stdout"] = completed.stdout[-2000:]
+                    if completed.stderr:
+                        attempt["stderr"] = completed.stderr[-2000:]
+                except Exception as error:
+                    attempt["browser_error"] = (
+                        "%s: %s" % (type(error).__name__, error))
+                    continue
+                attempt["output_exists"] = os.path.exists(produced)
+                if attempt["output_exists"]:
+                    attempt["output_bytes"] = os.path.getsize(produced)
+                tagged = False
+                if attempt["output_exists"]:
+                    # Normally the browser has fully closed the file when
+                    # it exits. Antivirus scanning can briefly make a
+                    # fresh PDF unreadable, so retry only load errors.
+                    for validation_number in range(3):
+                        validation = {}
+                        attempt["validation"] = validation
+                        tagged = has_structure_tree(produced, validation)
+                        if tagged or "validator_error" not in validation:
+                            break
+                        if validation_number < 2:
+                            time.sleep(0.25 * (validation_number + 1))
+                if tagged:
+                    shutil.copyfile(produced, path)
+                    diagnostics["success"] = True
+                    diagnostics["selected_browser"] = browser
+                    diagnostics["selected_mode"] = headless_mode
+                    diagnostics["selected_tagging"] = (
+                        attempt["tagging_mode"])
+                    return True
         diagnostics["success"] = False
         return False
     finally:
@@ -525,6 +542,12 @@ def _write_tagged_pdf(book, path, show_panel_labels, language,
 def _pdf_failure_message(diagnostics):
     """Turn detailed renderer diagnostics into a useful short error."""
     attempts = diagnostics.get("attempts", [])
+    browser_names = []
+    for attempt in attempts:
+        name = _browser_display_name(attempt.get("browser"))
+        if name and name not in browser_names:
+            browser_names.append(name)
+    browser_list = " and ".join(browser_names) or "The browser"
     validation_errors = [
         attempt.get("validation", {}).get("validator_error")
         for attempt in attempts
@@ -532,28 +555,50 @@ def _pdf_failure_message(diagnostics):
     ]
     if validation_errors:
         return (
-            "Edge created a PDF, but this app build could not verify its "
+            "%s created a PDF, but this app build could not verify its "
             "heading structure (%s). It was not saved. Try saving as EPUB "
             "or as a Word document instead."
-            % validation_errors[-1])
+            % (browser_list, validation_errors[-1]))
     produced = [attempt for attempt in attempts
                 if attempt.get("output_exists")]
     if produced:
         return (
-            "Edge created a PDF, but it did not contain the heading "
+            "%s created a PDF, but it did not contain the heading "
             "structure a screen reader needs, so it was not saved. Try "
-            "saving as EPUB or as a Word document instead.")
+            "saving as EPUB or as a Word document instead." % browser_list)
     if attempts:
         last = attempts[-1]
         detail = last.get("browser_error")
         if not detail:
-            detail = "exit code %s" % last.get("return_code", "unknown")
+            return_code = last.get("return_code")
+            last_browser = _browser_display_name(last.get("browser"))
+            if return_code == 0:
+                detail = "%s reported success but produced no PDF" % (
+                    last_browser or "the last browser")
+            else:
+                detail = "%s returned exit code %s" % (
+                    last_browser or "the last browser",
+                    return_code if return_code is not None else "unknown")
         return (
-            "Edge could not create the PDF (%s). Try saving as EPUB or "
-            "as a Word document instead." % detail)
+            "%s could not create the PDF (%s). Try saving as EPUB or as "
+            "a Word document instead." % (browser_list, detail))
     return (
-        "Edge could not create a tagged PDF. Try saving as EPUB or as a "
-        "Word document instead.")
+        "The browser could not create a tagged PDF. Try saving as EPUB "
+        "or as a Word document instead.")
+
+
+def _browser_display_name(path):
+    """A short user-facing name for a browser executable path."""
+    if not path:
+        return None
+    name = os.path.basename(path).lower()
+    if "edge" in name:
+        return "Microsoft Edge"
+    if "chrome" in name:
+        return "Google Chrome"
+    if "chromium" in name:
+        return "Chromium"
+    return os.path.basename(path)
 
 
 # ----- what the menus offer ------------------------------------------------

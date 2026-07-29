@@ -2255,18 +2255,18 @@ class TestExportFormats(unittest.TestCase):
         self.assertFalse(self.export.has_structure_tree(path))
 
     def test_tagged_route_declines_when_no_browser_is_present(self):
-        original = self.export._find_browser
-        self.export._find_browser = lambda: None
+        original = self.export._find_browsers
+        self.export._find_browsers = lambda: []
         try:
             self.assertFalse(self.export._write_tagged_pdf(
                 self.book, self._path("none.pdf"), True, "English"))
         finally:
-            self.export._find_browser = original
+            self.export._find_browsers = original
 
     def test_browser_route_requests_tags_bookmarks_and_no_headers(self):
         commands = []
         validations = []
-        original_browser = self.export._find_browser
+        original_browsers = self.export._find_browsers
         original_run = self.export.subprocess.run
         original_check = self.export.has_structure_tree
 
@@ -2286,7 +2286,7 @@ class TestExportFormats(unittest.TestCase):
             # tagging declines, then the legacy switch succeeds.
             return len(validations) > 1
 
-        self.export._find_browser = lambda: "browser"
+        self.export._find_browsers = lambda: ["browser"]
         self.export.subprocess.run = fake_run
         self.export.has_structure_tree = fake_check
         path = self._path("browser.pdf")
@@ -2295,7 +2295,7 @@ class TestExportFormats(unittest.TestCase):
             self.assertTrue(self.export._write_tagged_pdf(
                 self.book, path, True, "Arabic", diagnostics))
         finally:
-            self.export._find_browser = original_browser
+            self.export._find_browsers = original_browsers
             self.export.subprocess.run = original_run
             self.export.has_structure_tree = original_check
         self.assertTrue(open(path, "rb").read().startswith(b"%PDF"))
@@ -2313,6 +2313,42 @@ class TestExportFormats(unittest.TestCase):
         self.assertEqual(diagnostics["direction"], "rtl")
         self.assertEqual(diagnostics["selected_tagging"], "legacy-switch")
 
+    def test_chrome_is_tried_after_every_edge_attempt_fails(self):
+        commands = []
+        original_browsers = self.export._find_browsers
+        original_run = self.export.subprocess.run
+        original_check = self.export.has_structure_tree
+
+        def fake_run(command, **kwargs):
+            commands.append(command)
+            target = next(
+                item.split("=", 1)[1] for item in command
+                if item.startswith("--print-to-pdf="))
+            with open(target, "wb") as handle:
+                handle.write(b"%PDF test")
+            return type("Result", (), {
+                "returncode": 0, "stdout": "", "stderr": ""})()
+
+        def fake_check(path, diagnostics=None):
+            return commands[-1][0] == "chrome"
+
+        self.export._find_browsers = lambda: ["edge", "chrome"]
+        self.export.subprocess.run = fake_run
+        self.export.has_structure_tree = fake_check
+        diagnostics = {}
+        try:
+            self.assertTrue(self.export._write_tagged_pdf(
+                self.book, self._path("fallback.pdf"), True,
+                "English", diagnostics))
+        finally:
+            self.export._find_browsers = original_browsers
+            self.export.subprocess.run = original_run
+            self.export.has_structure_tree = original_check
+        self.assertEqual(
+            [command[0] for command in commands],
+            ["edge", "edge", "edge", "chrome"])
+        self.assertEqual(diagnostics["selected_browser"], "chrome")
+
     def test_pdf_failure_reports_a_packaged_validator_error(self):
         message = self.export._pdf_failure_message({
             "attempts": [{
@@ -2325,6 +2361,28 @@ class TestExportFormats(unittest.TestCase):
         self.assertIn("could not verify", message)
         self.assertIn("missing pdfium", message)
         self.assertIn("EPUB", message)
+
+    def test_pdf_failure_explains_success_code_without_an_output(self):
+        message = self.export._pdf_failure_message({
+            "attempts": [
+                {
+                    "browser": r"C:\Program Files (x86)\Microsoft\Edge"
+                               r"\Application\msedge.exe",
+                    "return_code": 0,
+                    "output_exists": False,
+                },
+                {
+                    "browser": r"C:\Program Files\Google\Chrome"
+                               r"\Application\chrome.exe",
+                    "return_code": 0,
+                    "output_exists": False,
+                },
+            ],
+        })
+        self.assertIn("Microsoft Edge and Google Chrome", message)
+        self.assertIn(
+            "Google Chrome reported success but produced no PDF", message)
+        self.assertNotIn("exit code 0", message)
 
     @unittest.skipUnless(PDF_SUPPORT, "pypdfium2 not installed")
     def test_real_browser_pdf_keeps_arabic_text_and_tags(self):
