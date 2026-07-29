@@ -2276,14 +2276,18 @@ class TestExportFormats(unittest.TestCase):
                 if item.startswith("--print-to-pdf="))
             with open(target, "wb") as handle:
                 handle.write(b"%PDF test")
+            return type("Result", (), {
+                "returncode": 0, "stdout": "", "stderr": ""})()
 
         self.export._find_browser = lambda: "browser"
         self.export.subprocess.run = fake_run
-        self.export.has_structure_tree = lambda path: True
+        self.export.has_structure_tree = (
+            lambda path, diagnostics=None: True)
         path = self._path("browser.pdf")
+        diagnostics = {}
         try:
             self.assertTrue(self.export._write_tagged_pdf(
-                self.book, path, True, "Arabic"))
+                self.book, path, True, "Arabic", diagnostics))
         finally:
             self.export._find_browser = original_browser
             self.export.subprocess.run = original_run
@@ -2293,6 +2297,21 @@ class TestExportFormats(unittest.TestCase):
         self.assertIn("--export-tagged-pdf", command)
         self.assertIn("--generate-pdf-document-outline", command)
         self.assertIn("--no-pdf-header-footer", command)
+        self.assertTrue(diagnostics["success"])
+        self.assertEqual(diagnostics["direction"], "rtl")
+
+    def test_pdf_failure_reports_a_packaged_validator_error(self):
+        message = self.export._pdf_failure_message({
+            "attempts": [{
+                "output_exists": True,
+                "validation": {
+                    "validator_error": "ImportError: missing pdfium",
+                },
+            }],
+        })
+        self.assertIn("could not verify", message)
+        self.assertIn("missing pdfium", message)
+        self.assertIn("EPUB", message)
 
     @unittest.skipUnless(PDF_SUPPORT, "pypdfium2 not installed")
     def test_real_browser_pdf_keeps_arabic_text_and_tags(self):

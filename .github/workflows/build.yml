@@ -51,6 +51,31 @@ jobs:
           --name AccessibleMangaReader-${{ matrix.arch }}
           main.py
 
+      # This must run after PyInstaller. Source tests cannot catch a
+      # native PDFium component missing from the packaged executable.
+      - name: Test PDF export in packaged executable
+        shell: pwsh
+        run: |
+          $report = "packaged-pdf-self-test-${{ matrix.arch }}.json"
+          $argument = "--pdf-export-self-test=$report"
+          $process = Start-Process `
+            -FilePath "dist/AccessibleMangaReader-${{ matrix.arch }}.exe" `
+            -ArgumentList $argument -WindowStyle Hidden -Wait -PassThru
+          if (Test-Path $report) {
+            Get-Content $report
+          } else {
+            throw "The packaged app did not create its PDF test report."
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged PDF export failed with exit code $($process.ExitCode)."
+          }
+          $result = Get-Content $report -Raw | ConvertFrom-Json
+          if (-not $result.ok) {
+            throw "Packaged PDF export reported failure."
+          }
+          Remove-Item $report -Force
+          Remove-Item "packaged-pdf-self-test-${{ matrix.arch }}.pdf" -Force
+
       # Same name as the exe, built to a separate path so the two do
       # not collide, then zipped to AccessibleMangaReader-<arch>.zip.
       - name: Build folder version

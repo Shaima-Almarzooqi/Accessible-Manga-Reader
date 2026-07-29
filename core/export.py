@@ -295,7 +295,8 @@ def write_docx(book, path, show_panel_labels=True, language="en"):
 
 # ----- PDF -----------------------------------------------------------------
 
-def write_pdf(book, path, show_panel_labels=True, language="en"):
+def write_pdf(book, path, show_panel_labels=True, language="en",
+              diagnostics=None):
     """Save the book as a tagged PDF.
 
     The book's own HTML is printed by the system's Chromium browser.
@@ -309,17 +310,17 @@ def write_pdf(book, path, show_panel_labels=True, language="en"):
     reason to offer this format; EPUB and Word are better alternatives
     if the browser cannot produce the accessible PDF.
     """
-    if _write_tagged_pdf(book, path, show_panel_labels, language):
+    if diagnostics is None:
+        diagnostics = {}
+    if _write_tagged_pdf(
+            book, path, show_panel_labels, language, diagnostics):
         return
     if _find_browser() is None:
         raise RuntimeError(
             "a tagged PDF is created using Microsoft Edge, which comes "
             "with Windows, and Edge or Chrome could not be found. Try "
             "saving as EPUB or as a Word document instead.")
-    raise RuntimeError(
-        "the PDF came back without the heading structure a screen reader "
-        "needs, so it was not saved. Try saving as EPUB or as a Word "
-        "document instead.")
+    raise RuntimeError(_pdf_failure_message(diagnostics))
 
 
 # Chromium has supported tagged headless PDF output since 2020. New
@@ -355,32 +356,54 @@ def _find_browser():
     return None
 
 
-def has_structure_tree(path):
+def has_structure_tree(path, diagnostics=None):
     """True when a PDF carries the tag tree a screen reader navigates."""
+    if diagnostics is None:
+        diagnostics = {}
     try:
         import pypdfium2 as pdfium
         import pypdfium2.raw as raw
-    except Exception:
+        diagnostics["validator"] = "pypdfium2"
+    except Exception as error:
+        diagnostics["validator_error"] = (
+            "%s: %s" % (type(error).__name__, error))
         return False
     try:
         document = pdfium.PdfDocument(path)
-    except Exception:
+        diagnostics["pdf_pages"] = len(document)
+    except Exception as error:
+        diagnostics["validator_error"] = (
+            "%s: %s" % (type(error).__name__, error))
         return False
     try:
         is_tagged = getattr(raw, "FPDFCatalog_IsTagged", None)
-        if is_tagged is not None and not is_tagged(document.raw):
-            return False
-        for page in document:
-            tree = raw.FPDF_StructTree_GetForPage(page.raw)
-            if not tree:
-                continue
+        if is_tagged is not None:
+            diagnostics["catalog_tagged"] = bool(is_tagged(document.raw))
+            if not diagnostics["catalog_tagged"]:
+                return False
+        child_counts = []
+        for page_number in range(len(document)):
+            page = document[page_number]
             try:
-                if raw.FPDF_StructTree_CountChildren(tree) > 0:
-                    return True
+                tree = raw.FPDF_StructTree_GetForPage(page.raw)
+                if not tree:
+                    child_counts.append(0)
+                    continue
+                try:
+                    count = raw.FPDF_StructTree_CountChildren(tree)
+                    child_counts.append(count)
+                    if count > 0:
+                        diagnostics["structure_children"] = child_counts
+                        return True
+                finally:
+                    raw.FPDF_StructTree_Close(tree)
             finally:
-                raw.FPDF_StructTree_Close(tree)
+                page.close()
+        diagnostics["structure_children"] = child_counts
         return False
-    except Exception:
+    except Exception as error:
+        diagnostics["validator_error"] = (
+            "%s: %s" % (type(error).__name__, error))
         return False
     finally:
         try:
@@ -389,7 +412,8 @@ def has_structure_tree(path):
             pass
 
 
-def _write_tagged_pdf(book, path, show_panel_labels, language):
+def _write_tagged_pdf(book, path, show_panel_labels, language,
+                      diagnostics=None):
     """Print the book's HTML to a checked, tagged PDF.
 
     build_html supplies semantic headings plus the BCP-47 language and
@@ -397,10 +421,19 @@ def _write_tagged_pdf(book, path, show_panel_labels, language):
     into PDF tags, shapes complex scripts such as Arabic, and falls back
     through installed fonts for characters outside the primary font.
     """
+    if diagnostics is None:
+        diagnostics = {}
     browser = _find_browser()
+    diagnostics["browser"] = browser
+    diagnostics["attempts"] = []
     if not browser:
+        diagnostics["success"] = False
         return False
 
+    language = config.language_code(language)
+    diagnostics["language"] = language
+    diagnostics["direction"] = (
+        "rtl" if config.is_rtl(language) else "ltr")
     document = html_export.build_html(
         book, show_panel_labels=show_panel_labels, language=language)
     workspace = tempfile.mkdtemp(prefix="amr-pdf-")
@@ -416,28 +449,84 @@ def _write_tagged_pdf(book, path, show_panel_labels, language):
             "--no-pdf-header-footer",
             "--no-first-run",
             "--no-default-browser-check",
-            # A throwaway profile avoids disturbing, or waiting for, the
-            # browser the reader may already have open.
-            "--user-data-dir=" + os.path.join(workspace, "profile"),
             "--print-to-pdf=" + produced,
             pathlib.Path(source).as_uri(),
         ]
         for headless_mode in ("--headless=new", "--headless"):
+            attempt = {"headless_mode": headless_mode}
+            diagnostics["attempts"].append(attempt)
             try:
                 if os.path.exists(produced):
                     os.remove(produced)
-                subprocess.run(
-                    [browser, headless_mode] + base_command,
+                # Each retry gets its own profile. An Edge child process
+                # can briefly keep the first profile locked even after
+                # the command returns.
+                profile = os.path.join(
+                    workspace, "profile-" + headless_mode.split("=")[-1])
+                completed = subprocess.run(
+                    [browser, headless_mode,
+                     "--user-data-dir=" + profile] + base_command,
                     timeout=300, check=False,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, encoding="utf-8", errors="replace")
+                attempt["return_code"] = completed.returncode
+                if completed.stdout:
+                    attempt["stdout"] = completed.stdout[-2000:]
+                if completed.stderr:
+                    attempt["stderr"] = completed.stderr[-2000:]
+            except Exception as error:
+                attempt["browser_error"] = (
+                    "%s: %s" % (type(error).__name__, error))
                 continue
-            if os.path.exists(produced) and has_structure_tree(produced):
+            attempt["output_exists"] = os.path.exists(produced)
+            if attempt["output_exists"]:
+                attempt["output_bytes"] = os.path.getsize(produced)
+            validation = {}
+            attempt["validation"] = validation
+            if (attempt["output_exists"]
+                    and has_structure_tree(produced, validation)):
                 shutil.copyfile(produced, path)
+                diagnostics["success"] = True
+                diagnostics["selected_mode"] = headless_mode
                 return True
+        diagnostics["success"] = False
         return False
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+def _pdf_failure_message(diagnostics):
+    """Turn detailed renderer diagnostics into a useful short error."""
+    attempts = diagnostics.get("attempts", [])
+    validation_errors = [
+        attempt.get("validation", {}).get("validator_error")
+        for attempt in attempts
+        if attempt.get("validation", {}).get("validator_error")
+    ]
+    if validation_errors:
+        return (
+            "Edge created a PDF, but this app build could not verify its "
+            "heading structure (%s). It was not saved. Try saving as EPUB "
+            "or as a Word document instead."
+            % validation_errors[-1])
+    produced = [attempt for attempt in attempts
+                if attempt.get("output_exists")]
+    if produced:
+        return (
+            "Edge created a PDF, but it did not contain the heading "
+            "structure a screen reader needs, so it was not saved. Try "
+            "saving as EPUB or as a Word document instead.")
+    if attempts:
+        last = attempts[-1]
+        detail = last.get("browser_error")
+        if not detail:
+            detail = "exit code %s" % last.get("return_code", "unknown")
+        return (
+            "Edge could not create the PDF (%s). Try saving as EPUB or "
+            "as a Word document instead." % detail)
+    return (
+        "Edge could not create a tagged PDF. Try saving as EPUB or as a "
+        "Word document instead.")
 
 
 # ----- what the menus offer ------------------------------------------------
