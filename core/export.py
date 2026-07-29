@@ -145,14 +145,19 @@ def write_epub(book, path, show_panel_labels=True, language="en"):
     title = book.title or "Book"
 
     # Page headings get ids so the navigation document can link to them.
+    # dir="auto" per block: the book's text and the chosen output
+    # language can disagree, and forcing one direction on everything
+    # puts punctuation at the wrong end and runs words together.
     body_parts = []
     for index, (kind, text) in enumerate(items):
         if kind == "h2":
-            body_parts.append('<h2 id="p%d">%s</h2>' % (index, _escape(text)))
+            body_parts.append('<h2 id="p%d" dir="auto">%s</h2>'
+                              % (index, _escape(text)))
         elif kind == "p":
-            body_parts.append("<p>%s</p>" % _escape(text))
+            body_parts.append('<p dir="auto">%s</p>' % _escape(text))
         else:
-            body_parts.append("<%s>%s</%s>" % (kind, _escape(text), kind))
+            body_parts.append('<%s dir="auto">%s</%s>'
+                              % (kind, _escape(text), kind))
 
     content = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

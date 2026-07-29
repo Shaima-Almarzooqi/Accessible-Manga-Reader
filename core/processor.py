@@ -240,6 +240,10 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
                 result.pages_done += 1
             else:
                 result.pages_failed.append(number)
+        # Record what the pages were actually produced in, so an
+        # export can label the book correctly later even if the
+        # setting has changed.
+        book.output_language = settings.get("output_language", "English")
         if notes:
             book.character_notes = notes
         book.save()  # crash-safe checkpoint after every batch

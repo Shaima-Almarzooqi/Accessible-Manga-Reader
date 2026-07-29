@@ -29,7 +29,13 @@ p { margin: 0.4em 0; }
 def _paragraphs(text):
     lines = [html.escape(line.strip())
              for line in text.splitlines() if line.strip()]
-    return "\n".join("<p>%s</p>" % line for line in lines)
+    # dir="auto" lets each line take its direction from its own first
+    # strong character. A book's text and the app's current output
+    # language can disagree -- an English book exported while the
+    # setting says Arabic, or an Arabic book quoting an English title --
+    # and forcing one direction on everything moves punctuation to the
+    # wrong end of the line and runs words together.
+    return "\n".join('<p dir="auto">%s</p>' % line for line in lines)
 
 
 def build_html(book, show_panel_labels=True, language="en"):
@@ -47,13 +53,14 @@ def build_html(book, show_panel_labels=True, language="en"):
         "<style>%s</style>" % PAGE_STYLE,
         "</head>",
         "<body>",
-        "<h1>%s</h1>" % title,
+        '<h1 dir="auto">%s</h1>' % title,
     ]
     for number in range(1, book.page_count + 1):
-        parts.append("<h2>Page %d of %d</h2>" % (number, book.page_count))
+        parts.append('<h2 dir="auto">Page %d of %d</h2>'
+                     % (number, book.page_count))
         script = book.scripts.get(number)
         if not script:
-            parts.append("<p>(This page has not been processed yet.)</p>")
+            parts.append('<p dir="auto">(This page has not been processed yet.)</p>')
             continue
         if show_panel_labels:
             panels = prompts.split_panels(script)
@@ -62,7 +69,7 @@ def build_html(book, show_panel_labels=True, language="en"):
                 heading = "Panel %d of %d" % (index, len(panels))
                 if position:
                     heading += " (%s)" % position
-                parts.append("<h3>%s</h3>" % html.escape(heading))
+                parts.append('<h3 dir="auto">%s</h3>' % html.escape(heading))
                 parts.append(_paragraphs(prompts.strip_panel_labels(panel)))
         else:
             parts.append(_paragraphs(prompts.strip_panel_labels(script)))

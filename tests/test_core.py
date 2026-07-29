@@ -1515,10 +1515,10 @@ class TestHtmlExport(WorkspaceTestCase):
     def test_headings_with_labels(self):
         from core import html_export
         page = html_export.build_html(self._book(), show_panel_labels=True)
-        self.assertIn("<h1>HTML &lt;Test&gt; &amp; Co</h1>", page)
-        self.assertIn("<h2>Page 1 of 2</h2>", page)
-        self.assertIn("<h3>Panel 1 of 2 (top right)</h3>", page)
-        self.assertIn("<h3>Panel 2 of 2 (bottom left)</h3>", page)
+        self.assertIn(">HTML &lt;Test&gt; &amp; Co</h1>", page)
+        self.assertIn(">Page 1 of 2</h2>", page)
+        self.assertIn(">Panel 1 of 2 (top right)</h3>", page)
+        self.assertIn(">Panel 2 of 2 (bottom left)</h3>", page)
         # Content is escaped, so nothing a script wrote can inject HTML.
         self.assertIn("A &lt;b&gt;boy&lt;/b&gt; runs.", page)
         self.assertIn("&quot;Wait &amp; see!&quot;", page)
@@ -1526,15 +1526,15 @@ class TestHtmlExport(WorkspaceTestCase):
     def test_continuous_mode_has_page_headings_only(self):
         from core import html_export
         page = html_export.build_html(self._book(), show_panel_labels=False)
-        self.assertIn("<h2>Page 1 of 2</h2>", page)
-        self.assertNotIn("<h3>", page)
+        self.assertIn(">Page 1 of 2</h2>", page)
+        self.assertNotIn("<h3", page)
         self.assertNotIn("Panel 1", page)
         self.assertIn("A &lt;b&gt;boy&lt;/b&gt; runs.", page)
 
     def test_unprocessed_page_placeholder(self):
         from core import html_export
         page = html_export.build_html(self._book(), show_panel_labels=True)
-        self.assertIn("<h2>Page 2 of 2</h2>", page)
+        self.assertIn(">Page 2 of 2</h2>", page)
         self.assertIn("not been processed yet", page)
 
 
@@ -2143,9 +2143,42 @@ class TestExportFormats(unittest.TestCase):
 
     def test_epub_has_a_heading_for_every_page_and_panel(self):
         content = self._epub().read("OEBPS/content.xhtml").decode()
-        self.assertEqual(content.count("<h1>"), 1)
+        self.assertEqual(content.count("<h1 "), 1)
         self.assertEqual(content.count("<h2 id="), 2)
-        self.assertEqual(content.count("<h3>"), 3)
+        self.assertEqual(content.count("<h3 "), 3)
+
+    def test_a_books_own_language_survives_save_and_load(self):
+        # Exports label a book with the language it was processed in,
+        # not whatever the setting happens to say now.
+        self.book.output_language = "English"
+        self.book.save()
+        reloaded = library.Book.load(self.book.workspace)
+        self.assertEqual(reloaded.output_language, "English")
+
+    def test_books_from_older_versions_have_no_language(self):
+        # Loading a book saved before this field existed must not fail.
+        import json
+        path = os.path.join(self.book.workspace, "book.json")
+        self.book.save()
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data.pop("output_language", None)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        reloaded = library.Book.load(self.book.workspace)
+        self.assertEqual(reloaded.output_language, "")
+
+    def test_blocks_carry_their_own_direction(self):
+        # A book's text and the chosen output language can disagree --
+        # an English book exported while the setting says Arabic. With
+        # one direction forced on the whole document, punctuation moves
+        # to the wrong end of a line and words run together.
+        from core import html_export
+        page = html_export.build_html(self.book, language="Arabic")
+        self.assertIn('<p dir="auto">', page)
+        self.assertIn('<h2 dir="auto">', page)
+        content = self._epub().read("OEBPS/content.xhtml").decode()
+        self.assertIn('<p dir="auto">', content)
 
     def test_epub_navigation_links_to_each_page(self):
         nav = self._epub().read("OEBPS/nav.xhtml").decode()

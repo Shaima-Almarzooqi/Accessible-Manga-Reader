@@ -53,7 +53,10 @@ def save_book_as(parent, book, settings, extension, wildcard, writer, label):
     try:
         writer(book, path,
                show_panel_labels=bool(settings.get("show_panel_labels", True)),
-               language=settings.get("output_language", "English"))
+               # The book's own language when known: the setting may
+               # have changed since it was processed.
+               language=(getattr(book, "output_language", "")
+                         or settings.get("output_language", "English")))
     except ImportError:
         wx.MessageBox(
             "Saving as %s is not available in this build." % label,

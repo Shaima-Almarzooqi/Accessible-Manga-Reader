@@ -30,6 +30,11 @@ class Book:
         self.page_count = 0
         self.scripts = {}  # int page number -> script text
         self.character_notes = ""
+        # The output language this book was processed in. Exports
+        # use it rather than the current setting, which may have
+        # changed since, so a book is never labelled as a language
+        # its text is not in.
+        self.output_language = ""
         self.user_instructions = ""  # reader-provided guidance for the AI
         self.last_position = 0  # caret offset in full-book view
         self.last_page = 1
@@ -49,6 +54,7 @@ class Book:
             "page_count": self.page_count,
             "scripts": {str(k): v for k, v in self.scripts.items()},
             "character_notes": self.character_notes,
+            "output_language": self.output_language,
             "user_instructions": self.user_instructions,
             "last_position": self.last_position,
             "last_page": self.last_page,
@@ -70,6 +76,7 @@ class Book:
             book.page_count = int(data.get("page_count", 0))
             book.scripts = {int(k): v for k, v in data.get("scripts", {}).items()}
             book.character_notes = data.get("character_notes", "")
+            book.output_language = data.get("output_language", "")
             book.user_instructions = data.get("user_instructions", "")
             book.source_kind = data.get("source_kind", "book")
             book.last_position = int(data.get("last_position", 0))
