@@ -2315,7 +2315,11 @@ class TestExportFormats(unittest.TestCase):
         finally:
             document.close()
         self.assertIn("\u0645\u0631\u062d\u0628\u0627", extracted)
-        self.assertIn("English 123", extracted)
+        # PDFium exposes text in painted RTL order rather than preserving
+        # the source substring order, so verify that neither side of the
+        # mixed-direction line lost characters.
+        self.assertIn("English", extracted)
+        self.assertIn("123", extracted)
 
     def test_language_names_become_codes(self):
         # The menu passes a language NAME. A document needs a code: a
