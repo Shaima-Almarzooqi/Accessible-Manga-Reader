@@ -120,9 +120,23 @@ def save_book_as_audio(parent, book, settings):
             "reading the pages.",
             "Save as audio", wx.OK | wx.ICON_INFORMATION, parent)
         return
+    from . import audio_dialog
+    chooser = audio_dialog.AudioOptionsDialog(parent, book, settings)
+    proceed = chooser.ShowModal() == wx.ID_OK
+    voice = chooser.chosen_voice()
+    pages = chooser.chosen_pages()
+    suffix = chooser.range_label()
+    chooser.Destroy()
+    if not proceed:
+        return
+    # Remembered so the next book starts from the same choice.
+    settings["tts_voice"] = voice
+    from core import config
+    config.save_settings(settings)
+
     dialog = wx.FileDialog(
         parent, "Save as audio",
-        defaultFile=(book.title or "book") + ".mp3",
+        defaultFile=(book.title or "book") + suffix + ".mp3",
         wildcard="MP3 files (*.mp3)|*.mp3",
         style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
     if dialog.ShowModal() != wx.ID_OK:
@@ -132,4 +146,5 @@ def save_book_as_audio(parent, book, settings):
     dialog.Destroy()
     if not path.lower().endswith(".mp3"):
         path += ".mp3"
-    speech_window.start_audio_export(parent, book, settings, path)
+    speech_window.start_audio_export(parent, book, settings, path,
+                                     pages=pages)

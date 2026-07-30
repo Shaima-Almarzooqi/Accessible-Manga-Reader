@@ -2734,6 +2734,143 @@ class TestSpeech(unittest.TestCase):
         one_second = b"\x00\x00" * self.tts.SAMPLE_RATE
         self.assertAlmostEqual(self.tts.seconds_of(one_second), 1.0, places=2)
 
+    def test_pieces_are_reassembled_in_order(self):
+        # Pieces are spoken several at a time and come back in whatever
+        # order they finish. A book assembled in arrival order would be
+        # scrambled, so this is the invariant that matters most.
+        import core.tts as module
+        lines = ["line number %d with enough words to matter" % n
+                 for n in range(40)]
+        chunks = self.tts.split_for_speech(lines, limit=120)
+        self.book.scripts = {1: "\n".join(lines)}
+        self.book.page_count = 1
+
+        real_split = module.split_for_speech
+        module.split_for_speech = lambda ls, limit=None: chunks
+        real_encode = module.encode_mp3
+        module.encode_mp3 = lambda pcm, bitrate=64: pcm
+        try:
+            lookup = {c: i for i, c in enumerate(chunks)}
+            import time as _time
+
+            def slow_in_reverse(text):
+                index = lookup[text]
+                # Later pieces finish first.
+                _time.sleep(0.01 * (len(chunks) - index))
+                return bytes([index + 1, 0]) * 50
+
+            path = self._path("ordered.bin")
+            self.tts.write_mp3(self.book, path, self.settings,
+                               request=slow_in_reverse)
+            raw = open(path, "rb").read()
+        finally:
+            module.split_for_speech = real_split
+            module.encode_mp3 = real_encode
+
+        markers = [raw[i * 100] for i in range(len(chunks))]
+        self.assertEqual(markers, list(range(1, len(chunks) + 1)))
+
+    def test_several_pieces_are_spoken_at_once(self):
+        # The whole reason a ten page book was slow: each request takes
+        # about as long as the speech it produces, and they were done
+        # one after another.
+        import threading
+        active = []
+        peak = [0]
+        lock = threading.Lock()
+
+        def counting(text):
+            with lock:
+                active.append(1)
+                peak[0] = max(peak[0], len(active))
+            import time as _time
+            _time.sleep(0.05)
+            with lock:
+                active.pop()
+            return self.silence
+
+        # Long enough to split into several pieces; a book small enough
+        # to be one piece has nothing to do in parallel.
+        lines = ["line %d, %s" % (n, "word " * 40) for n in range(40)]
+        self.book.scripts = {1: "\n".join(lines)}
+        self.book.page_count = 1
+        self.assertGreater(
+            len(self.tts.split_for_speech(self.tts.book_text(self.book))), 3)
+        self.tts.write_mp3(self.book, self._path("par.mp3"), self.settings,
+                           request=counting, workers=3)
+        self.assertGreater(peak[0], 1)
+
+    def test_only_the_chosen_pages_are_spoken(self):
+        # A whole volume is hours of speech and a large part of a
+        # service's allowance, so a range is how that cost is kept down.
+        self.book.page_count = 6
+        self.book.scripts = {
+            n: "Panel 1 (top right): this is page %d." % n
+            for n in range(1, 7)}
+        spoken = self.tts.book_text(self.book, pages=[2, 3])
+        joined = " ".join(spoken)
+        self.assertIn("page 2", joined)
+        self.assertIn("page 3", joined)
+        self.assertNotIn("page 1.", joined)
+        self.assertNotIn("page 6", joined)
+
+    def test_a_range_keeps_the_books_real_page_numbers(self):
+        # Renumbering a range from one would lose the reader's place.
+        self.book.page_count = 20
+        self.book.scripts = {
+            n: "Panel 1 (top right): x." for n in range(1, 21)}
+        spoken = self.tts.book_text(self.book, pages=[12, 13])
+        self.assertIn("Page 12 of 20.", spoken)
+        self.assertNotIn("Page 1 of 2.", spoken)
+
+    def test_an_empty_range_is_explained(self):
+        self.book.page_count = 4
+        self.book.scripts = {}
+        with self.assertRaises(self.tts.SpeechError) as caught:
+            self.tts.write_mp3(self.book, self._path(), self.settings,
+                               request=lambda t: self.silence, pages=[2])
+        self.assertIn("range", str(caught.exception))
+
+    def test_unprocessed_pages_are_not_read_aloud(self):
+        # An audiobook that keeps announcing "this page has not been
+        # processed yet" is worse than one that simply omits it.
+        self.book.page_count = 4
+        self.book.scripts = {1: "Panel 1 (top right): the only page."}
+        spoken = " ".join(self.tts.book_text(self.book))
+        self.assertIn("the only page", spoken)
+        self.assertNotIn("not been processed", spoken)
+        self.assertNotIn("Page 2 of 4", spoken)
+
+    def test_a_range_reaches_the_audio(self):
+        seen = []
+        self.book.page_count = 6
+        self.book.scripts = {
+            n: "Panel 1 (top right): page %d text." % n
+            for n in range(1, 7)}
+
+        def capture(text):
+            seen.append(text)
+            return self.silence
+
+        self.tts.write_mp3(self.book, self._path(), self.settings,
+                           request=capture, pages=[4, 5])
+        joined = " ".join(seen)
+        self.assertIn("page 4", joined)
+        self.assertNotIn("page 1 ", joined)
+
+    def test_a_sample_is_playable_audio(self):
+        # Previews are wrapped in a WAV container: Windows can play that
+        # without a decoder, unlike the MP3 the book is saved as.
+        wav = self.tts.sample_voice(
+            "Kore", self.settings, request=lambda text: self.silence)
+        self.assertTrue(wav.startswith(b"RIFF"))
+        self.assertIn(b"WAVE", wav[:16])
+
+    def test_a_sample_needs_a_key(self):
+        with self.assertRaises(self.tts.SpeechError):
+            self.tts.sample_voice("Kore", {},
+                                  request=lambda text: self.silence)
+
     def test_every_voice_has_a_description(self):
         self.assertGreater(len(self.tts.VOICES), 10)
         for name, description in self.tts.VOICES:

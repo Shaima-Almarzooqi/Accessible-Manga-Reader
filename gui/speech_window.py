@@ -20,15 +20,18 @@ from core import tts
 from . import keys as keyhelp
 
 
-def start_audio_export(parent, book, settings, path):
-    """Begin speaking `book` into `path`, in its own window."""
-    window = AudioExportWindow(parent, book, settings, path)
+def start_audio_export(parent, book, settings, path, pages=None):
+    """Begin speaking `book` into `path`, in its own window.
+
+    `pages` limits it to a range, which is how the cost of a long
+    book is kept down."""
+    window = AudioExportWindow(parent, book, settings, path, pages)
     window.Show()
     return True
 
 
 class AudioExportWindow(wx.Frame):
-    def __init__(self, parent, book, settings, path):
+    def __init__(self, parent, book, settings, path, pages=None):
         super().__init__(parent,
                          title="Saving %s as audio" % (book.title or "book"),
                          size=(560, 380),
@@ -36,6 +39,7 @@ class AudioExportWindow(wx.Frame):
         self.book = book
         self.settings = settings
         self.path = path
+        self.pages = pages
         self._cancel = threading.Event()
         self._closed = False
         self._finished = False
@@ -84,7 +88,8 @@ class AudioExportWindow(wx.Frame):
             seconds = tts.write_mp3(
                 self.book, self.path, self.settings,
                 on_progress=on_progress,
-                cancel_check=self._cancel.is_set)
+                cancel_check=self._cancel.is_set,
+                pages=self.pages)
         except Exception as error:
             self._post(self._done, None, str(error))
             return

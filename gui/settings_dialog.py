@@ -193,20 +193,6 @@ class SettingsDialog(wx.Dialog):
             bool(self.settings.get("converted_pages_one_page", True)))
         general_sizer.Add(self.one_page_converted, 0, wx.ALL, 6)
 
-        from core import tts
-        voice_label = wx.StaticText(
-            general_panel, label="&Voice for saving a book as audio:")
-        general_sizer.Add(voice_label, 0, wx.LEFT | wx.TOP, 6)
-        self.tts_voice = wx.Choice(
-            general_panel,
-            choices=["%s (%s)" % (name, note) for name, note in tts.VOICES])
-        current = self.settings.get("tts_voice", tts.DEFAULT_VOICE)
-        names = [name for name, _ in tts.VOICES]
-        self.tts_voice.SetSelection(
-            names.index(current) if current in names
-            else names.index(tts.DEFAULT_VOICE))
-        general_sizer.Add(self.tts_voice, 0, wx.ALL, 6)
-
         self.check_updates = wx.CheckBox(
             general_panel,
             label="Check for &updates when the app starts")
@@ -408,9 +394,6 @@ class SettingsDialog(wx.Dialog):
             self.ask_instructions.GetValue())
         self.settings["converted_pages_one_page"] = (
             self.one_page_converted.GetValue())
-        from core import tts as _tts
-        self.settings["tts_voice"] = (
-            [name for name, _ in _tts.VOICES][self.tts_voice.GetSelection()])
         self.settings["check_updates_on_start"] = self.check_updates.GetValue()
         self.settings["include_beta_updates"] = self.include_betas.GetValue()
         event.Skip()  # lets the dialog close with wx.ID_OK

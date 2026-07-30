@@ -39,14 +39,21 @@ def _paragraph_lines(text):
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
 
 
-def book_outline(book, show_panel_labels=True):
-    """The whole book as a flat list of (kind, text) items.
+def book_outline(book, show_panel_labels=True, pages=None):
+    """The book as a flat list of (kind, text) items.
 
     kind is "h1", "h2", "h3" or "p". Keeping this in one place means the
     EPUB, Word and PDF exports cannot drift apart from one another.
+
+    `pages` limits the result to those page numbers. Page headings keep
+    the book's real numbering, so a range still reads "Page 12 of 189"
+    rather than renumbering from one and losing the reader's place.
     """
     items = [("h1", book.title or "Book")]
+    wanted = None if pages is None else set(pages)
     for number in range(1, book.page_count + 1):
+        if wanted is not None and number not in wanted:
+            continue
         items.append(("h2", "Page %d of %d" % (number, book.page_count)))
         script = book.scripts.get(number)
         if not script:
