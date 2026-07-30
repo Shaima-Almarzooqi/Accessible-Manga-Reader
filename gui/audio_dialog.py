@@ -179,8 +179,11 @@ class AudioOptionsDialog(wx.Dialog):
         if self._fetching:
             return
         self._fetching = voice
-        self.play_button.Enable(False)
-        self.status.SetLabel("Fetching a sample of %s..." % voice)
+        # The button's own label carries the news: a screen reader
+        # announces a focused control's name when it changes, whereas a
+        # separate status line goes unread.
+        self.play_button.SetLabel("Fetching %s..." % voice)
+        self._say("Fetching a sample of %s..." % voice)
         threading.Thread(target=self._fetch, args=(voice, cached),
                          daemon=True).start()
 
@@ -197,24 +200,49 @@ class AudioOptionsDialog(wx.Dialog):
 
     def _fetched(self, path, error):
         self._fetching = None
-        self.play_button.Enable(True)
+        self.play_button.SetLabel("&Play sample")
         if error:
-            self.status.SetLabel("Could not fetch a sample: %s" % error)
+            # Said out loud rather than written to a status line, which
+            # a screen reader would not read: otherwise a failed sample
+            # looks exactly like a button that does nothing.
+            self._say("Could not play a sample.")
+            wx.MessageBox(
+                "That sample could not be fetched: %s\n\nSamples use the "
+                "same Gemini allowance as reading a book, so this often "
+                "means the key is being rate limited. Waiting a minute "
+                "usually works." % error,
+                "Play sample", wx.OK | wx.ICON_INFORMATION, self)
             return
         self._play(path)
 
     def _play(self, path):
         sound = wx.adv.Sound(path)
         if sound.IsOk():
+            # Kept on the dialog: a Sound that goes out of scope stops.
+            self._sound = sound
             sound.Play(wx.adv.SOUND_ASYNC)
-            self.status.SetLabel("Playing %s." % self.chosen_voice())
+            self._say("Playing %s." % self.chosen_voice())
         else:
-            self.status.SetLabel("That sample could not be played.")
+            self._say("That sample could not be played.")
+            wx.MessageBox(
+                "That sample could not be played on this computer.",
+                "Play sample", wx.OK | wx.ICON_INFORMATION, self)
+
+    def _say(self, message):
+        self.status.SetLabel(message)
 
     def _on_char_hook(self, event):
-        if event.GetKeyCode() == wx.WXK_ESCAPE:
+        code = event.GetKeyCode()
+        if code == wx.WXK_ESCAPE:
             self.EndModal(wx.ID_CANCEL)
-        elif keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
             return
-        else:
-            event.Skip()
+        # Windows sends Enter to a dialog's default button whatever has
+        # focus, so pressing it on Play sample was starting the export
+        # instead. Play when that is where you are.
+        if (code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+                and wx.Window.FindFocus() is self.play_button):
+            self.on_play(event)
+            return
+        if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
+            return
+        event.Skip()

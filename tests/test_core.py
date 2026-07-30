@@ -2599,6 +2599,9 @@ class TestSpeech(unittest.TestCase):
     def setUp(self):
         from core import tts
         self.tts = tts
+        # Real backoffs would make the suite sit for half a minute.
+        self._real_wait = tts._wait
+        tts._wait = lambda seconds, cancel_check=None: True
         self.tmp = tempfile.mkdtemp()
         workspace = os.path.join(self.tmp, "ws")
         os.makedirs(os.path.join(workspace, "pages"))
@@ -2613,6 +2616,7 @@ class TestSpeech(unittest.TestCase):
         self.silence = b"\x00\x00" * 240  # a tenth of a second
 
     def tearDown(self):
+        self.tts._wait = self._real_wait
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _path(self, name="book.mp3"):
@@ -2857,6 +2861,75 @@ class TestSpeech(unittest.TestCase):
         joined = " ".join(seen)
         self.assertIn("page 4", joined)
         self.assertNotIn("page 1 ", joined)
+
+    def test_a_rate_limit_waits_rather_than_giving_up(self):
+        # 429 is not a fault, it means slow down. Abandoning a book most
+        # of the way through because of one is the wrong response.
+        import urllib.error
+        attempts = []
+
+        def limited(text, key=None):
+            attempts.append(text)
+            if len(attempts) < 3:
+                raise urllib.error.HTTPError(
+                    "u", 429, "Too Many Requests", {}, None)
+            return self.silence
+
+        result = self.tts._speak_with_retry(
+            lambda text, key: limited(text), "some text", "k", 0)
+        self.assertEqual(result, self.silence)
+        self.assertEqual(len(attempts), 3)
+
+    def test_the_services_own_retry_delay_is_used(self):
+        import io, urllib.error
+        body = io.BytesIO(json.dumps({"error": {"details": [
+            {"@type": "type.googleapis.com/google.rpc.RetryInfo",
+             "retryDelay": "37s"}]}}).encode())
+        error = urllib.error.HTTPError("u", 429, "x", {}, body)
+        self.assertEqual(self.tts.retry_delay_from(error), 37)
+
+    def test_a_missing_retry_delay_is_tolerated(self):
+        import io, urllib.error
+        error = urllib.error.HTTPError(
+            "u", 429, "x", {}, io.BytesIO(b"not json"))
+        self.assertIsNone(self.tts.retry_delay_from(error))
+
+    def test_persistent_rate_limiting_explains_itself(self):
+        import urllib.error
+
+        def always_limited(text, key=None):
+            raise urllib.error.HTTPError("u", 429, "x", {}, None)
+
+        with self.assertRaises(self.tts.SpeechError) as caught:
+            self.tts._speak_with_retry(
+                lambda text, key: always_limited(text), "t", "k", 0)
+        message = str(caught.exception)
+        self.assertIn("rate limiting", message)
+        self.assertIn("smaller page range", message)
+
+    def test_a_key_problem_is_not_retried(self):
+        import urllib.error
+        attempts = []
+
+        def refused(text, key=None):
+            attempts.append(text)
+            raise urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
+
+        with self.assertRaises(self.tts.SpeechError):
+            self.tts._speak_with_retry(
+                lambda text, key: refused(text), "t", "k", 0)
+        self.assertEqual(len(attempts), 1)
+
+    def test_a_long_wait_can_be_cancelled(self):
+        # A rate-limit backoff can run well over a minute. Someone who
+        # has changed their mind should not have to sit through it.
+        import time as _time
+        real_wait = self._real_wait
+        start = _time.time()
+        finished = real_wait(
+            30, cancel_check=lambda: _time.time() - start > 0.4)
+        self.assertFalse(finished)
+        self.assertLess(_time.time() - start, 5)
 
     def test_a_sample_is_playable_audio(self):
         # Previews are wrapped in a WAV container: Windows can play that

@@ -90,13 +90,32 @@ CHUNK_CHARACTERS = 1600
 
 TIMEOUT_SECONDS = 300
 
-# Pieces are independent, so several are spoken at once. This is the
-# difference between a ten-page book taking a few minutes and taking a
-# quarter of an hour: each request produces around two minutes of
-# speech, and the service will work on several at a time. Kept low, and
-# spread across however many keys are configured, so a rate limit is
-# not provoked.
-DEFAULT_WORKERS = 3
+# Pieces are independent, so several are spoken at once: each request
+# produces around two minutes of speech and the service will work on
+# more than one at a time. Kept deliberately low, because free-tier
+# text-to-speech is limited per minute rather than by how much work is
+# in flight, and asking for too much at once simply earns a 429.
+RATE_LIMIT_WAITS = (20, 45, 90, 150)
+
+
+def _wait(seconds, cancel_check=None):
+    """Sleep, but in slices so a cancel is noticed promptly.
+
+    A rate-limit backoff can run well over a minute. Someone who has
+    changed their mind should not have to sit through it, and the run
+    should stop rather than carry on after the wait.
+
+    Returns False if it was cancelled part way.
+    """
+    deadline = time.time() + seconds
+    while True:
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return True
+        if cancel_check and cancel_check():
+            return False
+        time.sleep(min(0.5, remaining))
+DEFAULT_WORKERS = 2
 
 # Short line used to preview a voice before committing a whole book to
 # it. Deliberately brief: previewing costs allowance too.
@@ -252,36 +271,87 @@ def seconds_of(pcm):
     return len(pcm) / float(SAMPLE_RATE * SAMPLE_WIDTH)
 
 
-def _speak_with_retry(speak, text, key, index):
+def retry_delay_from(error):
+    """Seconds the service asked us to wait, if it said.
+
+    A 429 body carries Google's own RetryInfo. Honouring it is far
+    better than guessing, because the limit is per minute and a guess
+    that is too short simply earns another refusal.
+    """
+    try:
+        body = error.read()
+    except Exception:
+        return None
+    try:
+        data = json.loads(body.decode("utf-8", "replace"))
+    except Exception:
+        return None
+    for detail in (data.get("error") or {}).get("details") or []:
+        delay = detail.get("retryDelay")
+        if isinstance(delay, str) and delay.endswith("s"):
+            try:
+                return min(300, max(1, int(float(delay[:-1]))))
+            except ValueError:
+                continue
+    return None
+
+
+def _speak_with_retry(speak, text, key, index, notify=None,
+                      cancel_check=None):
     """One piece, retried. Returns PCM or raises the last failure.
 
-    The service answers with text instead of audio often enough that
-    Google documents it, so a piece that fails is worth another go
-    before the whole run is abandoned.
+    Two very different failures are handled here. The service answers
+    with text instead of audio often enough that Google documents it,
+    and that is worth an immediate second go. A rate limit is not a
+    fault at all -- it means slow down -- so it waits much longer, and
+    for as long as the service itself asks, rather than giving up on a
+    book most of the way through.
     """
     last = None
-    for attempt in range(3):
+    rate_limited = 0
+    attempt = 0
+    while attempt < 4 and rate_limited < len(RATE_LIMIT_WAITS):
         try:
             return speak(text, key)
         except SpeechError as error:
             last = error
+            wait = 3 * (attempt + 1)
+            attempt += 1
         except urllib.error.HTTPError as error:
             if error.code in (400, 401, 403):
                 # A key or model problem: retrying only repeats it.
                 raise SpeechError(
                     "the service refused part %d (error %s). Check the "
-                    "API key and the chosen voice model."
+                    "API key and that the voice model is available to it."
                     % (index + 1, error.code))
-            last = SpeechError(
-                "the service refused part %d (error %s)."
-                % (index + 1, error.code))
+            if error.code == 429:
+                wait = (retry_delay_from(error)
+                        or RATE_LIMIT_WAITS[rate_limited])
+                rate_limited += 1
+                last = SpeechError(
+                    "the service is rate limiting this key. Part %d was "
+                    "asked for too quickly." % (index + 1))
+                if notify:
+                    notify("Rate limited; waiting %d seconds before trying "
+                           "part %d again." % (wait, index + 1))
+            else:
+                last = SpeechError(
+                    "the service refused part %d (error %s)."
+                    % (index + 1, error.code))
+                wait = 3 * (attempt + 1)
+                attempt += 1
         except Exception as error:
             last = SpeechError(
                 "part %d could not be spoken: %s" % (index + 1, error))
-        if attempt < 2:
-            # Backing off matters most for a rate limit, which is the
-            # likeliest reason several pieces fail at once.
-            time.sleep(3 * (attempt + 1))
+            wait = 3 * (attempt + 1)
+            attempt += 1
+        if not _wait(wait, cancel_check):
+            raise SpeechError("stopped while waiting to try again.")
+    if rate_limited >= len(RATE_LIMIT_WAITS):
+        raise SpeechError(
+            "the service kept rate limiting this key, so the book was not "
+            "finished. Free allowances are limited per minute: waiting a "
+            "while, or reading a smaller page range, usually works.")
     raise last or SpeechError("part %d could not be spoken." % (index + 1))
 
 
@@ -330,9 +400,14 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
     done = 0
     failure = None
 
+    def announce(message):
+        if on_progress:
+            on_progress(message, done, len(chunks) + 1)
+
     def work(index):
         return index, _speak_with_retry(
-            speak, chunks[index], keys[index % len(keys)], index)
+            speak, chunks[index], keys[index % len(keys)], index,
+            notify=announce, cancel_check=cancel_check)
 
     if on_progress:
         on_progress("Reading %d part%s aloud..."
