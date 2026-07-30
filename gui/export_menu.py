@@ -11,7 +11,7 @@ import os
 
 import wx
 
-from core import export
+from core import export, tts
 
 
 # Accelerators kept from when these were separate Book menu items, so
@@ -78,6 +78,7 @@ def build_export_menu(frame, get_book, get_settings):
     is selected at that moment.
     """
     menu = wx.Menu()
+    audio_item = None
     for label, extension, wildcard, writer in export.FORMATS:
         text = _MNEMONICS.get(extension, label) + "..."
         text += _SHORTCUTS.get(extension, "")
@@ -87,4 +88,48 @@ def build_export_menu(frame, get_book, get_settings):
             lambda event, w=writer, e=extension, wc=wildcard, lb=label:
             save_book_as(frame, get_book(), get_settings(), e, wc, w, lb),
             item)
+    audio_item = menu.Append(
+        wx.ID_ANY, "&Audio (MP3)...",
+        "Read this book aloud with an AI voice and save it as an MP3")
+    frame.Bind(wx.EVT_MENU,
+               lambda event: save_book_as_audio(
+                   frame, get_book(), get_settings()),
+               audio_item)
     return menu
+
+
+def save_book_as_audio(parent, book, settings):
+    """Ask where to save, then read the book aloud in its own window.
+
+    Unlike the other formats this takes hours, so it never runs inline:
+    the window reports progress and can be stopped.
+    """
+    from . import speech_window
+    if book is None:
+        return
+    if book.processed_count() == 0:
+        wx.MessageBox(
+            "This book has no processed pages yet, so there is nothing to "
+            "read aloud. Process it first.",
+            "Save as audio", wx.OK | wx.ICON_INFORMATION, parent)
+        return
+    if not [k for k in settings.get("gemini_api_keys", []) if k.strip()]:
+        wx.MessageBox(
+            "Reading a book aloud uses Gemini, so a Gemini API key is "
+            "needed in Settings, even if another service is used for "
+            "reading the pages.",
+            "Save as audio", wx.OK | wx.ICON_INFORMATION, parent)
+        return
+    dialog = wx.FileDialog(
+        parent, "Save as audio",
+        defaultFile=(book.title or "book") + ".mp3",
+        wildcard="MP3 files (*.mp3)|*.mp3",
+        style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+    if dialog.ShowModal() != wx.ID_OK:
+        dialog.Destroy()
+        return
+    path = dialog.GetPath()
+    dialog.Destroy()
+    if not path.lower().endswith(".mp3"):
+        path += ".mp3"
+    speech_window.start_audio_export(parent, book, settings, path)

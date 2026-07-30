@@ -1,4 +1,4 @@
-﻿"""Core test suite.
+"""Core test suite.
 
 Run with:  python -m tests.test_core   (from the project root)
 or:        python run_tests.py
@@ -2581,6 +2581,165 @@ class TestArrowKeyHandling(unittest.TestCase):
                       self.FakeEvent(list(self.keys.DOWN_KEYS)[0], ctrl=True)):
             self.assertFalse(
                 self.keys.consume_arrow_navigation(event, None))
+
+
+try:
+    import lameenc  # noqa: F401
+    MP3_SUPPORT = True
+except ImportError:
+    MP3_SUPPORT = False
+
+
+class TestSpeech(unittest.TestCase):
+    """Speaking a book. The service is stubbed throughout: what matters
+    here is that the text is cut in sensible places, that a piece the
+    service fumbles is retried rather than losing the whole run, and
+    that a cancelled run leaves nothing behind."""
+
+    def setUp(self):
+        from core import tts
+        self.tts = tts
+        self.tmp = tempfile.mkdtemp()
+        workspace = os.path.join(self.tmp, "ws")
+        os.makedirs(os.path.join(workspace, "pages"))
+        self.book = library.Book(workspace)
+        self.book.title = "We Were There"
+        self.book.page_count = 2
+        self.book.scripts = {
+            1: 'Panel 1 (top right): A street.\nAiko: "Late."',
+            2: "Panel 1 (top right): A clock.",
+        }
+        self.settings = {"gemini_api_keys": ["key"]}
+        self.silence = b"\x00\x00" * 240  # a tenth of a second
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _path(self, name="book.mp3"):
+        return os.path.join(self.tmp, name)
+
+    # ----- what gets spoken -------------------------------------------
+
+    def test_headings_are_given_an_ending(self):
+        # A heading running straight into the next sentence is hard to
+        # follow when read aloud.
+        lines = self.tts.book_text(self.book)
+        self.assertTrue(lines[0].endswith("."))
+        self.assertIn("Page 1 of 2.", lines)
+
+    def test_speech_follows_the_same_outline_as_other_exports(self):
+        lines = self.tts.book_text(self.book)
+        self.assertTrue(any("A street" in line for line in lines))
+        self.assertTrue(any("Late" in line for line in lines))
+
+    # ----- splitting ---------------------------------------------------
+
+    def test_pieces_stay_under_the_limit(self):
+        lines = ["a" * 30 for _ in range(10)]
+        for chunk in self.tts.split_for_speech(lines, limit=100):
+            self.assertLessEqual(len(chunk), 100)
+
+    def test_a_line_is_never_cut_in_half(self):
+        # A sentence split across two requests would join audibly.
+        lines = ["first line here", "second line here", "third line here"]
+        chunks = self.tts.split_for_speech(lines, limit=20)
+        for line in lines:
+            self.assertTrue(any(line in chunk for chunk in chunks))
+
+    def test_an_overlong_line_is_left_whole(self):
+        long_line = "x" * 500
+        chunks = self.tts.split_for_speech([long_line], limit=100)
+        self.assertEqual(chunks, [long_line])
+
+    # ----- talking to the service --------------------------------------
+
+    def test_audio_is_read_out_of_a_reply(self):
+        import base64
+        data = {"candidates": [{"content": {"parts": [
+            {"inlineData": {"data": base64.b64encode(b"pcm").decode()}}]}}]}
+        self.assertEqual(self.tts.extract_audio(data), b"pcm")
+
+    def test_a_reply_with_words_instead_of_speech_is_named(self):
+        # Google documents this as an occasional response, so the
+        # message has to explain it rather than look like a crash.
+        data = {"candidates": [{"content": {"parts": [{"text": "hello"}]}}]}
+        with self.assertRaises(self.tts.SpeechError) as caught:
+            self.tts.extract_audio(data)
+        self.assertIn("without any audio", str(caught.exception))
+
+    def test_a_fumbled_piece_is_retried(self):
+        attempts = []
+
+        def flaky(text):
+            attempts.append(text)
+            if len(attempts) == 1:
+                raise self.tts.SpeechError("no audio this time")
+            return self.silence
+
+        self.tts.write_mp3(self.book, self._path(), self.settings,
+                           request=flaky)
+        self.assertEqual(len(attempts), 2)
+        self.assertTrue(os.path.exists(self._path()))
+
+    def test_a_piece_that_keeps_failing_stops_the_run(self):
+        def broken(text):
+            raise self.tts.SpeechError("no audio")
+
+        with self.assertRaises(self.tts.SpeechError):
+            self.tts.write_mp3(self.book, self._path(), self.settings,
+                               request=broken)
+        self.assertFalse(os.path.exists(self._path()))
+
+    def test_a_missing_key_is_explained(self):
+        with self.assertRaises(self.tts.SpeechError) as caught:
+            self.tts.write_mp3(self.book, self._path(), {},
+                               request=lambda t: self.silence)
+        self.assertIn("Gemini API key", str(caught.exception))
+
+    # ----- cancelling ---------------------------------------------------
+
+    def test_cancelling_writes_no_file(self):
+        result = self.tts.write_mp3(
+            self.book, self._path(), self.settings,
+            request=lambda t: self.silence, cancel_check=lambda: True)
+        self.assertIsNone(result)
+        self.assertFalse(os.path.exists(self._path()))
+
+    def test_progress_is_reported(self):
+        seen = []
+        self.tts.write_mp3(
+            self.book, self._path(), self.settings,
+            request=lambda t: self.silence,
+            on_progress=lambda m, d, t: seen.append(m))
+        self.assertTrue(seen)
+        self.assertTrue(any("Encoding" in m for m in seen))
+
+    # ----- the file itself ----------------------------------------------
+
+    @unittest.skipUnless(MP3_SUPPORT, "lameenc not installed")
+    def test_the_result_is_a_real_mp3(self):
+        self.tts.write_mp3(self.book, self._path(), self.settings,
+                           request=lambda t: self.silence)
+        head = open(self._path(), "rb").read(3)
+        self.assertTrue(head.startswith(b"ID3") or head[0] == 0xFF)
+
+    @unittest.skipUnless(MP3_SUPPORT, "lameenc not installed")
+    def test_mp3_is_far_smaller_than_the_raw_audio(self):
+        # The reason the audio is not simply saved as it arrives: a full
+        # volume would be most of a gigabyte.
+        pcm = b"\x00\x00" * self.tts.SAMPLE_RATE  # one second
+        self.assertLess(len(self.tts.encode_mp3(pcm)), len(pcm) / 4)
+
+    def test_audio_length_is_measured_for_progress(self):
+        one_second = b"\x00\x00" * self.tts.SAMPLE_RATE
+        self.assertAlmostEqual(self.tts.seconds_of(one_second), 1.0, places=2)
+
+    def test_every_voice_has_a_description(self):
+        self.assertGreater(len(self.tts.VOICES), 10)
+        for name, description in self.tts.VOICES:
+            self.assertTrue(name and description)
+        self.assertIn(self.tts.DEFAULT_VOICE,
+                      [name for name, _ in self.tts.VOICES])
 
 
 class TestJobRegistry(unittest.TestCase):

@@ -10,3 +10,7 @@ pypdfium2>=4
 # browser) as the renderer. pypdfium2 above verifies that the result has
 # the structure tree a screen reader needs, so no second PDF dependency
 # or bundled native rendering runtime is required.
+
+# MP3 encoding for the audio export. Wheels exist for both
+# Windows architectures, and it is about 150 KB.
+lameenc>=1.8

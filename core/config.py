@@ -1,10 +1,10 @@
-﻿"""Configuration, versioning, and data directories."""
+"""Configuration, versioning, and data directories."""
 
 import json
 import os
 
 APP_NAME = "Accessible Manga Reader"
-APP_VERSION = "0.20.0"
+APP_VERSION = "1.0.0"
 
 # Folders used by earlier versions, migrated on first run so existing
 # libraries and settings are not lost to a rename.
@@ -61,6 +61,8 @@ DEFAULT_SETTINGS = {
     # continuous narrative; the cached scripts are unchanged either way.
     "show_panel_labels": True,
     "converted_pages_one_page": True,
+    "tts_voice": "Kore",
+    "tts_model": "gemini-3.1-flash-tts-preview",
     "image_max_dimension": 1568,
     "image_jpeg_quality": 85,
     # Update notifications: checked on a background thread at startup.
