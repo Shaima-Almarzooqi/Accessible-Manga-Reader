@@ -88,6 +88,17 @@ class AudioOptionsDialog(wx.Dialog):
             else names.index(tts.DEFAULT_VOICE))
         sizer.Add(self.voices, 1, wx.EXPAND | wx.ALL, 10)
 
+        sizer.Add(wx.StaticText(panel, label="Voice &model:"), 0,
+                  wx.LEFT | wx.TOP, 10)
+        self.model = wx.Choice(
+            panel,
+            choices=["%s - %s" % (name, note) for name, note in tts.TTS_MODELS])
+        model_names = [name for name, _ in tts.TTS_MODELS]
+        chosen = settings.get("tts_model", tts.DEFAULT_TTS_MODEL)
+        self.model.SetSelection(
+            model_names.index(chosen) if chosen in model_names else 0)
+        sizer.Add(self.model, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
         self.status = wx.StaticText(panel, label="")
         sizer.Add(self.status, 0, wx.LEFT | wx.RIGHT, 10)
 
@@ -114,6 +125,11 @@ class AudioOptionsDialog(wx.Dialog):
     def chosen_voice(self):
         index = self.voices.GetSelection()
         return tts.VOICES[index][0] if index >= 0 else tts.DEFAULT_VOICE
+
+    def chosen_model(self):
+        index = self.model.GetSelection()
+        return (tts.TTS_MODELS[index][0] if index >= 0
+                else tts.DEFAULT_TTS_MODEL)
 
     def chosen_pages(self):
         """The page numbers to read, or None for the whole book."""
@@ -191,7 +207,8 @@ class AudioOptionsDialog(wx.Dialog):
         """Runs on a worker thread; must never raise."""
         try:
             audio = tts.sample_voice(
-                voice, dict(self.settings, tts_voice=voice))
+                voice, dict(self.settings, tts_voice=voice,
+                           tts_model=self.chosen_model()))
             with open(path, "wb") as handle:
                 handle.write(audio)
             wx.CallAfter(self._fetched, path, None)

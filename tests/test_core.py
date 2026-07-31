@@ -1,4 +1,4 @@
-"""Core test suite.
+﻿"""Core test suite.
 
 Run with:  python -m tests.test_core   (from the project root)
 or:        python run_tests.py
@@ -2669,7 +2669,8 @@ class TestSpeech(unittest.TestCase):
         data = {"candidates": [{"content": {"parts": [{"text": "hello"}]}}]}
         with self.assertRaises(self.tts.SpeechError) as caught:
             self.tts.extract_audio(data)
-        self.assertIn("without any audio", str(caught.exception))
+        self.assertIn("words back instead of speech",
+                      str(caught.exception))
 
     def test_a_fumbled_piece_is_retried(self):
         attempts = []
@@ -2716,7 +2717,7 @@ class TestSpeech(unittest.TestCase):
             request=lambda t: self.silence,
             on_progress=lambda m, d, t: seen.append(m))
         self.assertTrue(seen)
-        self.assertTrue(any("Encoding" in m for m in seen))
+        self.assertTrue(any("Saving the audio file" in m for m in seen))
 
     # ----- the file itself ----------------------------------------------
 
@@ -2795,7 +2796,8 @@ class TestSpeech(unittest.TestCase):
 
         # Long enough to split into several pieces; a book small enough
         # to be one piece has nothing to do in parallel.
-        lines = ["line %d, %s" % (n, "word " * 40) for n in range(40)]
+        # Long enough to still be several pieces at the current size.
+        lines = ["line %d, %s" % (n, "word " * 40) for n in range(120)]
         self.book.scripts = {1: "\n".join(lines)}
         self.book.page_count = 1
         self.assertGreater(
@@ -2904,8 +2906,9 @@ class TestSpeech(unittest.TestCase):
             self.tts._speak_with_retry(
                 lambda text, key: always_limited(text), "t", "k", 0)
         message = str(caught.exception)
-        self.assertIn("rate limiting", message)
-        self.assertIn("smaller page range", message)
+        self.assertIn("kept refusing", message)
+        self.assertNotIn("429", message)
+        self.assertIn("fewer pages", message)
 
     def test_a_key_problem_is_not_retried(self):
         import urllib.error
@@ -2919,6 +2922,70 @@ class TestSpeech(unittest.TestCase):
             self.tts._speak_with_retry(
                 lambda text, key: refused(text), "t", "k", 0)
         self.assertEqual(len(attempts), 1)
+
+    def test_a_daily_allowance_is_not_retried(self):
+        # A per-minute limit is worth waiting out. A daily one will not
+        # clear until it resets, so trying for several minutes and then
+        # failing anyway is worse than saying so at once.
+        import urllib.error, io, json as _json
+        body = _json.dumps({"error": {"details": [
+            {"violations": [
+                {"quotaId": "GenerateRequestsPerDayPerProjectPerModel"}]},
+            {"retryDelay": "31s"}]}})
+
+        def exhausted(text):
+            raise urllib.error.HTTPError(
+                "u", 429, "Too Many Requests", {},
+                io.BytesIO(body.encode()))
+
+        with self.assertRaises(self.tts.SpeechError) as caught:
+            self.tts.write_mp3(self.book, self._path(), self.settings,
+                               request=exhausted)
+        message = str(caught.exception)
+        # Plain language: no quota identifiers or error codes.
+        self.assertIn("Today's Gemini limit", message)
+        self.assertIn("midnight", message)
+        self.assertNotIn("429", message)
+        self.assertNotIn("quota", message.lower())
+
+    def test_the_quota_that_ran_out_is_named(self):
+        import urllib.error, io, json as _json
+        body = _json.dumps({"error": {"details": [
+            {"violations": [{"quotaId": "GenerateRequestsPerMinute"}]},
+            {"retryDelay": "12s"}]}})
+        error = urllib.error.HTTPError(
+            "u", 429, "Too Many", {}, io.BytesIO(body.encode()))
+        delay, quota, daily = self.tts.rate_limit_details(error)
+        self.assertEqual(delay, 12)
+        self.assertEqual(quota, "GenerateRequestsPerMinute")
+        self.assertFalse(daily)
+
+    def test_requests_are_spaced_apart(self):
+        # Firing as fast as possible is what earns a refusal on a free
+        # allowance of a few requests a minute.
+        import core.tts as module
+        import time as _time
+        stubbed = module._wait
+        module._wait = self._real_wait      # this test needs real time
+        try:
+            pacer = module.Pacer(spacing=0.2)
+            start = _time.time()
+            for _ in range(3):
+                pacer.wait_turn()
+            self.assertGreater(_time.time() - start, 0.3)
+        finally:
+            module._wait = stubbed
+
+    def test_the_pace_eases_off_after_a_refusal(self):
+        pacer = self.tts.Pacer(spacing=1.0)
+        before = pacer.spacing
+        pacer.slow_down()
+        self.assertGreater(pacer.spacing, before)
+
+    def test_one_request_at_a_time_by_default(self):
+        # Two at once on a per-minute allowance simply earns two
+        # refusals, and they then wake together and collide again.
+        self.assertEqual(self.tts.DEFAULT_WORKERS, 1)
 
     def test_a_long_wait_can_be_cancelled(self):
         # A rate-limit backoff can run well over a minute. Someone who
@@ -2943,6 +3010,44 @@ class TestSpeech(unittest.TestCase):
         with self.assertRaises(self.tts.SpeechError):
             self.tts.sample_voice("Kore", {},
                                   request=lambda text: self.silence)
+
+    def test_every_model_has_a_description(self):
+        # Offered in the dialog, so each needs something to tell a
+        # reader why they might pick it.
+        self.assertGreaterEqual(len(self.tts.TTS_MODELS), 2)
+        for name, note in self.tts.TTS_MODELS:
+            self.assertTrue(name and note)
+        self.assertEqual(self.tts.DEFAULT_TTS_MODEL,
+                         self.tts.TTS_MODELS[0][0])
+
+    def test_the_chosen_model_is_used(self):
+        seen = {}
+
+        def capture(text):
+            return self.silence
+
+        import core.tts as module
+        real = module._request_audio
+        module._request_audio = (
+            lambda text, key, model, voice, timeout=None:
+            seen.update(model=model, voice=voice) or self.silence)
+        try:
+            module.write_mp3(
+                self.book, self._path(),
+                dict(self.settings, tts_model="gemini-2.5-flash-preview-tts",
+                     tts_voice="Puck"))
+        finally:
+            module._request_audio = real
+        self.assertEqual(seen["model"], "gemini-2.5-flash-preview-tts")
+        self.assertEqual(seen["voice"], "Puck")
+
+    def test_fewer_requests_than_before(self):
+        # Every extra piece is another request, another wait for a turn
+        # and another chance of being refused.
+        lines = ["a line of narration about this panel" for _ in range(200)]
+        self.assertLess(
+            len(self.tts.split_for_speech(lines)),
+            len(self.tts.split_for_speech(lines, limit=1600)))
 
     def test_every_voice_has_a_description(self):
         self.assertGreater(len(self.tts.VOICES), 10)

@@ -124,6 +124,7 @@ def save_book_as_audio(parent, book, settings):
     chooser = audio_dialog.AudioOptionsDialog(parent, book, settings)
     proceed = chooser.ShowModal() == wx.ID_OK
     voice = chooser.chosen_voice()
+    model = chooser.chosen_model()
     pages = chooser.chosen_pages()
     suffix = chooser.range_label()
     chooser.Destroy()
@@ -131,6 +132,7 @@ def save_book_as_audio(parent, book, settings):
         return
     # Remembered so the next book starts from the same choice.
     settings["tts_voice"] = voice
+    settings["tts_model"] = model
     from core import config
     config.save_settings(settings)
 

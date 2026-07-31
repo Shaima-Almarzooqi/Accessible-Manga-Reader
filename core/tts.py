@@ -21,6 +21,8 @@ offer cancelling.
 import base64
 import concurrent.futures
 import io
+import random
+import threading
 import json
 import time
 import wave
@@ -67,14 +69,16 @@ VOICES = [
 
 DEFAULT_VOICE = "Kore"
 
-# Models that can speak. The default is the current preview model; the
-# list is offered in Settings and can be refreshed like the others.
+# Voice models, offered when saving as audio so a reader can try
+# another if one is refusing or sounds wrong. Every one of them is a
+# preview release, which is why allowances for them are tight; there is
+# no settled voice model to fall back on.
 TTS_MODELS = [
-    "gemini-3.1-flash-tts-preview",
-    "gemini-2.5-flash-preview-tts",
-    "gemini-2.5-pro-preview-tts",
+    ("gemini-3.1-flash-tts-preview", "Newest, usually the best"),
+    ("gemini-2.5-flash-preview-tts", "Older, sometimes less busy"),
+    ("gemini-2.5-pro-preview-tts", "Slowest, tightest limits"),
 ]
-DEFAULT_TTS_MODEL = TTS_MODELS[0]
+DEFAULT_TTS_MODEL = TTS_MODELS[0][0]
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -83,10 +87,12 @@ BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 SAMPLE_RATE = 24000
 SAMPLE_WIDTH = 2
 
-# Roughly two minutes of speech, well inside the point where quality is
-# documented to drift. Measured in characters because that is what we
-# have before the audio exists.
-CHUNK_CHARACTERS = 1600
+# Roughly four minutes of speech. Google warns that quality drifts on
+# outputs longer than a few minutes, so this stays under that -- but
+# every extra piece is another request, another wait for a turn and
+# another chance of being refused, so cutting the book more finely than
+# necessary makes a run slower rather than safer.
+CHUNK_CHARACTERS = 3200
 
 TIMEOUT_SECONDS = 300
 
@@ -115,7 +121,18 @@ def _wait(seconds, cancel_check=None):
         if cancel_check and cancel_check():
             return False
         time.sleep(min(0.5, remaining))
-DEFAULT_WORKERS = 2
+# One at a time. Free allowances run to only a handful of requests a
+# minute, and preview voice models less still, so asking for two at
+# once simply earns two refusals instead of one -- and both then wake
+# together and collide again.
+DEFAULT_WORKERS = 1
+
+# Requests start close together and are spaced further apart only when
+# the service pushes back, so somebody with room to spare is not slowed
+# down for nothing while somebody on a free allowance still settles at
+# a pace it permits.
+MIN_SPACING = 1.0
+MAX_SPACING = 30.0
 
 # Short line used to preview a voice before committing a whole book to
 # it. Deliberately brief: previewing costs allowance too.
@@ -210,7 +227,7 @@ def extract_audio(data):
     words instead of speech -- is visible only here.
     """
     if not isinstance(data, dict):
-        raise SpeechError("the service sent an unexpected reply.")
+        raise SpeechError("Gemini sent back something unexpected.")
     candidates = data.get("candidates") or []
     for candidate in candidates:
         for part in (candidate.get("content") or {}).get("parts") or []:
@@ -218,8 +235,8 @@ def extract_audio(data):
             if inline and inline.get("data"):
                 return base64.b64decode(inline["data"])
     raise SpeechError(
-        "the service replied without any audio, which it does "
-        "occasionally; trying again usually works.")
+        "Gemini sent words back instead of speech. This happens now "
+        "and then, and trying again usually works.")
 
 
 def encode_mp3(pcm, bitrate=64):
@@ -228,8 +245,7 @@ def encode_mp3(pcm, bitrate=64):
         import lameenc
     except ImportError:
         raise SpeechError(
-            "the MP3 encoder is missing from this build, so audio "
-            "cannot be saved.")
+            "This copy of the app cannot save MP3 files.")
     encoder = lameenc.Encoder()
     encoder.set_bit_rate(bitrate)
     encoder.set_in_sample_rate(SAMPLE_RATE)
@@ -271,6 +287,65 @@ def seconds_of(pcm):
     return len(pcm) / float(SAMPLE_RATE * SAMPLE_WIDTH)
 
 
+class Pacer:
+    """Keeps requests far enough apart to stay inside a rate limit."""
+
+    def __init__(self, spacing=MIN_SPACING):
+        self._spacing = spacing
+        self._next = 0.0
+        self._lock = threading.Lock()
+
+    @property
+    def spacing(self):
+        return self._spacing
+
+    def wait_turn(self, cancel_check=None):
+        with self._lock:
+            due = max(self._next, time.time())
+            self._next = due + self._spacing
+        delay = due - time.time()
+        return _wait(delay, cancel_check) if delay > 0 else True
+
+    def slow_down(self):
+        """Called after a refusal: leave more room next time."""
+        with self._lock:
+            self._spacing = min(MAX_SPACING, max(self._spacing * 1.6, 8.0))
+            return self._spacing
+
+
+def rate_limit_details(error):
+    """What a 429 actually said: how long to wait, and what ran out.
+
+    Read once, because the body of an HTTPError can only be read once.
+    Knowing which allowance was exhausted matters: a per-minute limit
+    is worth waiting out, while a daily one will not clear until it
+    resets, so retrying is pointless and saying so is kinder than
+    trying for several minutes and then failing anyway.
+    """
+    try:
+        data = json.loads(error.read().decode("utf-8", "replace"))
+    except Exception:
+        return None, None, False
+    delay = None
+    quota = None
+    daily = False
+    for detail in (data.get("error") or {}).get("details") or []:
+        value = detail.get("retryDelay")
+        if isinstance(value, str) and value.endswith("s"):
+            try:
+                delay = min(300, max(1, int(float(value[:-1]))))
+            except ValueError:
+                pass
+        for violation in detail.get("violations") or []:
+            identifier = (violation.get("quotaId")
+                          or violation.get("quotaMetric") or "")
+            if identifier:
+                quota = identifier
+                if "perday" in identifier.lower().replace("_", ""):
+                    daily = True
+    return delay, quota, daily
+
+
 def retry_delay_from(error):
     """Seconds the service asked us to wait, if it said.
 
@@ -297,7 +372,7 @@ def retry_delay_from(error):
 
 
 def _speak_with_retry(speak, text, key, index, notify=None,
-                      cancel_check=None):
+                      cancel_check=None, pacer=None):
     """One piece, retried. Returns PCM or raises the last failure.
 
     Two very different failures are handled here. The service answers
@@ -312,6 +387,8 @@ def _speak_with_retry(speak, text, key, index, notify=None,
     attempt = 0
     while attempt < 4 and rate_limited < len(RATE_LIMIT_WAITS):
         try:
+            if pacer is not None and not pacer.wait_turn(cancel_check):
+                raise SpeechError("Stopped.")
             return speak(text, key)
         except SpeechError as error:
             last = error
@@ -321,38 +398,48 @@ def _speak_with_retry(speak, text, key, index, notify=None,
             if error.code in (400, 401, 403):
                 # A key or model problem: retrying only repeats it.
                 raise SpeechError(
-                    "the service refused part %d (error %s). Check the "
-                    "API key and that the voice model is available to it."
-                    % (index + 1, error.code))
+                    "Gemini would not accept the request. Check that "
+                    "your API key is correct and that it can use the "
+                    "chosen voice model.")
             if error.code == 429:
-                wait = (retry_delay_from(error)
-                        or RATE_LIMIT_WAITS[rate_limited])
+                asked, quota, daily = rate_limit_details(error)
+                if daily:
+                    # A daily allowance does not come back by waiting;
+                    # it resets at midnight Pacific time.
+                    raise SpeechError(
+                        "Today's Gemini limit has been used up, so "
+                        "nothing more can be read aloud today. It "
+                        "resets at midnight Pacific time.")
+                wait = asked or RATE_LIMIT_WAITS[rate_limited]
+                # A little randomness so pieces that were refused
+                # together do not wake together and collide again.
+                wait += random.uniform(0, 3)
                 rate_limited += 1
+                if pacer is not None:
+                    pacer.slow_down()
                 last = SpeechError(
-                    "the service is rate limiting this key. Part %d was "
-                    "asked for too quickly." % (index + 1))
+                    "Gemini is limiting how often it will answer.")
                 if notify:
-                    notify("Rate limited; waiting %d seconds before trying "
-                           "part %d again." % (wait, index + 1))
+                    notify("Gemini is busy. Waiting %d seconds, then "
+                           "carrying on." % wait)
             else:
                 last = SpeechError(
-                    "the service refused part %d (error %s)."
-                    % (index + 1, error.code))
+                    "Gemini would not answer just then.")
                 wait = 3 * (attempt + 1)
                 attempt += 1
         except Exception as error:
             last = SpeechError(
-                "part %d could not be spoken: %s" % (index + 1, error))
+                "Part %d could not be read aloud: %s" % (index + 1, error))
             wait = 3 * (attempt + 1)
             attempt += 1
         if not _wait(wait, cancel_check):
-            raise SpeechError("stopped while waiting to try again.")
+            raise SpeechError("Stopped.")
     if rate_limited >= len(RATE_LIMIT_WAITS):
         raise SpeechError(
-            "the service kept rate limiting this key, so the book was not "
-            "finished. Free allowances are limited per minute: waiting a "
-            "while, or reading a smaller page range, usually works.")
-    raise last or SpeechError("part %d could not be spoken." % (index + 1))
+            "Gemini kept refusing, so the audio was not finished. A "
+            "free Gemini account only allows a few requests a minute. "
+            "Waiting a while, or choosing fewer pages, usually works.")
+    raise last or SpeechError("Part %d could not be read aloud." % (index + 1))
 
 
 def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
@@ -374,8 +461,9 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
     keys = [key for key in settings.get("gemini_api_keys", []) if key.strip()]
     if not keys:
         raise SpeechError(
-            "speaking a book uses Gemini, so a Gemini API key is needed "
-            "in Settings, even when another service is used for reading.")
+            "Reading a book aloud uses Gemini, so a Gemini API key is "
+            "needed in Settings, even if you use another service for the "
+            "pages themselves.")
     model = settings.get("tts_model") or DEFAULT_TTS_MODEL
     voice = settings.get("tts_voice") or DEFAULT_VOICE
     if request is not None:
@@ -388,13 +476,13 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
         pages=pages)
     if not lines:
         raise SpeechError(
-            "there are no processed pages in that range to speak.")
+            "There are no processed pages in that range to read.")
     chunks = split_for_speech(lines)
 
-    # More keys means more can be in flight without troubling any one
-    # of them, but the ceiling stays low either way.
-    limit = workers or min(DEFAULT_WORKERS * len(keys), DEFAULT_WORKERS + 2)
-    limit = max(1, min(limit, len(chunks)))
+    # Allowances are counted per project, not per key, so extra keys
+    # from the same project buy nothing here.
+    limit = max(1, min(workers or DEFAULT_WORKERS, len(chunks)))
+    pacer = Pacer()
 
     pieces = [None] * len(chunks)
     done = 0
@@ -407,10 +495,11 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
     def work(index):
         return index, _speak_with_retry(
             speak, chunks[index], keys[index % len(keys)], index,
-            notify=announce, cancel_check=cancel_check)
+            notify=announce, cancel_check=cancel_check,
+            pacer=pacer)
 
     if on_progress:
-        on_progress("Reading %d part%s aloud..."
+        on_progress("Reading %d part%s aloud."
                     % (len(chunks), "" if len(chunks) == 1 else "s"),
                     0, len(chunks) + 1)
 
@@ -431,17 +520,17 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
             pieces[index] = pcm
             done += 1
             if on_progress:
-                on_progress("Spoken %d of %d parts." % (done, len(chunks)),
+                on_progress("Read %d of %d parts." % (done, len(chunks)),
                             done, len(chunks) + 1)
     if failure is not None:
         raise failure
     if cancel_check and cancel_check():
         return None
     if any(piece is None for piece in pieces):
-        raise SpeechError("some parts of the book could not be spoken.")
+        raise SpeechError("Some parts could not be read aloud.")
 
     if on_progress:
-        on_progress("Encoding the audio...", len(chunks), len(chunks) + 1)
+        on_progress("Saving the audio file.", len(chunks), len(chunks) + 1)
     audio = b"".join(pieces)
     with open(path, "wb") as handle:
         handle.write(encode_mp3(audio))
