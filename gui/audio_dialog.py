@@ -26,6 +26,10 @@ def _safe_filename(value):
 WORDS_PER_MINUTE = 150
 
 
+def _is_button_activation_key(code):
+    return code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER, wx.WXK_SPACE)
+
+
 class AudioOptionsDialog(wx.Dialog):
     def __init__(self, parent, book, settings):
         super().__init__(parent, title="Save as audio")
@@ -85,9 +89,21 @@ class AudioOptionsDialog(wx.Dialog):
         sizer.Add(self.engine, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
                   10)
 
-        self.engine_note = wx.StaticText(panel, label="")
-        self.engine_note.Wrap(500)
-        sizer.Add(self.engine_note, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        explanation_box = wx.StaticBoxSizer(
+            wx.VERTICAL, panel, "About the options")
+        explanation_parent = explanation_box.GetStaticBox()
+        explanation = wx.StaticText(
+            explanation_parent,
+            label=(
+                "Kokoro generates audio on this computer and downloads one "
+                "model and voice package before its first use; it contains "
+                "every listed language and voice. Gemini uses its API key "
+                "and selected voice model. Pages to read chooses the whole "
+                "processed book or a page range."))
+        explanation.Wrap(500)
+        explanation_box.Add(explanation, 0, wx.ALL, 8)
+        sizer.Add(explanation_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT
+                  | wx.BOTTOM, 10)
 
         language_row = wx.BoxSizer(wx.HORIZONTAL)
         self.language_label = wx.StaticText(panel, label="&Language:")
@@ -108,7 +124,7 @@ class AudioOptionsDialog(wx.Dialog):
         sizer.Add(wx.StaticText(panel, label="&Voice:"), 0, wx.LEFT, 10)
         # A list rather than a drop-down: arrows move through it and a
         # screen reader announces each voice as it is reached.
-        self.voices = wx.ListBox(panel, size=(340, 170))
+        self.voices = wx.ListBox(panel, size=(340, 145))
         sizer.Add(self.voices, 1, wx.EXPAND | wx.ALL, 10)
         self._voice_ids = []
 
@@ -125,7 +141,7 @@ class AudioOptionsDialog(wx.Dialog):
                   10)
 
         self.download_button = wx.Button(
-            panel, wx.ID_ANY, "&Download Kokoro model files")
+            panel, wx.ID_ANY, "&Download Kokoro model and voice files")
         self.download_button.Bind(wx.EVT_BUTTON, self.on_download)
         sizer.Add(self.download_button, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM,
                   10)
@@ -137,6 +153,7 @@ class AudioOptionsDialog(wx.Dialog):
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         self.play_button = wx.Button(panel, wx.ID_ANY, "&Play sample")
         self.play_button.Bind(wx.EVT_BUTTON, self.on_play)
+        self.play_button.Bind(wx.EVT_KEY_DOWN, self._on_play_key)
         buttons.Add(self.play_button, 0, wx.RIGHT, 8)
         self.ok_button = wx.Button(panel, wx.ID_OK, "&Save as audio")
         self.ok_button.Bind(wx.EVT_BUTTON, self.on_accept)
@@ -193,27 +210,25 @@ class AudioOptionsDialog(wx.Dialog):
         self.language_label.Enable(local)
         self.model.Enable(not local)
         self.model_label.Enable(not local)
+        self.model.Show(not local)
+        self.model_label.Show(not local)
         self.download_button.Show(local)
-        if local:
-            self.engine_note.SetLabel(
-                "Kokoro generates speech on this computer. Its model "
-                "files are downloaded before first use.")
-        else:
-            self.engine_note.SetLabel(
-                "Gemini generates speech through the Gemini API.")
         self._refresh_download_button()
         self.play_button.Enable(bool(self._voice_ids))
         if self.panel.GetSizer():
             self.panel.Layout()
+            self.Fit()
 
     def _refresh_download_button(self):
         if self.chosen_engine() != tts.ENGINE_KOKORO:
             return
         if kokoro.models_ready():
-            self.download_button.SetLabel("Kokoro model files are ready")
+            self.download_button.SetLabel(
+                "Kokoro model and voice files are ready")
             self.download_button.Enable(False)
         else:
-            self.download_button.SetLabel("&Download Kokoro model files")
+            self.download_button.SetLabel(
+                "&Download Kokoro model and voice files")
             self.download_button.Enable(True)
 
     def on_engine_changed(self, event):
@@ -305,9 +320,12 @@ class AudioOptionsDialog(wx.Dialog):
             return
         size_mb = round(kokoro.MODEL_DOWNLOAD_BYTES / (1024 * 1024))
         answer = wx.MessageBox(
-            "Kokoro model files are required before first use. The "
-            "download is about %d MB. Download them now?" % size_mb,
-            "Kokoro model files", wx.YES_NO | wx.ICON_QUESTION, self)
+            "The Kokoro model and voice files are required before a sample "
+            "or MP3 can be generated. This one download installs every "
+            "Kokoro voice listed here and is about %d MB. Download it now?"
+            % size_mb,
+            "Kokoro model and voice files",
+            wx.YES_NO | wx.ICON_QUESTION, self)
         if answer == wx.YES:
             self._start_download(after)
 
@@ -325,7 +343,7 @@ class AudioOptionsDialog(wx.Dialog):
         self._download_after = after
         self._download_cancel = threading.Event()
         self._set_download_busy(True)
-        self._say("Downloading Kokoro model files.")
+        self._say("Downloading Kokoro model and voice files.")
 
         def progress(message, done, total):
             wx.CallAfter(self._download_progress, message, done, total)
@@ -372,15 +390,16 @@ class AudioOptionsDialog(wx.Dialog):
         after = self._download_after
         self._download_after = None
         if cancelled:
-            self._say("The Kokoro model download was cancelled.")
+            self._say(
+                "The Kokoro model and voice download was cancelled.")
             return
         if error:
-            self._say("The Kokoro model files are not ready.")
+            self._say("The Kokoro model and voice files are not ready.")
             wx.MessageBox(
-                error, "Kokoro model files",
+                error, "Kokoro model and voice files",
                 wx.OK | wx.ICON_ERROR, self)
             return
-        self._say("Kokoro model files are ready.")
+        self._say("Kokoro model and voice files are ready.")
         if after:
             after()
 
@@ -494,6 +513,20 @@ class AudioOptionsDialog(wx.Dialog):
 
     # ----- closing and keyboard ---------------------------------------
 
+    def _on_play_key(self, event):
+        if _is_button_activation_key(event.GetKeyCode()):
+            self.on_play(event)
+            return
+        event.Skip()
+
+    def _play_button_has_focus(self):
+        focus = wx.Window.FindFocus()
+        while focus is not None:
+            if focus is self.play_button:
+                return True
+            focus = focus.GetParent()
+        return False
+
     def on_cancel_dialog(self, event):
         self._download_cancel.set()
         self._closed = True
@@ -512,9 +545,11 @@ class AudioOptionsDialog(wx.Dialog):
         if code == wx.WXK_ESCAPE:
             self.on_cancel_dialog(event)
             return
-        # Windows sends Enter to the default button regardless of focus.
-        if (code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
-                and wx.Window.FindFocus() is self.play_button):
+        # Windows can send Enter to the dialog's default button regardless of
+        # focus. Space and Enter on Play sample must both play or begin the
+        # one-time Kokoro download instead of accepting the dialog.
+        if (_is_button_activation_key(code)
+                and self._play_button_has_focus()):
             self.on_play(event)
             return
         if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):

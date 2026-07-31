@@ -7,8 +7,8 @@ a frame rather than a dialog for the same reason the processing window
 is -- so it has its own Alt+Tab entry and the rest of the app stays
 usable.
 
-Nothing is written until every piece has been spoken, so cancelling
-leaves no half-finished file behind.
+Completed consecutive pieces can be saved when the user stops. Ordinary
+failures and a stop-without-saving leave the destination untouched.
 """
 
 import threading
@@ -41,6 +41,7 @@ class AudioExportWindow(wx.Frame):
         self.path = path
         self.pages = pages
         self._cancel = threading.Event()
+        self._save_partial = threading.Event()
         self._closed = False
         self._finished = False
 
@@ -51,12 +52,14 @@ class AudioExportWindow(wx.Frame):
             intro_text = (
                 "Kokoro is generating the audio on this computer. You can "
                 "carry on using the app while it works, and stop it at any "
-                "point.")
+                "point. When you stop, you can save the parts completed in "
+                "order.")
         else:
             intro_text = (
                 "Gemini is generating the audio through the API. You can "
                 "carry on using the app while it works, and stop it at any "
-                "point.")
+                "point. When you stop, you can save the parts completed in "
+                "order.")
         intro = wx.StaticText(panel, label=intro_text)
         intro.Wrap(510)
         sizer.Add(intro, 0, wx.ALL, 8)
@@ -70,7 +73,7 @@ class AudioExportWindow(wx.Frame):
         self.gauge = wx.Gauge(panel, range=100)
         sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
-        self.cancel_button = wx.Button(panel, wx.ID_CANCEL, "&Cancel")
+        self.cancel_button = wx.Button(panel, wx.ID_CANCEL, "&Stop")
         self.cancel_button.Bind(wx.EVT_BUTTON, self.on_cancel)
         sizer.Add(self.cancel_button, 0, wx.ALL | wx.ALIGN_RIGHT, 8)
 
@@ -96,7 +99,8 @@ class AudioExportWindow(wx.Frame):
                 self.book, self.path, self.settings,
                 on_progress=on_progress,
                 cancel_check=self._cancel.is_set,
-                pages=self.pages)
+                pages=self.pages,
+                save_partial_check=self._save_partial.is_set)
         except Exception as error:
             self._post(self._done, None, str(error))
             return
@@ -128,15 +132,29 @@ class AudioExportWindow(wx.Frame):
             self.log.AppendText("Stopped: %s\n" % error)
         elif seconds is None:
             self.log.AppendText(
-                "Cancelled. Nothing was saved.\n")
-        else:
-            minutes = int(seconds // 60)
+                "Stopped. No completed audio was saved.\n")
+        elif self._cancel.is_set():
             self.log.AppendText(
-                "Finished. Saved about %d minute%s of audio to %s\n"
-                % (minutes, "" if minutes == 1 else "s", self.path))
+                "Stopped. Saved %s of completed audio to %s\n"
+                % (self._duration_label(seconds), self.path))
+        else:
+            self.log.AppendText(
+                "Finished. Saved %s of audio to %s\n"
+                % (self._duration_label(seconds), self.path))
         self.cancel_button.SetLabel("&Close")
+        self.cancel_button.Enable(True)
         self.cancel_button.SetDefault()
         self.cancel_button.SetFocus()
+
+    @staticmethod
+    def _duration_label(seconds):
+        if seconds < 60:
+            rounded = max(1, int(round(seconds)))
+            return "about %d second%s" % (
+                rounded, "" if rounded == 1 else "s")
+        minutes = max(1, int(round(seconds / 60.0)))
+        return "about %d minute%s" % (
+            minutes, "" if minutes == 1 else "s")
 
     # ----- closing --------------------------------------------------------
 
@@ -144,23 +162,52 @@ class AudioExportWindow(wx.Frame):
         if self._finished or not self._thread.is_alive():
             self._shut()
             return
+        if self._cancel.is_set():
+            return
+        self._ask_to_stop()
+
+    def _ask_to_stop(self):
+        dialog = wx.MessageDialog(
+            self,
+            "Save the audio parts that have finished in their original "
+            "order?\n\nSaving keeps the completed beginning of the chosen "
+            "book or page range. Stopping without saving leaves the "
+            "destination unchanged.",
+            "Stop saving audio",
+            wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION)
+        set_labels = getattr(dialog, "SetYesNoCancelLabels", None)
+        if set_labels:
+            set_labels("&Save completed audio", "Stop &without saving",
+                       "&Keep generating")
+        answer = dialog.ShowModal()
+        dialog.Destroy()
+        if answer == wx.ID_CANCEL:
+            return False
+        if answer == wx.ID_YES:
+            self._save_partial.set()
+            self.log.AppendText(
+                "Stopping. Completed audio will be saved.\n")
+        else:
+            self.log.AppendText(
+                "Stopping without saving completed audio.\n")
         self._cancel.set()
-        self.log.AppendText(
-            "Stopping. Nothing will be saved; you can close this window.\n")
-        self.cancel_button.SetLabel("&Close now")
+        self.cancel_button.SetLabel("Stopping...")
+        self.cancel_button.Enable(False)
+        return True
 
     def on_close(self, event):
         if self._finished or not self._thread.is_alive():
             self._shut()
             return
-        answer = wx.MessageBox(
-            "Still reading this book aloud. Stop and close? Nothing will "
-            "be saved.",
-            "Stop saving audio", wx.YES_NO | wx.ICON_QUESTION, self)
-        if answer != wx.YES:
+        if self._cancel.is_set():
+            answer = wx.MessageBox(
+                "Audio is still being stopped. Close this window while it "
+                "finishes?",
+                "Close audio progress", wx.YES_NO | wx.ICON_QUESTION, self)
+            if answer == wx.YES:
+                self._shut()
             return
-        self._cancel.set()
-        self._shut()
+        self._ask_to_stop()
 
     def _shut(self):
         self._closed = True

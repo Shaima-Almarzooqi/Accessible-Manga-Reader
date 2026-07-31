@@ -2589,12 +2589,18 @@ try:
 except ImportError:
     MP3_SUPPORT = False
 
+try:
+    import numpy  # noqa: F401
+    NUMPY_SUPPORT = True
+except ImportError:
+    NUMPY_SUPPORT = False
+
 
 class TestSpeech(unittest.TestCase):
     """Speaking a book. The service is stubbed throughout: what matters
     here is that the text is cut in sensible places, that a piece the
     service fumbles is retried rather than losing the whole run, and
-    that a cancelled run leaves nothing behind."""
+    that cancellation saves completed audio only when explicitly chosen."""
 
     def setUp(self):
         from core import tts
@@ -2710,6 +2716,75 @@ class TestSpeech(unittest.TestCase):
         self.assertIsNone(result)
         self.assertFalse(os.path.exists(self._path()))
 
+    @unittest.skipUnless(MP3_SUPPORT, "lameenc not installed")
+    def test_cancelled_gemini_export_can_save_completed_audio(self):
+        import core.tts as module
+        import threading
+        import time as _time
+
+        cancelled = threading.Event()
+        real_split = module.split_for_speech
+        module.split_for_speech = lambda lines, limit=None: ["first", "second"]
+        calls = []
+
+        def speak(text):
+            calls.append(text)
+            if text == "second":
+                _time.sleep(0.5)
+            return self.silence
+
+        def progress(message, done, total):
+            if message.startswith("Read 1 of"):
+                cancelled.set()
+
+        try:
+            seconds = module.write_mp3(
+                self.book, self._path("partial-gemini.mp3"), self.settings,
+                request=speak, workers=1, on_progress=progress,
+                cancel_check=cancelled.is_set,
+                save_partial_check=lambda: True)
+        finally:
+            module.split_for_speech = real_split
+        self.assertGreater(seconds, 0)
+        path = self._path("partial-gemini.mp3")
+        self.assertTrue(os.path.exists(path))
+        with open(path, "rb") as handle:
+            head = handle.read(3)
+        self.assertTrue(head.startswith(b"ID3") or head[0] == 0xFF)
+
+    def test_cancelled_gemini_export_can_still_discard_completed_audio(self):
+        import core.tts as module
+        import threading
+        import time as _time
+
+        cancelled = threading.Event()
+        real_split = module.split_for_speech
+        module.split_for_speech = lambda lines, limit=None: ["first", "second"]
+
+        def speak(text):
+            if text == "second":
+                _time.sleep(0.5)
+            return self.silence
+
+        def progress(message, done, total):
+            if message.startswith("Read 1 of"):
+                cancelled.set()
+
+        path = self._path("discarded-gemini.mp3")
+        with open(path, "wb") as handle:
+            handle.write(b"existing audio")
+        try:
+            result = module.write_mp3(
+                self.book, path, self.settings,
+                request=speak, workers=1, on_progress=progress,
+                cancel_check=cancelled.is_set,
+                save_partial_check=lambda: False)
+        finally:
+            module.split_for_speech = real_split
+        self.assertIsNone(result)
+        with open(path, "rb") as handle:
+            self.assertEqual(handle.read(), b"existing audio")
+
     def test_progress_is_reported(self):
         seen = []
         self.tts.write_mp3(
@@ -2752,8 +2827,16 @@ class TestSpeech(unittest.TestCase):
 
         real_split = module.split_for_speech
         module.split_for_speech = lambda ls, limit=None: chunks
-        real_encode = module.encode_mp3
-        module.encode_mp3 = lambda pcm, bitrate=64: pcm
+        real_encoder = module.mp3_encoder
+
+        class PassThroughEncoder:
+            def encode(self, pcm):
+                return pcm
+
+            def flush(self):
+                return b""
+
+        module.mp3_encoder = lambda *args, **kwargs: PassThroughEncoder()
         try:
             lookup = {c: i for i, c in enumerate(chunks)}
             import time as _time
@@ -2770,7 +2853,7 @@ class TestSpeech(unittest.TestCase):
             raw = open(path, "rb").read()
         finally:
             module.split_for_speech = real_split
-            module.encode_mp3 = real_encode
+            module.mp3_encoder = real_encoder
 
         markers = [raw[i * 100] for i in range(len(chunks))]
         self.assertEqual(markers, list(range(1, len(chunks) + 1)))
@@ -3167,7 +3250,7 @@ class TestKokoroAudio(unittest.TestCase):
 
     def _long_book(self):
         self.book.scripts = {1: "\n".join(
-            "Narration: " + "word " * 35 for _ in range(20))}
+            "Narration: " + "word " * 35 for _ in range(100))}
         self.assertGreater(
             len(self.tts.split_for_kokoro(
                 self.tts.book_text(self.book))), 1)
@@ -3216,6 +3299,42 @@ class TestKokoroAudio(unittest.TestCase):
         # Sentence boundaries become newlines so the voice pauses there; the
         # original characters themselves must all remain present.
         self.assertEqual("".join(cjk_chunks).replace("\n", ""), japanese)
+
+    def test_kokoro_uses_far_fewer_outer_parts(self):
+        lines = ["Narration: " + "word " * 35 for _ in range(400)]
+        current = self.tts.split_for_kokoro(lines)
+        old = self.tts.split_for_kokoro(lines, limit=1000)
+        self.assertGreaterEqual(self.tts.KOKORO_CHUNK_CHARACTERS, 8000)
+        self.assertLess(len(current), len(old) / 5)
+
+    def test_phoneme_batches_never_cross_the_runtime_limit(self):
+        phonemes = ("phoneme sequence, " * 90).strip()
+        pieces = self.kokoro.split_phonemes(phonemes)
+        self.assertGreater(len(pieces), 1)
+        self.assertTrue(all(
+            len(piece) <= self.kokoro.MAX_PHONEME_CHARACTERS
+            for piece in pieces))
+        self.assertEqual("".join(pieces).replace(" ", ""),
+                         phonemes.replace(" ", ""))
+
+    @unittest.skipUnless(NUMPY_SUPPORT, "numpy not installed")
+    def test_long_phonemes_are_all_sent_to_the_model(self):
+        import numpy as np
+
+        seen = []
+
+        class Engine:
+            def create(self, phonemes, **kwargs):
+                seen.append(phonemes)
+                return np.zeros(10, dtype=np.float32), 24000
+
+        phonemes = "x" * 1200
+        pcm, rate, channels = self.kokoro.synthesize_phonemes(
+            phonemes, "af_heart", engine=Engine())
+        self.assertEqual("".join(seen), phonemes)
+        self.assertTrue(all(len(piece) <= 500 for piece in seen))
+        self.assertEqual((rate, channels), (24000, 1))
+        self.assertEqual(len(pcm), len(seen) * 20)
 
     def test_verified_download_becomes_ready(self):
         import hashlib
@@ -3333,6 +3452,56 @@ class TestKokoroAudio(unittest.TestCase):
             cancel_check=lambda: True)
         self.assertIsNone(result)
         self.assertFalse(os.path.exists(self._path()))
+
+    @unittest.skipUnless(MP3_SUPPORT, "lameenc not installed")
+    def test_cancelled_kokoro_export_can_save_completed_audio(self):
+        import threading
+        import time as _time
+
+        self._long_book()
+        cancelled = threading.Event()
+        calls = []
+
+        def speak(text):
+            calls.append(text)
+            if len(calls) > 1:
+                _time.sleep(0.5)
+            return self.silence, 24000, 1
+
+        def progress(message, done, total):
+            if message.startswith("Generated 1 of"):
+                cancelled.set()
+
+        path = self._path("partial-kokoro.mp3")
+        seconds = self.tts.write_mp3(
+            self.book, path, {
+                "tts_engine": "kokoro", "kokoro_language": "en-us",
+                "kokoro_voice": "af_heart"},
+            request=speak, workers=1, on_progress=progress,
+            cancel_check=cancelled.is_set,
+            save_partial_check=lambda: True)
+        self.assertGreater(seconds, 0)
+        self.assertTrue(os.path.exists(path))
+        with open(path, "rb") as handle:
+            head = handle.read(3)
+        self.assertTrue(head.startswith(b"ID3") or head[0] == 0xFF)
+
+    def test_sample_button_activation_includes_enter_and_space(self):
+        import wx
+        from gui import audio_dialog
+
+        for key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER, wx.WXK_SPACE):
+            self.assertTrue(audio_dialog._is_button_activation_key(key))
+        self.assertFalse(audio_dialog._is_button_activation_key(ord("A")))
+
+    def test_audio_dialog_explains_the_kokoro_download(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "gui", "audio_dialog.py"),
+                  encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertIn("About the options", source)
+        self.assertIn("model and voice", source)
+        self.assertIn("before a sample", source)
 
     def test_new_ui_copy_does_not_rank_the_engines(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

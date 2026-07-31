@@ -3,6 +3,31 @@
 All notable changes to Accessible Manga Reader are recorded here. The
 newest version is at the top.
 
+## 1.0.0
+
+### Added
+
+- Audio (MP3) in the Export menu. A processed book can be read aloud as
+  a whole book or as a selected page range. The options window shows an
+  estimated audio length and lets you choose the speech engine, language,
+  voice and, for Gemini, voice model. Voice samples can be played before
+  starting the export.
+- Kokoro speech generation with the complete Kokoro v1.0 catalogue: 54
+  voices across nine language and locale groups. Its model and voice files
+  are downloaded together before first use, verified before installation,
+  and shared by later exports.
+- A separate audio progress window, so a long export can continue while the
+  rest of the app remains available. Stopping offers to save the completed
+  beginning of the selected book or page range, in order, or to stop without
+  changing the destination file.
+- Gemini speech generation with selectable voice models, paced requests,
+  retry handling and plain-language progress messages.
+
+### Changed
+
+- Page ranges exported through the shared book outline keep the book's real
+  page numbering, such as Page 12 of 189.
+
 ## 0.20.0
 
 ### Fixed

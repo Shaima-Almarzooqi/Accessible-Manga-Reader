@@ -105,11 +105,12 @@ SAMPLE_WIDTH = 2
 # necessary makes a run slower rather than safer.
 CHUNK_CHARACTERS = 3200
 
-# Kokoro's official catalogue recommends ordinary utterances of roughly
-# 100-200 tokens and warns that very long ones can rush.  This character limit
-# lands around that range for prose while keeping cancellation reasonably
-# responsive during local inference.
-KOKORO_CHUNK_CHARACTERS = 1000
+# These are scheduling and partial-save boundaries, not model context
+# boundaries.  core.kokoro splits the resulting phonemes losslessly below the
+# model's 510-character inference ceiling.  Larger outer pieces avoid hundreds
+# of Python tasks for a chapter while still leaving regular points at which a
+# stopped export can publish everything completed in order.
+KOKORO_CHUNK_CHARACTERS = 8000
 KOKORO_WORKERS = 2
 
 TIMEOUT_SECONDS = 300
@@ -590,7 +591,7 @@ def _temporary_audio_path(path):
 
 def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
                            cancel_check=None, request=None, workers=None,
-                           pages=None):
+                           pages=None, save_partial_check=None):
     """Generate a book locally, streaming encoded data to a private file."""
     from . import kokoro
 
@@ -627,7 +628,8 @@ def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
                 work_items.append(kokoro.phonemize(chunk, language, engine))
 
             def make(item):
-                return kokoro.synthesize_phonemes(item, voice, engine)
+                return kokoro.synthesize_phonemes(
+                    item, voice, engine, cancel_check=cancel_check)
     except kokoro.KokoroError as error:
         raise SpeechError(str(error))
 
@@ -637,53 +639,87 @@ def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
     sample_rate = None
     channels = None
     duration = 0.0
+    completed = 0
+    stopped = False
+    publish = False
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=limit)
+    futures = []
     try:
         with open(temporary, "wb") as output:
-            with concurrent.futures.ThreadPoolExecutor(
-                    max_workers=limit) as pool:
-                futures = [pool.submit(make, item) for item in work_items]
-                for index, future in enumerate(futures, start=1):
+            futures = [pool.submit(make, item) for item in work_items]
+            for index, future in enumerate(futures, start=1):
+                while not future.done():
                     if cancel_check and cancel_check():
-                        for pending in futures:
-                            pending.cancel()
-                        return None
-                    try:
-                        pcm, rate, channel_count = future.result()
-                    except kokoro.KokoroError as error:
-                        for pending in futures:
-                            pending.cancel()
-                        raise SpeechError(str(error))
-                    except Exception as error:
-                        for pending in futures:
-                            pending.cancel()
-                        raise SpeechError(
-                            "Kokoro could not generate the audio: %s" % error)
-                    if encoder is None:
-                        sample_rate, channels = rate, channel_count
-                        encoder = mp3_encoder(
-                            sample_rate=sample_rate, channels=channels)
-                    elif rate != sample_rate or channel_count != channels:
-                        raise SpeechError(
-                            "Kokoro returned audio in inconsistent formats.")
-                    output.write(bytes(encoder.encode(pcm)))
-                    duration += seconds_of(pcm, rate, channel_count)
+                        stopped = True
+                        break
+                    concurrent.futures.wait((future,), timeout=0.2)
+                if stopped:
+                    break
+                try:
+                    pcm, rate, channel_count = future.result()
+                except kokoro.SynthesisCancelled:
+                    if cancel_check and cancel_check():
+                        stopped = True
+                        break
+                    raise SpeechError("Kokoro stopped unexpectedly.")
+                except kokoro.KokoroError as error:
+                    for pending in futures:
+                        pending.cancel()
+                    raise SpeechError(str(error))
+                except Exception as error:
+                    for pending in futures:
+                        pending.cancel()
+                    raise SpeechError(
+                        "Kokoro could not generate the audio: %s" % error)
+                if encoder is None:
+                    sample_rate, channels = rate, channel_count
+                    encoder = mp3_encoder(
+                        sample_rate=sample_rate, channels=channels)
+                elif rate != sample_rate or channel_count != channels:
+                    raise SpeechError(
+                        "Kokoro returned audio in inconsistent formats.")
+                output.write(bytes(encoder.encode(pcm)))
+                duration += seconds_of(pcm, rate, channel_count)
+                completed = index
+                if on_progress:
+                    on_progress(
+                        "Generated %d of %d parts with Kokoro."
+                        % (index, len(work_items)),
+                        index, len(work_items) + 1)
+                if cancel_check and cancel_check():
+                    stopped = True
+                    break
+
+            if not stopped and cancel_check and cancel_check():
+                stopped = True
+
+            if stopped:
+                for pending in futures:
+                    pending.cancel()
+                keep = bool(save_partial_check and save_partial_check())
+                if keep and encoder is not None and completed:
                     if on_progress:
-                        on_progress(
-                            "Generated %d of %d parts with Kokoro."
-                            % (index, len(work_items)),
-                            index, len(work_items) + 1)
-            if cancel_check and cancel_check():
-                return None
-            if encoder is None:
-                raise SpeechError("Kokoro did not generate any audio.")
-            if on_progress:
-                on_progress("Saving the audio file.", len(work_items),
-                            len(work_items) + 1)
-            output.write(bytes(encoder.flush()))
-        os.replace(temporary, path)
-        temporary = None
-        return duration
+                        on_progress("Saving the completed audio.", completed,
+                                    len(work_items) + 1)
+                    output.write(bytes(encoder.flush()))
+                    publish = True
+            else:
+                if encoder is None:
+                    raise SpeechError("Kokoro did not generate any audio.")
+                if on_progress:
+                    on_progress("Saving the audio file.", len(work_items),
+                                len(work_items) + 1)
+                output.write(bytes(encoder.flush()))
+                publish = True
+        if publish:
+            os.replace(temporary, path)
+            temporary = None
+            return duration
+        return None
     finally:
+        for pending in futures:
+            pending.cancel()
+        pool.shutdown(wait=not stopped, cancel_futures=True)
         if temporary:
             try:
                 os.remove(temporary)
@@ -692,12 +728,14 @@ def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
 
 
 def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
-              request=None, workers=None, pages=None):
+              request=None, workers=None, pages=None,
+              save_partial_check=None):
     """Speak a whole book into one MP3 file.
 
     on_progress(message, done, total) is called as pieces finish.
-    cancel_check() returning True stops the run; nothing is written, so
-    a cancelled run leaves no half-finished file behind.
+    cancel_check() returning True stops the run.  If save_partial_check()
+    is also true, completed consecutive parts are encoded and moved into place;
+    otherwise the destination is left untouched.
 
     Pieces are spoken several at a time, since each request takes about
     as long as the speech it produces and they do not depend on one
@@ -711,7 +749,8 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
     if engine == ENGINE_KOKORO:
         return _write_mp3_with_kokoro(
             book, path, settings, on_progress, cancel_check,
-            request=request, workers=workers, pages=pages)
+            request=request, workers=workers, pages=pages,
+            save_partial_check=save_partial_check)
     if engine == ENGINE_WINDOWS:
         return _write_mp3_locally(book, path, dict(settings, _pages=pages),
                                   on_progress, cancel_check)
@@ -743,10 +782,17 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
 
     pieces = [None] * len(chunks)
     done = 0
+    next_to_write = 0
     failure = None
+    stopped = False
+    duration = 0.0
+    encoder = None
+    publish = False
+    notifications = threading.Event()
+    notifications.set()
 
     def announce(message):
-        if on_progress:
+        if on_progress and notifications.is_set():
             on_progress(message, done, len(chunks) + 1)
 
     def work(index):
@@ -760,35 +806,87 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
                     % (len(chunks), "" if len(chunks) == 1 else "s"),
                     0, len(chunks) + 1)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=limit) as pool:
+    temporary = _temporary_audio_path(path)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=limit)
+    futures = []
+    pending = set()
+    try:
         futures = [pool.submit(work, index) for index in range(len(chunks))]
-        for future in concurrent.futures.as_completed(futures):
-            if cancel_check and cancel_check():
-                for pending in futures:
-                    pending.cancel()
-                return None
-            try:
-                index, pcm = future.result()
-            except Exception as error:
-                failure = error
-                for pending in futures:
-                    pending.cancel()
-                break
-            pieces[index] = pcm
-            done += 1
-            if on_progress:
-                on_progress("Read %d of %d parts." % (done, len(chunks)),
+        pending = set(futures)
+        with open(temporary, "wb") as output:
+            while pending:
+                completed, _ = concurrent.futures.wait(
+                    pending, timeout=0.2,
+                    return_when=concurrent.futures.FIRST_COMPLETED)
+                for future in completed:
+                    pending.remove(future)
+                    try:
+                        index, pcm = future.result()
+                    except Exception as error:
+                        if cancel_check and cancel_check():
+                            stopped = True
+                        else:
+                            failure = error
+                        break
+                    pieces[index] = pcm
+                    done += 1
+                    if on_progress:
+                        on_progress(
+                            "Read %d of %d parts." % (done, len(chunks)),
                             done, len(chunks) + 1)
-    if failure is not None:
-        raise failure
-    if cancel_check and cancel_check():
-        return None
-    if any(piece is None for piece in pieces):
-        raise SpeechError("Some parts could not be read aloud.")
+                while (next_to_write < len(pieces)
+                       and pieces[next_to_write] is not None):
+                    pcm = pieces[next_to_write]
+                    if encoder is None:
+                        encoder = mp3_encoder()
+                    output.write(bytes(encoder.encode(pcm)))
+                    duration += seconds_of(pcm)
+                    pieces[next_to_write] = b""
+                    next_to_write += 1
+                if failure is not None or stopped:
+                    break
+                if cancel_check and cancel_check():
+                    stopped = True
+                    break
 
-    if on_progress:
-        on_progress("Saving the audio file.", len(chunks), len(chunks) + 1)
-    audio = b"".join(pieces)
-    with open(path, "wb") as handle:
-        handle.write(encode_mp3(audio))
-    return seconds_of(audio)
+            if stopped:
+                keep = bool(save_partial_check and save_partial_check())
+                if keep and encoder is not None and next_to_write:
+                    if on_progress:
+                        on_progress("Saving the completed audio.",
+                                    next_to_write, len(chunks) + 1)
+                    output.write(bytes(encoder.flush()))
+                    publish = True
+            elif failure is None:
+                if next_to_write != len(chunks):
+                    failure = SpeechError(
+                        "Some parts could not be read aloud.")
+                elif encoder is None:
+                    failure = SpeechError(
+                        "Gemini did not generate any audio.")
+                else:
+                    if on_progress:
+                        on_progress("Saving the audio file.", len(chunks),
+                                    len(chunks) + 1)
+                    output.write(bytes(encoder.flush()))
+                    publish = True
+
+        if failure is not None:
+            raise failure
+        if publish:
+            os.replace(temporary, path)
+            temporary = None
+            return duration
+        return None
+    finally:
+        notifications.clear()
+        for future in futures:
+            future.cancel()
+        pool.shutdown(
+            wait=not (stopped or failure is not None),
+            cancel_futures=True)
+        if temporary:
+            try:
+                os.remove(temporary)
+            except OSError:
+                pass

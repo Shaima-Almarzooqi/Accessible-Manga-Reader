@@ -158,6 +158,10 @@ class DownloadCancelled(KokoroError):
     """The user stopped a model download."""
 
 
+class SynthesisCancelled(KokoroError):
+    """The user stopped local speech synthesis."""
+
+
 def language_labels():
     return [label for _, label in LANGUAGES]
 
@@ -290,13 +294,15 @@ def download_models(on_progress=None, cancel_check=None, directory=None,
                         digest.update(block)
                         written += len(block)
                         if on_progress:
-                            on_progress("Downloading Kokoro model files.",
-                                        done + written, total)
+                            on_progress(
+                                "Downloading Kokoro model and voice files.",
+                                done + written, total)
             except DownloadCancelled:
                 raise
             except Exception as error:
                 raise KokoroError(
-                    "The Kokoro model files could not be downloaded: %s"
+                    "The Kokoro model and voice files could not be "
+                    "downloaded: %s"
                     % error)
             if written != asset["size"]:
                 raise KokoroError(
@@ -321,7 +327,8 @@ def download_models(on_progress=None, cancel_check=None, directory=None,
                       sort_keys=True)
         os.replace(pending_manifest, manifest)
         if on_progress:
-            on_progress("Kokoro model files are ready.", total, total)
+            on_progress("Kokoro model and voice files are ready.",
+                        total, total)
         return tuple(os.path.join(directory, asset["name"])
                      for asset in assets)
     finally:
@@ -400,15 +407,67 @@ def phonemize(text, language, engine=None):
                 "Kokoro could not prepare the selected text: %s" % error)
 
 
-def synthesize_phonemes(phonemes, voice, engine=None):
+MAX_PHONEME_CHARACTERS = 500
+
+
+def split_phonemes(phonemes, limit=MAX_PHONEME_CHARACTERS):
+    """Split phonemes losslessly below Kokoro's 510-character ceiling.
+
+    kokoro-onnx accepts long input, but its final inference method truncates
+    any individual phoneme batch beyond 510 characters.  Keeping a little
+    room here and preferring punctuation or whitespace prevents narration
+    from disappearing at that boundary.
+    """
+    remaining = phonemes.strip()
+    pieces = []
+    while len(remaining) > limit:
+        floor = max(1, limit // 2)
+        cut = -1
+        for character in (
+                ".", "!", "?", ";", ":", ",", "。", "！", "？", " "):
+            candidate = remaining.rfind(character, floor, limit)
+            if candidate >= 0:
+                candidate += 1
+                cut = max(cut, candidate)
+        if cut <= 0:
+            cut = limit
+        piece = remaining[:cut].strip()
+        if piece:
+            pieces.append(piece)
+        remaining = remaining[cut:].strip()
+    if remaining:
+        pieces.append(remaining)
+    return pieces
+
+
+def synthesize_phonemes(phonemes, voice, engine=None, cancel_check=None):
     """Generate signed 16-bit mono PCM from already prepared phonemes."""
     engine = engine or load_engine()
     try:
         import numpy as np
-        samples, sample_rate = engine.create(
-            phonemes, voice=voice, speed=1.0, is_phonemes=True, trim=True)
+        audio = []
+        sample_rate = None
+        for piece in split_phonemes(phonemes):
+            if cancel_check and cancel_check():
+                raise SynthesisCancelled("Stopped.")
+            samples, piece_rate = engine.create(
+                piece, voice=voice, speed=1.0,
+                is_phonemes=True, trim=True)
+            if sample_rate is None:
+                sample_rate = piece_rate
+            elif piece_rate != sample_rate:
+                raise KokoroError(
+                    "Kokoro returned audio at inconsistent sample rates.")
+            audio.append(samples)
+        if not audio:
+            raise KokoroError("Kokoro did not generate any audio.")
+        samples = np.concatenate(audio)
         pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")
         return pcm.tobytes(), int(sample_rate), 1
+    except SynthesisCancelled:
+        raise
+    except KokoroError:
+        raise
     except Exception as error:
         raise KokoroError(
             "Kokoro could not generate the selected audio: %s" % error)
