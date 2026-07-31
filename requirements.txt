@@ -14,3 +14,8 @@ pypdfium2>=4
 # MP3 encoding for the audio export. Wheels exist for both
 # Windows architectures, and it is about 150 KB.
 lameenc>=1.8
+
+# Reaching the speech voices already on the computer, so a book can
+# be read aloud with no key and no allowance. Pure Python, so it
+# works on every architecture.
+comtypes>=1.4

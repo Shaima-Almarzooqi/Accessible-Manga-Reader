@@ -1,11 +1,11 @@
 """Saving a book as audio.
 
-Speaking a whole volume takes hours and a large amount of a service's
-allowance, so this is nothing like the other exports: it runs on a
-worker thread in its own window, reports where it has got to, and can
-be cancelled at any point. The window is a frame rather than a dialog
-for the same reason the processing window is -- so it has its own
-Alt+Tab entry and the rest of the app stays usable.
+Speaking a whole volume can take a while, so this is nothing like the
+other exports: it runs on a worker thread in its own window, reports
+where it has got to, and can be cancelled at any point. The window is
+a frame rather than a dialog for the same reason the processing window
+is -- so it has its own Alt+Tab entry and the rest of the app stays
+usable.
 
 Nothing is written until every piece has been spoken, so cancelling
 leaves no half-finished file behind.
@@ -47,10 +47,17 @@ class AudioExportWindow(wx.Frame):
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        intro = wx.StaticText(panel, label=(
-            "Reading this book aloud can take a long time and uses a large "
-            "part of your Gemini allowance. You can carry on using the app "
-            "while it works, and stop it at any point."))
+        if settings.get("tts_engine") == tts.ENGINE_WINDOWS:
+            intro_text = (
+                "This computer is reading the book locally. It needs no "
+                "account, network connection or allowance. You can carry "
+                "on using the app while it works, and stop it at any point.")
+        else:
+            intro_text = (
+                "Reading this book aloud can take a long time and uses a "
+                "large part of your Gemini allowance. You can carry on "
+                "using the app while it works, and stop it at any point.")
+        intro = wx.StaticText(panel, label=intro_text)
         intro.Wrap(510)
         sizer.Add(intro, 0, wx.ALL, 8)
 

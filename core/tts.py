@@ -29,7 +29,7 @@ import wave
 import urllib.error
 import urllib.request
 
-from . import export
+from . import export, winspeech
 
 # Gemini's prebuilt voices. The names are the API's own; the
 # descriptions are Google's short characterisations, kept so the
@@ -68,6 +68,14 @@ VOICES = [
 ]
 
 DEFAULT_VOICE = "Kore"
+
+# Which engine reads the book. Gemini sounds better and can be steered,
+# but costs allowance and takes as long as the speech it produces. The
+# computer's own voices cost nothing, work offline and finish in a
+# fraction of the time.
+ENGINE_GEMINI = "gemini"
+ENGINE_WINDOWS = "windows"
+DEFAULT_ENGINE = ENGINE_GEMINI
 
 # Voice models, offered when saving as audio so a reader can try
 # another if one is refusing or sounds wrong. Every one of them is a
@@ -239,8 +247,14 @@ def extract_audio(data):
         "and then, and trying again usually works.")
 
 
-def encode_mp3(pcm, bitrate=64):
-    """Encode 16-bit mono PCM to MP3 bytes."""
+def encode_mp3(pcm, bitrate=64, sample_rate=None, channels=1):
+    """Encode 16-bit PCM to MP3 bytes.
+
+    The rate is a parameter because the two sources differ: Gemini
+    always returns 24 kHz, while a Windows voice produces whatever rate
+    it prefers. Encoding at the wrong rate plays back at the wrong
+    speed, so the caller passes what it actually has.
+    """
     try:
         import lameenc
     except ImportError:
@@ -248,13 +262,13 @@ def encode_mp3(pcm, bitrate=64):
             "This copy of the app cannot save MP3 files.")
     encoder = lameenc.Encoder()
     encoder.set_bit_rate(bitrate)
-    encoder.set_in_sample_rate(SAMPLE_RATE)
-    encoder.set_channels(1)
+    encoder.set_in_sample_rate(sample_rate or SAMPLE_RATE)
+    encoder.set_channels(channels)
     encoder.set_quality(5)  # middle of the range: decent, and quick
     return bytes(encoder.encode(pcm)) + bytes(encoder.flush())
 
 
-def pcm_to_wav(pcm):
+def pcm_to_wav(pcm, sample_rate=None, channels=1):
     """Wrap raw PCM in a WAV container so it can be played.
 
     Used for voice previews: Windows can play WAV without any decoder,
@@ -262,9 +276,9 @@ def pcm_to_wav(pcm):
     """
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as handle:
-        handle.setnchannels(1)
+        handle.setnchannels(channels)
         handle.setsampwidth(SAMPLE_WIDTH)
-        handle.setframerate(SAMPLE_RATE)
+        handle.setframerate(sample_rate or SAMPLE_RATE)
         handle.writeframes(pcm)
     return buffer.getvalue()
 
@@ -442,6 +456,54 @@ def _speak_with_retry(speak, text, key, index, notify=None,
     raise last or SpeechError("Part %d could not be read aloud." % (index + 1))
 
 
+def _write_mp3_locally(book, path, settings, on_progress=None,
+                       cancel_check=None):
+    """Read a book with the computer's own voice.
+
+    Much simpler than going out to a service: there is no allowance to
+    run out of, nothing to be refused by and no waiting between pieces.
+    The book is still cut up, but only so progress can be reported and
+    a cancel noticed part way through.
+    """
+    if not winspeech.available():
+        raise SpeechError(
+            "This computer's own voices are not available, so choose "
+            "Gemini instead.")
+    lines = book_text(
+        book, show_panel_labels=bool(settings.get("show_panel_labels", True)),
+        pages=settings.get("_pages"))
+    if not lines:
+        raise SpeechError("There are no processed pages in that range to read.")
+    chunks = split_for_speech(lines)
+    voice_id = settings.get("windows_voice") or None
+
+    audio = bytearray()
+    rate = None
+    channels = 1
+    for index, chunk in enumerate(chunks, start=1):
+        if cancel_check and cancel_check():
+            return None
+        if on_progress:
+            on_progress("Reading part %d of %d." % (index, len(chunks)),
+                        index - 1, len(chunks) + 1)
+        try:
+            pcm, chunk_rate, chunk_channels = winspeech.speak(chunk, voice_id)
+        except winspeech.WindowsSpeechError as error:
+            raise SpeechError(str(error))
+        if rate is None:
+            rate, channels = chunk_rate, chunk_channels
+        audio.extend(pcm)
+
+    if cancel_check and cancel_check():
+        return None
+    if on_progress:
+        on_progress("Saving the audio file.", len(chunks), len(chunks) + 1)
+    with open(path, "wb") as handle:
+        handle.write(encode_mp3(bytes(audio), sample_rate=rate,
+                                channels=channels))
+    return len(audio) / float((rate or SAMPLE_RATE) * SAMPLE_WIDTH * channels)
+
+
 def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
               request=None, workers=None, pages=None):
     """Speak a whole book into one MP3 file.
@@ -458,6 +520,9 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
     `request` exists so the chunking, retrying, ordering and encoding
     can all be tested without calling the service.
     """
+    if settings.get("tts_engine") == ENGINE_WINDOWS:
+        return _write_mp3_locally(book, path, dict(settings, _pages=pages),
+                                  on_progress, cancel_check)
     keys = [key for key in settings.get("gemini_api_keys", []) if key.strip()]
     if not keys:
         raise SpeechError(

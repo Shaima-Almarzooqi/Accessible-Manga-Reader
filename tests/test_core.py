@@ -3011,6 +3011,92 @@ class TestSpeech(unittest.TestCase):
             self.tts.sample_voice("Kore", {},
                                   request=lambda text: self.silence)
 
+    def test_legacy_voices_are_filtered_out(self):
+        # The old flat voices are what a program is given by default,
+        # and offering them beside the good ones invites a
+        # disappointing choice.
+        from core import winspeech
+        for name in ("Microsoft David Desktop - English (United States)",
+                     "Microsoft Zira Desktop", "Microsoft Mark",
+                     "Microsoft Hazel Desktop - English (Great Britain)",
+                     "Microsoft Sara Desktop"):
+            self.assertTrue(winspeech.is_legacy(name), name)
+
+    def test_better_voices_are_kept(self):
+        from core import winspeech
+        for name in ("Microsoft Aria Online (Natural)",
+                     "Microsoft Guy", "Microsoft Jenny",
+                     "Microsoft Sonia Online"):
+            self.assertFalse(winspeech.is_legacy(name), name)
+
+    def test_local_default_cannot_fall_back_to_a_legacy_voice(self):
+        from core import winspeech
+
+        class Token:
+            def __init__(self, identifier, description):
+                self.Id = identifier
+                self.description = description
+
+            def GetDescription(self):
+                return self.description
+
+        tokens = [
+            Token("legacy", "Microsoft David Desktop"),
+            Token("onecore", "Microsoft Aria"),
+        ]
+        self.assertEqual(
+            winspeech._chosen_token(tokens).Id, "onecore")
+        with self.assertRaises(winspeech.WindowsSpeechError):
+            winspeech._chosen_token(tokens, "missing")
+
+    def test_no_voices_is_not_an_error(self):
+        # A computer with nothing worth offering should simply not
+        # offer the engine, rather than fail.
+        from core import winspeech
+        self.assertEqual(winspeech.voices() if not winspeech.available()
+                         else [], [])
+
+    def test_local_engine_needs_no_key(self):
+        # The whole point: no account, no allowance, no network.
+        import core.tts as module
+        from core import winspeech
+        real_available = winspeech.available
+        real_speak = winspeech.speak
+        winspeech.available = lambda: True
+        winspeech.speak = lambda text, voice_id=None: (
+            self.silence, 24000, 1)
+        try:
+            seconds = module.write_mp3(
+                self.book, self._path("local.mp3"),
+                {"tts_engine": "windows"})   # no keys at all
+        finally:
+            winspeech.available = real_available
+            winspeech.speak = real_speak
+        self.assertGreater(seconds, 0)
+        self.assertTrue(os.path.exists(self._path("local.mp3")))
+
+    def test_local_engine_says_so_when_unavailable(self):
+        import core.tts as module
+        from core import winspeech
+        real = winspeech.available
+        winspeech.available = lambda: False
+        try:
+            with self.assertRaises(module.SpeechError) as caught:
+                module.write_mp3(self.book, self._path(), {
+                    "tts_engine": "windows"})
+        finally:
+            winspeech.available = real
+        self.assertIn("Gemini instead", str(caught.exception))
+
+    def test_audio_is_encoded_at_the_rate_it_was_spoken(self):
+        # A Windows voice picks its own rate; encoding at Gemini's
+        # would play the book back at the wrong speed.
+        pcm = b"\x00\x00" * 16000
+        at_16k = self.tts.encode_mp3(pcm, sample_rate=16000)
+        at_24k = self.tts.encode_mp3(pcm, sample_rate=24000)
+        self.assertTrue(at_16k and at_24k)
+        self.assertNotEqual(at_16k, at_24k)
+
     def test_every_model_has_a_description(self):
         # Offered in the dialog, so each needs something to tell a
         # reader why they might pick it.

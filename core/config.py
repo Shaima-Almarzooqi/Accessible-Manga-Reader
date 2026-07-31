@@ -61,6 +61,8 @@ DEFAULT_SETTINGS = {
     # continuous narrative; the cached scripts are unchanged either way.
     "show_panel_labels": True,
     "converted_pages_one_page": True,
+    "tts_engine": "gemini",
+    "windows_voice": "",
     "tts_voice": "Kore",
     "tts_model": "gemini-3.1-flash-tts-preview",
     "image_max_dimension": 1568,
