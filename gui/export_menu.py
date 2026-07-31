@@ -90,7 +90,7 @@ def build_export_menu(frame, get_book, get_settings):
             item)
     audio_item = menu.Append(
         wx.ID_ANY, "&Audio (MP3)...",
-        "Read this book aloud with a chosen voice and save it as an MP3")
+        "Read this book aloud and save it as an MP3")
     frame.Bind(wx.EVT_MENU,
                lambda event: save_book_as_audio(
                    frame, get_book(), get_settings()),
@@ -118,29 +118,32 @@ def save_book_as_audio(parent, book, settings):
     proceed = chooser.ShowModal() == wx.ID_OK
     voice = chooser.chosen_voice()
     engine = chooser.chosen_engine()
-    local_voice = chooser.chosen_local_voice()
+    language = chooser.chosen_language()
     model = chooser.chosen_model()
     pages = chooser.chosen_pages()
     suffix = chooser.range_label()
     chooser.Destroy()
     if not proceed:
         return
-    if (engine != tts.ENGINE_WINDOWS
-            and not [k for k in settings.get("gemini_api_keys", [])
-                     if k.strip()]):
-        # Asked here rather than earlier: the computer's own voices need
-        # no key, so someone without one can still use them.
+    if (engine == tts.ENGINE_GEMINI
+            and not [key for key in settings.get("gemini_api_keys", [])
+                     if key.strip()]):
         wx.MessageBox(
-            "Reading a book aloud with Gemini needs a Gemini API key in "
-            "Settings. The voices on this computer need no key.",
+            "Gemini requires a Gemini API key in Settings before it can "
+            "generate audio.",
             "Save as audio", wx.OK | wx.ICON_INFORMATION, parent)
         return
     # Remembered so the next book starts from the same choice.
-    settings["tts_voice"] = voice
-    settings["tts_model"] = model
     settings["tts_engine"] = engine
-    if local_voice:
-        settings["windows_voice"] = local_voice
+    if engine == tts.ENGINE_KOKORO:
+        settings["kokoro_language"] = language
+        settings["kokoro_voice"] = voice
+        remembered = dict(settings.get("kokoro_voice_by_language", {}))
+        remembered[language] = voice
+        settings["kokoro_voice_by_language"] = remembered
+    else:
+        settings["tts_voice"] = voice
+        settings["tts_model"] = model
     from core import config
     config.save_settings(settings)
 

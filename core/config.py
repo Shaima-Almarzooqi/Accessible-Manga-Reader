@@ -61,7 +61,10 @@ DEFAULT_SETTINGS = {
     # continuous narrative; the cached scripts are unchanged either way.
     "show_panel_labels": True,
     "converted_pages_one_page": True,
-    "tts_engine": "gemini",
+    "tts_engine": "kokoro",
+    "kokoro_language": "en-us",
+    "kokoro_voice": "af_heart",
+    "kokoro_voice_by_language": {},
     "windows_voice": "",
     "tts_voice": "Kore",
     "tts_model": "gemini-3.1-flash-tts-preview",

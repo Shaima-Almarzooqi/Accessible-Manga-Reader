@@ -3143,6 +3143,208 @@ class TestSpeech(unittest.TestCase):
                       [name for name, _ in self.tts.VOICES])
 
 
+class TestKokoroAudio(unittest.TestCase):
+    """The local catalogue, verified download, and atomic MP3 export."""
+
+    def setUp(self):
+        from core import kokoro, tts
+        self.kokoro = kokoro
+        self.tts = tts
+        self.tmp = tempfile.mkdtemp(prefix="amr_kokoro_test_")
+        workspace = os.path.join(self.tmp, "book")
+        os.makedirs(os.path.join(workspace, "pages"))
+        self.book = library.Book(workspace)
+        self.book.title = "Local Voices"
+        self.book.page_count = 1
+        self.book.scripts = {1: "Narration: A quiet street at dusk."}
+        self.silence = b"\x00\x00" * 240
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _path(self, name="kokoro.mp3"):
+        return os.path.join(self.tmp, name)
+
+    def _long_book(self):
+        self.book.scripts = {1: "\n".join(
+            "Narration: " + "word " * 35 for _ in range(20))}
+        self.assertGreater(
+            len(self.tts.split_for_kokoro(
+                self.tts.book_text(self.book))), 1)
+
+    def test_current_catalogue_has_every_official_voice(self):
+        self.assertEqual(len(self.kokoro.LANGUAGES), 9)
+        voices = [voice for group in self.kokoro.VOICES_BY_LANGUAGE.values()
+                  for voice, _ in group]
+        self.assertEqual(len(voices), 54)
+        self.assertEqual(len(set(voices)), 54)
+        for language, _ in self.kokoro.LANGUAGES:
+            self.assertIn(self.kokoro.default_voice(language),
+                          [voice for voice, _
+                           in self.kokoro.VOICES_BY_LANGUAGE[language]])
+
+    def test_voice_labels_are_factual(self):
+        labels = [label.lower() for language, _ in self.kokoro.LANGUAGES
+                  for _, label in self.kokoro.voice_options(language)]
+        self.assertTrue(all("female" in label or "male" in label
+                            for label in labels))
+        for claim in ("better", "natural", "expressive", "free", "quota"):
+            self.assertFalse(any(claim in label for label in labels), claim)
+
+    def test_book_language_selects_a_supported_locale(self):
+        for book_language, expected in (
+                ("English", "en-us"), ("en-GB", "en-gb"),
+                ("Japanese", "ja"), ("Chinese (Traditional)", "zh"),
+                ("French", "fr-fr"), ("Portuguese", "pt-br")):
+            self.book.output_language = book_language
+            self.assertEqual(
+                self.kokoro.language_for_book(self.book, {}), expected)
+        self.book.output_language = "Arabic"
+        self.assertEqual(
+            self.kokoro.language_for_book(
+                self.book, {"kokoro_language": "it"}), "it")
+
+    def test_long_local_lines_are_not_truncated(self):
+        line = " ".join("word%d" % number for number in range(300))
+        chunks = self.tts.split_for_kokoro([line], limit=120)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= 120 for chunk in chunks))
+        self.assertEqual(" ".join(chunks).split(), line.split())
+        japanese = "長い文章です。" * 80
+        cjk_chunks = self.tts.split_for_kokoro([japanese], limit=60)
+        self.assertTrue(all(len(chunk) <= 60 for chunk in cjk_chunks))
+        # Sentence boundaries become newlines so the voice pauses there; the
+        # original characters themselves must all remain present.
+        self.assertEqual("".join(cjk_chunks).replace("\n", ""), japanese)
+
+    def test_verified_download_becomes_ready(self):
+        import hashlib
+
+        payloads = {"model": b"model bytes", "voices": b"voice bytes"}
+        assets = tuple({
+            "name": name + ".bin", "size": len(payloads[url]),
+            "sha256": hashlib.sha256(payloads[url]).hexdigest(), "url": url,
+        } for name, url in (("model", "model"), ("voices", "voices")))
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+        paths = self.kokoro.download_models(
+            directory=self.tmp, assets=assets,
+            opener=lambda url, timeout=None: Response(payloads[url]))
+        self.assertEqual([open(path, "rb").read() for path in paths],
+                         [payloads["model"], payloads["voices"]])
+        self.assertTrue(self.kokoro.models_ready(self.tmp, assets))
+        # A ready model makes no second network request.
+        again = self.kokoro.download_models(
+            directory=self.tmp, assets=assets,
+            opener=lambda *args: self.fail("downloaded twice"))
+        self.assertEqual(paths, again)
+
+    def test_cancelled_download_leaves_no_partial_model(self):
+        import hashlib
+
+        data = b"a" * 100
+        assets = ({
+            "name": "model.bin", "size": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(), "url": "model",
+        },)
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+        checks = []
+        with self.assertRaises(self.kokoro.DownloadCancelled):
+            self.kokoro.download_models(
+                directory=self.tmp, assets=assets,
+                opener=lambda url, timeout=None: Response(data),
+                cancel_check=lambda: checks.append(True) or len(checks) > 2)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "model.bin")))
+        self.assertFalse(any(name.endswith(".download")
+                             for name in os.listdir(self.tmp)))
+        self.assertFalse(self.kokoro.models_ready(self.tmp, assets))
+
+    def test_invalid_download_is_not_installed(self):
+        assets = ({
+            "name": "model.bin", "size": 3,
+            "sha256": "0" * 64, "url": "model",
+        },)
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+        with self.assertRaises(self.kokoro.KokoroError):
+            self.kokoro.download_models(
+                directory=self.tmp, assets=assets,
+                opener=lambda url, timeout=None: Response(b"bad"))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "model.bin")))
+
+    @unittest.skipUnless(MP3_SUPPORT, "lameenc not installed")
+    def test_kokoro_export_needs_no_api_key(self):
+        seconds = self.tts.write_mp3(
+            self.book, self._path(), {
+                "tts_engine": "kokoro", "kokoro_language": "en-us",
+                "kokoro_voice": "af_heart"},
+            request=lambda text: (self.silence, 24000, 1))
+        self.assertGreater(seconds, 0)
+        self.assertTrue(os.path.exists(self._path()))
+
+    def test_failed_kokoro_export_keeps_the_existing_file(self):
+        self._long_book()
+        path = self._path()
+        with open(path, "wb") as handle:
+            handle.write(b"original")
+        calls = []
+
+        def fails_after_one(text):
+            calls.append(text)
+            if len(calls) > 1:
+                raise RuntimeError("test failure")
+            return self.silence, 24000, 1
+
+        with self.assertRaises(self.tts.SpeechError):
+            self.tts.write_mp3(
+                self.book, path, {
+                    "tts_engine": "kokoro", "kokoro_language": "en-us",
+                    "kokoro_voice": "af_heart"},
+                request=fails_after_one, workers=1)
+        self.assertEqual(open(path, "rb").read(), b"original")
+        self.assertFalse(any(name.startswith(".accessible-manga-audio-")
+                             for name in os.listdir(self.tmp)))
+
+    def test_cancelled_kokoro_export_writes_no_file(self):
+        result = self.tts.write_mp3(
+            self.book, self._path(), {
+                "tts_engine": "kokoro", "kokoro_language": "en-us",
+                "kokoro_voice": "af_heart"},
+            request=lambda text: (self.silence, 24000, 1),
+            cancel_check=lambda: True)
+        self.assertIsNone(result)
+        self.assertFalse(os.path.exists(self._path()))
+
+    def test_new_ui_copy_does_not_rank_the_engines(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "gui", "audio_dialog.py"),
+                  encoding="utf-8") as handle:
+            source = handle.read().lower()
+        for phrase in (
+                "better but", "free and much faster", "more expressive",
+                "natural local voices", "uses your allowance"):
+            self.assertNotIn(phrase, source)
+
+
 class TestJobRegistry(unittest.TestCase):
     """Only one book processes at a time, and the app must know which,
     so it can refuse actions that would disturb a running job. This is

@@ -21,15 +21,18 @@ offer cancelling.
 import base64
 import concurrent.futures
 import io
+import os
 import random
+import re
 import threading
 import json
+import tempfile
 import time
 import wave
 import urllib.error
 import urllib.request
 
-from . import export, winspeech
+from . import export
 
 # Gemini's prebuilt voices. The names are the API's own; the
 # descriptions are Google's short characterisations, kept so the
@@ -69,22 +72,22 @@ VOICES = [
 
 DEFAULT_VOICE = "Kore"
 
-# Which engine reads the book. Gemini sounds better and can be steered,
-# but costs allowance and takes as long as the speech it produces. The
-# computer's own voices cost nothing, work offline and finish in a
-# fraction of the time.
+# Which engine reads the book.  The Windows identifier is retained for
+# settings written by the earlier test build, but the audio dialog now offers
+# Kokoro and Gemini.
 ENGINE_GEMINI = "gemini"
+ENGINE_KOKORO = "kokoro"
 ENGINE_WINDOWS = "windows"
-DEFAULT_ENGINE = ENGINE_GEMINI
+DEFAULT_ENGINE = ENGINE_KOKORO
 
 # Voice models, offered when saving as audio so a reader can try
 # another if one is refusing or sounds wrong. Every one of them is a
 # preview release, which is why allowances for them are tight; there is
 # no settled voice model to fall back on.
 TTS_MODELS = [
-    ("gemini-3.1-flash-tts-preview", "Newest, usually the best"),
-    ("gemini-2.5-flash-preview-tts", "Older, sometimes less busy"),
-    ("gemini-2.5-pro-preview-tts", "Slowest, tightest limits"),
+    ("gemini-3.1-flash-tts-preview", "Preview"),
+    ("gemini-2.5-flash-preview-tts", "Preview"),
+    ("gemini-2.5-pro-preview-tts", "Preview"),
 ]
 DEFAULT_TTS_MODEL = TTS_MODELS[0][0]
 
@@ -101,6 +104,13 @@ SAMPLE_WIDTH = 2
 # another chance of being refused, so cutting the book more finely than
 # necessary makes a run slower rather than safer.
 CHUNK_CHARACTERS = 3200
+
+# Kokoro's official catalogue recommends ordinary utterances of roughly
+# 100-200 tokens and warns that very long ones can rush.  This character limit
+# lands around that range for prose while keeping cancellation reasonably
+# responsive during local inference.
+KOKORO_CHUNK_CHARACTERS = 1000
+KOKORO_WORKERS = 2
 
 TIMEOUT_SECONDS = 300
 
@@ -203,6 +213,52 @@ def split_for_speech(lines, limit=CHUNK_CHARACTERS):
     return chunks
 
 
+def split_for_kokoro(lines, limit=KOKORO_CHUNK_CHARACTERS):
+    """Split local speech at line, sentence, then word boundaries.
+
+    Book lines normally fit unchanged.  A single long narrative paragraph
+    must still be divided, because Kokoro has a finite phoneme context and
+    silently truncating it would omit part of the book.
+    """
+    prepared = []
+    for line in lines:
+        if len(line) <= limit:
+            prepared.append(line)
+            continue
+        # The zero-width alternative also separates CJK sentences, where
+        # punctuation is normally followed immediately by the next character.
+        sentences = [part.strip() for part in re.split(
+            r"(?<=[.!?。！？])(?:\s+|(?=\S))", line) if part.strip()]
+        for sentence in sentences:
+            if len(sentence) <= limit:
+                prepared.append(sentence)
+                continue
+            words = sentence.split()
+            if len(words) <= 1:
+                # Scripts without spaces still need a lossless last resort.
+                prepared.extend(sentence[start:start + limit]
+                                for start in range(0, len(sentence), limit))
+                continue
+            current = []
+            length = 0
+            for word in words:
+                if len(word) > limit:
+                    if current:
+                        prepared.append(" ".join(current))
+                        current, length = [], 0
+                    prepared.extend(word[start:start + limit]
+                                    for start in range(0, len(word), limit))
+                    continue
+                if current and length + len(word) + 1 > limit:
+                    prepared.append(" ".join(current))
+                    current, length = [], 0
+                current.append(word)
+                length += len(word) + 1
+            if current:
+                prepared.append(" ".join(current))
+    return split_for_speech(prepared, limit=limit)
+
+
 def _request_audio(text, api_key, model, voice, timeout=TIMEOUT_SECONDS):
     """One piece of text to raw PCM bytes."""
     payload = {
@@ -247,14 +303,8 @@ def extract_audio(data):
         "and then, and trying again usually works.")
 
 
-def encode_mp3(pcm, bitrate=64, sample_rate=None, channels=1):
-    """Encode 16-bit PCM to MP3 bytes.
-
-    The rate is a parameter because the two sources differ: Gemini
-    always returns 24 kHz, while a Windows voice produces whatever rate
-    it prefers. Encoding at the wrong rate plays back at the wrong
-    speed, so the caller passes what it actually has.
-    """
+def mp3_encoder(bitrate=64, sample_rate=None, channels=1):
+    """Create the incremental encoder used by samples and long books."""
     try:
         import lameenc
     except ImportError:
@@ -265,6 +315,17 @@ def encode_mp3(pcm, bitrate=64, sample_rate=None, channels=1):
     encoder.set_in_sample_rate(sample_rate or SAMPLE_RATE)
     encoder.set_channels(channels)
     encoder.set_quality(5)  # middle of the range: decent, and quick
+    return encoder
+
+
+def encode_mp3(pcm, bitrate=64, sample_rate=None, channels=1):
+    """Encode 16-bit PCM to MP3 bytes.
+
+    The rate is a parameter because the speech engines may produce
+    different sample rates. Encoding at the wrong rate plays back at the
+    wrong speed, so the caller passes what it actually has.
+    """
+    encoder = mp3_encoder(bitrate, sample_rate, channels)
     return bytes(encoder.encode(pcm)) + bytes(encoder.flush())
 
 
@@ -296,9 +357,22 @@ def sample_voice(voice, settings, request=None):
     return pcm_to_wav(speak(SAMPLE_TEXT))
 
 
-def seconds_of(pcm):
+def sample_kokoro_voice(voice, language, request=None):
+    """Generate a playable local sample in one Kokoro voice."""
+    from . import kokoro
+    try:
+        pcm, rate, channels = (
+            request(kokoro.sample_text(language)) if request
+            else kokoro.speak(kokoro.sample_text(language), voice, language))
+    except kokoro.KokoroError as error:
+        raise SpeechError(str(error))
+    return pcm_to_wav(pcm, sample_rate=rate, channels=channels)
+
+
+def seconds_of(pcm, sample_rate=None, channels=1):
     """How long a stretch of PCM lasts, for progress reporting."""
-    return len(pcm) / float(SAMPLE_RATE * SAMPLE_WIDTH)
+    return len(pcm) / float(
+        (sample_rate or SAMPLE_RATE) * SAMPLE_WIDTH * channels)
 
 
 class Pacer:
@@ -465,6 +539,7 @@ def _write_mp3_locally(book, path, settings, on_progress=None,
     The book is still cut up, but only so progress can be reported and
     a cancel noticed part way through.
     """
+    from . import winspeech
     if not winspeech.available():
         raise SpeechError(
             "This computer's own voices are not available, so choose "
@@ -504,6 +579,118 @@ def _write_mp3_locally(book, path, settings, on_progress=None,
     return len(audio) / float((rate or SAMPLE_RATE) * SAMPLE_WIDTH * channels)
 
 
+def _temporary_audio_path(path):
+    """A private file beside the destination, suitable for atomic replace."""
+    folder = os.path.dirname(os.path.abspath(path))
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=".accessible-manga-audio-", suffix=".tmp", dir=folder)
+    os.close(descriptor)
+    return temporary
+
+
+def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
+                           cancel_check=None, request=None, workers=None,
+                           pages=None):
+    """Generate a book locally, streaming encoded data to a private file."""
+    from . import kokoro
+
+    lines = book_text(
+        book, show_panel_labels=bool(settings.get("show_panel_labels", True)),
+        pages=pages)
+    if not lines:
+        raise SpeechError("There are no processed pages in that range to read.")
+    chunks = split_for_kokoro(lines)
+    voice = settings.get("kokoro_voice") or kokoro.default_voice(
+        settings.get("kokoro_language", kokoro.DEFAULT_LANGUAGE))
+    language = settings.get("kokoro_language", kokoro.DEFAULT_LANGUAGE)
+
+    if on_progress:
+        on_progress("Preparing %d part%s for Kokoro."
+                    % (len(chunks), "" if len(chunks) == 1 else "s"),
+                    0, len(chunks) + 1)
+
+    try:
+        if request is not None:
+            work_items = chunks
+
+            def make(item):
+                result = request(item)
+                if isinstance(result, tuple):
+                    return result
+                return result, SAMPLE_RATE, 1
+        else:
+            engine = kokoro.load_engine()
+            work_items = []
+            for chunk in chunks:
+                if cancel_check and cancel_check():
+                    return None
+                work_items.append(kokoro.phonemize(chunk, language, engine))
+
+            def make(item):
+                return kokoro.synthesize_phonemes(item, voice, engine)
+    except kokoro.KokoroError as error:
+        raise SpeechError(str(error))
+
+    limit = max(1, min(workers or KOKORO_WORKERS, len(work_items)))
+    temporary = _temporary_audio_path(path)
+    encoder = None
+    sample_rate = None
+    channels = None
+    duration = 0.0
+    try:
+        with open(temporary, "wb") as output:
+            with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=limit) as pool:
+                futures = [pool.submit(make, item) for item in work_items]
+                for index, future in enumerate(futures, start=1):
+                    if cancel_check and cancel_check():
+                        for pending in futures:
+                            pending.cancel()
+                        return None
+                    try:
+                        pcm, rate, channel_count = future.result()
+                    except kokoro.KokoroError as error:
+                        for pending in futures:
+                            pending.cancel()
+                        raise SpeechError(str(error))
+                    except Exception as error:
+                        for pending in futures:
+                            pending.cancel()
+                        raise SpeechError(
+                            "Kokoro could not generate the audio: %s" % error)
+                    if encoder is None:
+                        sample_rate, channels = rate, channel_count
+                        encoder = mp3_encoder(
+                            sample_rate=sample_rate, channels=channels)
+                    elif rate != sample_rate or channel_count != channels:
+                        raise SpeechError(
+                            "Kokoro returned audio in inconsistent formats.")
+                    output.write(bytes(encoder.encode(pcm)))
+                    duration += seconds_of(pcm, rate, channel_count)
+                    if on_progress:
+                        on_progress(
+                            "Generated %d of %d parts with Kokoro."
+                            % (index, len(work_items)),
+                            index, len(work_items) + 1)
+            if cancel_check and cancel_check():
+                return None
+            if encoder is None:
+                raise SpeechError("Kokoro did not generate any audio.")
+            if on_progress:
+                on_progress("Saving the audio file.", len(work_items),
+                            len(work_items) + 1)
+            output.write(bytes(encoder.flush()))
+        os.replace(temporary, path)
+        temporary = None
+        return duration
+    finally:
+        if temporary:
+            try:
+                os.remove(temporary)
+            except OSError:
+                pass
+
+
 def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
               request=None, workers=None, pages=None):
     """Speak a whole book into one MP3 file.
@@ -520,7 +707,12 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
     `request` exists so the chunking, retrying, ordering and encoding
     can all be tested without calling the service.
     """
-    if settings.get("tts_engine") == ENGINE_WINDOWS:
+    engine = settings.get("tts_engine", ENGINE_GEMINI)
+    if engine == ENGINE_KOKORO:
+        return _write_mp3_with_kokoro(
+            book, path, settings, on_progress, cancel_check,
+            request=request, workers=workers, pages=pages)
+    if engine == ENGINE_WINDOWS:
         return _write_mp3_locally(book, path, dict(settings, _pages=pages),
                                   on_progress, cancel_check)
     keys = [key for key in settings.get("gemini_api_keys", []) if key.strip()]

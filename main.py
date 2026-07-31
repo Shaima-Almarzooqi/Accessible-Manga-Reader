@@ -14,11 +14,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():
-    self_test_prefix = "--pdf-export-self-test="
+    pdf_test_prefix = "--pdf-export-self-test="
+    kokoro_test_prefix = "--kokoro-runtime-self-test="
     for argument in sys.argv[1:]:
-        if argument.startswith(self_test_prefix):
-            report_path = argument[len(self_test_prefix):]
+        if argument.startswith(pdf_test_prefix):
+            report_path = argument[len(pdf_test_prefix):]
             return _run_pdf_export_self_test(report_path)
+        if argument.startswith(kokoro_test_prefix):
+            report_path = argument[len(kokoro_test_prefix):]
+            return _run_kokoro_runtime_self_test(report_path)
 
     # Kept below the diagnostic route so a packaged PDF smoke test does
     # not initialize the GUI or need an interactive desktop.
@@ -74,6 +78,30 @@ def _run_pdf_export_self_test(report_path):
             language="Arabic", diagnostics=diagnostics)
         report["ok"] = True
         report["output_bytes"] = os.path.getsize(output_path)
+    except Exception as error:
+        report["error_type"] = type(error).__name__
+        report["error"] = str(error)
+        report["traceback"] = traceback.format_exc()
+    try:
+        report_folder = os.path.dirname(report_path)
+        if report_folder:
+            os.makedirs(report_folder, exist_ok=True)
+        with open(report_path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, ensure_ascii=False, indent=2)
+    except Exception:
+        return 2
+    return 0 if report["ok"] else 1
+
+
+def _run_kokoro_runtime_self_test(report_path):
+    """Check packaged ONNX and language libraries without a model download."""
+    from core import kokoro
+
+    report_path = os.path.abspath(report_path)
+    report = {"ok": False}
+    try:
+        report["runtime"] = kokoro.runtime_self_test()
+        report["ok"] = True
     except Exception as error:
         report["error_type"] = type(error).__name__
         report["error"] = str(error)

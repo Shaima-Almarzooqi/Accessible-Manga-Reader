@@ -47,16 +47,16 @@ class AudioExportWindow(wx.Frame):
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        if settings.get("tts_engine") == tts.ENGINE_WINDOWS:
+        if settings.get("tts_engine") == tts.ENGINE_KOKORO:
             intro_text = (
-                "This computer is reading the book locally. It needs no "
-                "account, network connection or allowance. You can carry "
-                "on using the app while it works, and stop it at any point.")
+                "Kokoro is generating the audio on this computer. You can "
+                "carry on using the app while it works, and stop it at any "
+                "point.")
         else:
             intro_text = (
-                "Reading this book aloud can take a long time and uses a "
-                "large part of your Gemini allowance. You can carry on "
-                "using the app while it works, and stop it at any point.")
+                "Gemini is generating the audio through the API. You can "
+                "carry on using the app while it works, and stop it at any "
+                "point.")
         intro = wx.StaticText(panel, label=intro_text)
         intro.Wrap(510)
         sizer.Add(intro, 0, wx.ALL, 8)
