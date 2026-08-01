@@ -25,6 +25,13 @@ def _safe_filename(value):
 # Ordinary narration is close enough to this rate for a pre-export estimate.
 WORDS_PER_MINUTE = 150
 
+ENGINE_EXPLANATION = (
+    "Kokoro generates audio on this computer after a one-time model and "
+    "voice download, and supports the nine language and locale choices "
+    "shown here. Gemini uses its API key, detects the input language "
+    "automatically, and supports 78 documented languages. Pages to read "
+    "chooses the whole processed book or a page range.")
+
 
 def _is_button_activation_key(code):
     return code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER, wx.WXK_SPACE)
@@ -94,12 +101,7 @@ class AudioOptionsDialog(wx.Dialog):
         explanation_parent = explanation_box.GetStaticBox()
         explanation = wx.StaticText(
             explanation_parent,
-            label=(
-                "Kokoro generates audio on this computer and downloads one "
-                "model and voice package before its first use; it contains "
-                "every listed language and voice. Gemini uses its API key "
-                "and selected voice model. Pages to read chooses the whole "
-                "processed book or a page range."))
+            label=ENGINE_EXPLANATION)
         explanation.Wrap(500)
         explanation_box.Add(explanation, 0, wx.ALL, 8)
         sizer.Add(explanation_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT
@@ -413,9 +415,20 @@ class AudioOptionsDialog(wx.Dialog):
 
     def on_play(self, event):
         if self.chosen_engine() == tts.ENGINE_KOKORO:
-            self._ensure_kokoro(self._play_kokoro_sample)
+            self._ensure_kokoro(self._play_kokoro_sample_and_focus)
         else:
             self._play_gemini_sample()
+        # Generating a sample disables its button, which otherwise lets
+        # Windows move focus to the dialog's default Save as audio button.
+        # Put the reader back on the selected voice so another voice is one
+        # arrow key away. CallAfter makes this the last focus change made by
+        # the button event itself.
+        wx.CallAfter(self._focus_chosen_voice)
+
+    def _play_kokoro_sample_and_focus(self):
+        """Start a sample and restore focus after a first-time download."""
+        self._play_kokoro_sample()
+        wx.CallAfter(self._focus_chosen_voice)
 
     def _play_kokoro_sample(self):
         voice = self.chosen_voice()
@@ -526,6 +539,11 @@ class AudioOptionsDialog(wx.Dialog):
                 return True
             focus = focus.GetParent()
         return False
+
+    def _focus_chosen_voice(self):
+        if (not self._closed and self.voices.IsEnabled()
+                and self.voices.GetSelection() != wx.NOT_FOUND):
+            self.voices.SetFocus()
 
     def on_cancel_dialog(self, event):
         self._download_cancel.set()

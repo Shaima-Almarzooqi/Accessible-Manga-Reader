@@ -27,6 +27,14 @@ newest version is at the top.
 
 - Page ranges exported through the shared book outline keep the book's real
   page numbering, such as Page 12 of 189.
+- The audio options explain that Kokoro offers nine language and locale
+  choices, while Gemini detects the input language and supports the broader
+  documented list of 78 languages.
+
+### Fixed
+
+- After a Kokoro or Gemini voice sample starts, keyboard focus returns to the
+  selected voice instead of moving to Save as audio.
 
 ## 0.20.0
 

@@ -3494,6 +3494,70 @@ class TestKokoroAudio(unittest.TestCase):
             self.assertTrue(audio_dialog._is_button_activation_key(key))
         self.assertFalse(audio_dialog._is_button_activation_key(ord("A")))
 
+    def test_playing_either_sample_returns_focus_to_the_voice(self):
+        from gui import audio_dialog
+
+        class FakeVoiceList:
+            def __init__(self):
+                self.focused = False
+
+            def IsEnabled(self):
+                return True
+
+            def GetSelection(self):
+                return 0
+
+            def SetFocus(self):
+                self.focused = True
+
+        class FakeDialog:
+            def __init__(self, engine):
+                self.engine = engine
+                self.played = None
+                self._closed = False
+                self.voices = FakeVoiceList()
+
+            def chosen_engine(self):
+                return self.engine
+
+            def _ensure_kokoro(self, callback):
+                callback()
+
+            def _play_kokoro_sample(self):
+                self.played = self.tts.ENGINE_KOKORO
+
+            def _play_kokoro_sample_and_focus(self):
+                self._play_kokoro_sample()
+                self._focus_chosen_voice()
+
+            def _play_gemini_sample(self):
+                self.played = self.tts.ENGINE_GEMINI
+
+        original_call_after = audio_dialog.wx.CallAfter
+        audio_dialog.wx.CallAfter = lambda callback, *args: callback(*args)
+        try:
+            for engine in (self.tts.ENGINE_KOKORO,
+                           self.tts.ENGINE_GEMINI):
+                dialog = FakeDialog(engine)
+                dialog.tts = self.tts
+                dialog._focus_chosen_voice = lambda dialog=dialog: (
+                    audio_dialog.AudioOptionsDialog._focus_chosen_voice(
+                        dialog))
+                audio_dialog.AudioOptionsDialog.on_play(dialog, None)
+                self.assertEqual(dialog.played, engine)
+                self.assertTrue(dialog.voices.focused)
+        finally:
+            audio_dialog.wx.CallAfter = original_call_after
+
+    def test_audio_dialog_describes_each_engines_language_support(self):
+        from gui import audio_dialog
+        explanation = audio_dialog.ENGINE_EXPLANATION
+        self.assertIn("nine language and locale choices", explanation)
+        self.assertIn(
+            "detects the input language automatically", explanation)
+        self.assertIn("supports 78 documented languages", explanation)
+        self.assertNotIn("supports any language", explanation.lower())
+
     def test_audio_dialog_explains_the_kokoro_download(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(root, "gui", "audio_dialog.py"),
