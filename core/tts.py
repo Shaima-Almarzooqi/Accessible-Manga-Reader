@@ -113,6 +113,12 @@ CHUNK_CHARACTERS = 3200
 KOKORO_CHUNK_CHARACTERS = 8000
 KOKORO_WORKERS = 2
 
+# A short export would otherwise be a single piece, leaving every
+# worker but one idle -- which is exactly why a few pages felt no
+# faster than many. Below this the pieces get too small to be worth
+# their own phonemisation, so it is a floor rather than a target.
+KOKORO_MIN_CHUNK_CHARACTERS = 1500
+
 TIMEOUT_SECONDS = 300
 
 # Pieces are independent, so several are spoken at once: each request
@@ -212,6 +218,23 @@ def split_for_speech(lines, limit=CHUNK_CHARACTERS):
     if current:
         chunks.append("\n".join(current))
     return chunks
+
+
+def kokoro_chunk_size(lines, workers=KOKORO_WORKERS,
+                     limit=KOKORO_CHUNK_CHARACTERS,
+                     floor=KOKORO_MIN_CHUNK_CHARACTERS):
+    """How large each scheduling piece should be for this selection.
+
+    A long book uses the full size: fewer, larger pieces mean less
+    overhead. A short one is divided more finely so that every worker
+    has something to do, which is the difference between a few pages
+    taking as long as one piece and taking as long as the slowest of
+    several.
+    """
+    total = sum(len(line) + 1 for line in lines)
+    if workers <= 1 or total <= floor:
+        return limit
+    return max(floor, min(limit, -(-total // workers)))
 
 
 def split_for_kokoro(lines, limit=KOKORO_CHUNK_CHARACTERS):
@@ -600,7 +623,7 @@ def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
         pages=pages)
     if not lines:
         raise SpeechError("There are no processed pages in that range to read.")
-    chunks = split_for_kokoro(lines)
+    chunks = split_for_kokoro(lines, kokoro_chunk_size(lines))
     voice = settings.get("kokoro_voice") or kokoro.default_voice(
         settings.get("kokoro_language", kokoro.DEFAULT_LANGUAGE))
     language = settings.get("kokoro_language", kokoro.DEFAULT_LANGUAGE)

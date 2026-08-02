@@ -117,4 +117,6 @@ Run the tests before changing anything:
 
 GNU General Public License, version 3 or later. See LICENSE.
 
-PDF import uses pypdfium2, which is licensed permissively (Apache/BSD) by its authors; it keeps its own licence.
+The app builds on other people's work, including the Kokoro voice model (Apache 2.0), eSpeak NG (GPL v3), pypdfium2 (Apache/BSD) and several others, each under its own licence. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists them all.
+
+The offline voice model is not part of the download: it is fetched from its own project the first time you choose an offline voice.

@@ -658,7 +658,9 @@ class MainFrame(wx.Frame):
             "Processed books are cached on this computer, so each book "
             "only needs to be processed once.\n\n"
             "Free software under the GNU General Public License, "
-            "version 3 or later."
+            "version 3 or later. It uses other people's work too: "
+            "see THIRD-PARTY-NOTICES.md in the project for the "
+            "full list and their licences."
             % (config.APP_NAME, config.APP_VERSION),
             "About %s" % config.APP_NAME, wx.OK | wx.ICON_INFORMATION,
             self)

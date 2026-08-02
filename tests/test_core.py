@@ -3226,6 +3226,59 @@ class TestSpeech(unittest.TestCase):
                       [name for name, _ in self.tts.VOICES])
 
 
+class TestKokoroScheduling(unittest.TestCase):
+    """How a selection is divided between workers.
+
+    Kokoro's real unit of work is a 500-phoneme batch, which is fixed by
+    the model. What we control is how many scheduling pieces a selection
+    becomes, and a short export that is a single piece leaves every
+    worker but one idle -- which is why a few pages felt no faster than
+    many.
+    """
+
+    def setUp(self):
+        from core import tts
+        self.tts = tts
+
+    def _lines(self, characters):
+        line = "a" * 99
+        return [line] * max(1, characters // 100)
+
+    def test_a_short_selection_is_divided_between_the_workers(self):
+        lines = self._lines(4000)
+        size = self.tts.kokoro_chunk_size(lines, workers=2)
+        self.assertGreater(
+            len(self.tts.split_for_kokoro(lines, size)), 1)
+
+    def test_a_long_selection_keeps_the_full_piece_size(self):
+        # Fewer, larger pieces mean less overhead once there is plenty
+        # for every worker to do.
+        lines = self._lines(40000)
+        self.assertEqual(
+            self.tts.kokoro_chunk_size(lines, workers=2),
+            self.tts.KOKORO_CHUNK_CHARACTERS)
+
+    def test_pieces_never_fall_below_the_floor(self):
+        # Smaller pieces are not worth their own phonemisation.
+        lines = self._lines(200)
+        self.assertGreaterEqual(
+            self.tts.kokoro_chunk_size(lines, workers=8),
+            self.tts.KOKORO_MIN_CHUNK_CHARACTERS)
+
+    def test_a_single_worker_gains_nothing_from_dividing(self):
+        lines = self._lines(4000)
+        self.assertEqual(
+            self.tts.kokoro_chunk_size(lines, workers=1),
+            self.tts.KOKORO_CHUNK_CHARACTERS)
+
+    def test_dividing_loses_no_text(self):
+        lines = ["line number %d" % n for n in range(60)]
+        size = self.tts.kokoro_chunk_size(lines, workers=2)
+        joined = " ".join(self.tts.split_for_kokoro(lines, size))
+        for line in lines:
+            self.assertIn(line, joined)
+
+
 class TestKokoroAudio(unittest.TestCase):
     """The local catalogue, verified download, and atomic MP3 export."""
 
@@ -3486,6 +3539,7 @@ class TestKokoroAudio(unittest.TestCase):
             head = handle.read(3)
         self.assertTrue(head.startswith(b"ID3") or head[0] == 0xFF)
 
+    @unittest.skipUnless(WX_AVAILABLE, "wxPython not installed")
     def test_sample_button_activation_includes_enter_and_space(self):
         import wx
         from gui import audio_dialog
@@ -3494,6 +3548,7 @@ class TestKokoroAudio(unittest.TestCase):
             self.assertTrue(audio_dialog._is_button_activation_key(key))
         self.assertFalse(audio_dialog._is_button_activation_key(ord("A")))
 
+    @unittest.skipUnless(WX_AVAILABLE, "wxPython not installed")
     def test_playing_either_sample_returns_focus_to_the_voice(self):
         from gui import audio_dialog
 
@@ -3549,6 +3604,7 @@ class TestKokoroAudio(unittest.TestCase):
         finally:
             audio_dialog.wx.CallAfter = original_call_after
 
+    @unittest.skipUnless(WX_AVAILABLE, "wxPython not installed")
     def test_audio_dialog_describes_each_engines_language_support(self):
         from gui import audio_dialog
         explanation = audio_dialog.ENGINE_EXPLANATION

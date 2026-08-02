@@ -12,12 +12,24 @@ failures and a stop-without-saving leave the destination untouched.
 """
 
 import threading
+import time
 
 import wx
 
 from core import tts
 
 from . import keys as keyhelp
+
+
+def _describe(seconds):
+    """A rough duration a person can act on, not a stopwatch."""
+    if seconds < 90:
+        return "a minute"
+    minutes = int(round(seconds / 60.0))
+    if minutes < 60:
+        return "%d minutes" % minutes
+    hours = minutes / 60.0
+    return "%.1f hours" % hours
 
 
 def start_audio_export(parent, book, settings, path, pages=None):
@@ -44,6 +56,7 @@ class AudioExportWindow(wx.Frame):
         self._save_partial = threading.Event()
         self._closed = False
         self._finished = False
+        self._started = time.time()
 
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -69,6 +82,9 @@ class AudioExportWindow(wx.Frame):
         self.log = wx.TextCtrl(
             panel, style=wx.TE_MULTILINE | wx.TE_READONLY, size=(510, 180))
         sizer.Add(self.log, 1, wx.EXPAND | wx.ALL, 8)
+
+        self.remaining = wx.StaticText(panel, label="")
+        sizer.Add(self.remaining, 0, wx.LEFT | wx.BOTTOM, 8)
 
         self.gauge = wx.Gauge(panel, range=100)
         sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
@@ -120,14 +136,27 @@ class AudioExportWindow(wx.Frame):
 
     def _append(self, message, done, total):
         self.log.AppendText(message + "\n")
-        if total:
-            percent = int(done * 100 / total)
-            self.gauge.SetValue(percent)
-            self.SetTitle("Saving %s as audio - %d percent"
-                          % (self.book.title or "book", percent))
+        if not total:
+            return
+        percent = int(done * 100 / total)
+        self.gauge.SetValue(percent)
+        self.SetTitle("Saving %s as audio - %d percent"
+                      % (self.book.title or "book", percent))
+        # Reading a book aloud is slow enough that "how much
+        # longer?" is the real question, and a percentage alone
+        # does not answer it. Only shown once a part has actually
+        # finished, since an estimate from nothing is a guess.
+        if done > 0 and done < total:
+            elapsed = time.time() - self._started
+            remaining = elapsed / done * (total - done)
+            self.remaining.SetLabel(
+                "About %s left." % _describe(remaining))
 
     def _done(self, seconds, error):
         self._finished = True
+        # The estimate has nothing left to describe, and leaving
+        # it behind would read as though work were still going.
+        self.remaining.SetLabel("")
         if error:
             self.log.AppendText("Stopped: %s\n" % error)
         elif seconds is None:

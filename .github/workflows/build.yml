@@ -117,6 +117,21 @@ jobs:
           --name AccessibleMangaReader-${{ matrix.arch }}
           main.py
 
+      # The folder version is kept and used on its own, often long
+      # after any link to the project. The GPL asks that the licence
+      # travel with the program, and eSpeak NG inside the build is
+      # GPL too, so both notices go in beside the exe. The single
+      # file build cannot carry companions; its About window names
+      # them instead.
+      - name: Add licence notices to the folder
+        shell: pwsh
+        run: |
+          $folder = "dist-folder/AccessibleMangaReader-${{ matrix.arch }}"
+          Copy-Item LICENSE -Destination $folder
+          Copy-Item THIRD-PARTY-NOTICES.md -Destination $folder
+          Get-Item "$folder/LICENSE", "$folder/THIRD-PARTY-NOTICES.md" |
+            ForEach-Object { Write-Host "  included $($_.Name)" }
+
       - name: Zip folder version
         shell: pwsh
         run: >
