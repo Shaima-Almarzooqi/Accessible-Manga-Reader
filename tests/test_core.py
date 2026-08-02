@@ -3226,6 +3226,42 @@ class TestSpeech(unittest.TestCase):
                       [name for name, _ in self.tts.VOICES])
 
 
+class TestTimeRemaining(unittest.TestCase):
+    """How long is left is phrased for reading aloud, and roughly.
+
+    An exact figure would be false precision: the estimate comes from
+    however long the finished parts happened to take.
+    """
+
+    def setUp(self):
+        import importlib.util
+        # The window itself needs wx; the wording does not, so it is
+        # loaded on its own.
+        source = open(os.path.join("gui", "speech_window.py"),
+                      encoding="utf-8").read()
+        namespace = {}
+        start = source.index("def _describe(")
+        end = source.index("def start_audio_export")
+        exec(source[start:end], namespace)
+        self.describe = namespace["_describe"]
+
+    def test_under_two_minutes_is_not_counted_out(self):
+        self.assertEqual(self.describe(30), "a minute")
+        self.assertEqual(self.describe(80), "a minute")
+
+    def test_minutes_are_rounded(self):
+        self.assertEqual(self.describe(600), "10 minutes")
+
+    def test_long_runs_are_given_in_hours(self):
+        self.assertIn("hours", self.describe(9000))
+
+    def test_the_estimate_reads_as_a_sentence(self):
+        # It is appended to a progress line that a screen reader reads,
+        # so it has to sound like part of one.
+        self.assertNotIn("%", self.describe(300))
+        self.assertFalse(self.describe(300).endswith("."))
+
+
 class TestKokoroScheduling(unittest.TestCase):
     """How a selection is divided between workers.
 

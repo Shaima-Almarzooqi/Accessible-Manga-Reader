@@ -83,9 +83,6 @@ class AudioExportWindow(wx.Frame):
             panel, style=wx.TE_MULTILINE | wx.TE_READONLY, size=(510, 180))
         sizer.Add(self.log, 1, wx.EXPAND | wx.ALL, 8)
 
-        self.remaining = wx.StaticText(panel, label="")
-        sizer.Add(self.remaining, 0, wx.LEFT | wx.BOTTOM, 8)
-
         self.gauge = wx.Gauge(panel, range=100)
         sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
@@ -135,6 +132,18 @@ class AudioExportWindow(wx.Frame):
     # ----- UI thread ------------------------------------------------------
 
     def _append(self, message, done, total):
+        # Reading a book aloud is slow enough that "how much
+        # longer?" is the real question, and a percentage alone
+        # does not answer it. The estimate goes on the end of the
+        # progress line rather than into a label of its own: a
+        # label that changes quietly is never read out, so it
+        # would not exist for the people this is written for.
+        # Only once a part has finished, since an estimate from
+        # nothing is a guess.
+        if total and 0 < done < total:
+            elapsed = time.time() - self._started
+            message += "  About %s left." % _describe(
+                elapsed / done * (total - done))
         self.log.AppendText(message + "\n")
         if not total:
             return
@@ -142,21 +151,9 @@ class AudioExportWindow(wx.Frame):
         self.gauge.SetValue(percent)
         self.SetTitle("Saving %s as audio - %d percent"
                       % (self.book.title or "book", percent))
-        # Reading a book aloud is slow enough that "how much
-        # longer?" is the real question, and a percentage alone
-        # does not answer it. Only shown once a part has actually
-        # finished, since an estimate from nothing is a guess.
-        if done > 0 and done < total:
-            elapsed = time.time() - self._started
-            remaining = elapsed / done * (total - done)
-            self.remaining.SetLabel(
-                "About %s left." % _describe(remaining))
 
     def _done(self, seconds, error):
         self._finished = True
-        # The estimate has nothing left to describe, and leaving
-        # it behind would read as though work were still going.
-        self.remaining.SetLabel("")
         if error:
             self.log.AppendText("Stopped: %s\n" % error)
         elif seconds is None:
