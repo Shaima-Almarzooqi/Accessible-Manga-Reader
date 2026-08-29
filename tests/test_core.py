@@ -1150,6 +1150,101 @@ class TestKeyRotation(unittest.TestCase):
         self.assertIn("daily quota used up", str(caught.exception))
 
 
+class TestFolderImportSummary(unittest.TestCase):
+    """Importing a batch of folders reports once at the end.
+
+    Twenty message boxes in a row is worse than no news at all,
+    particularly read aloud, so the counts come first and names only
+    appear when the reader has to act on them.
+    """
+
+    def setUp(self):
+        # The summary is plain text, so it is loaded without wx.
+        source = open(os.path.join("gui", "main_frame.py"),
+                      encoding="utf-8-sig").read()
+        namespace = {"os": os}
+        start = source.index("def folder_title(")
+        end = source.index("class MainFrame(")
+        exec(source[start:end], namespace)
+        self.summary = namespace["import_summary"]
+        self.title = namespace["folder_title"]
+        self.archive_title = namespace["archive_title"]
+        self.archive_kind = namespace["archive_kind"]
+        self.chosen = namespace["chosen_paths"]
+
+    def test_a_single_book_is_not_described_as_several(self):
+        text = self.summary(["Chapter 1"], [], [])
+        self.assertIn("Imported 1 book.", text)
+        self.assertNotIn("books", text)
+
+    def test_counts_come_before_names(self):
+        text = self.summary(["a", "b"], ["c"], [])
+        self.assertLess(text.index("Imported 2"), text.index("already"))
+
+    def test_only_failures_are_named(self):
+        # Listing twenty successes would bury the one that needs
+        # attention.
+        text = self.summary(["a", "b"], [], ["c (no images found)"])
+        self.assertNotIn("a", text.split("could not")[0].replace(
+            "already", ""))
+        self.assertIn("no images found", text)
+
+    def test_nothing_imported_still_says_something(self):
+        self.assertIn("Nothing was imported", self.summary([], [], []))
+
+    def test_what_to_do_next_is_only_offered_when_there_is_something(self):
+        self.assertIn("choose Process", self.summary(["a"], [], []))
+        self.assertNotIn("choose Process", self.summary([], ["a"], []))
+
+    def test_one_selection_still_gives_one_path(self):
+        # Multiple selection must not change what happens when someone
+        # picks a single book, which is the ordinary case.
+        class Dialog:
+            def GetPaths(self):
+                return ["/manga/Chapter 1.cbz"]
+
+            def GetPath(self):
+                return "/manga/Chapter 1.cbz"
+
+        self.assertEqual(self.chosen(Dialog()), ["/manga/Chapter 1.cbz"])
+
+    def test_a_dialog_without_multiple_selection_still_works(self):
+        # GetPaths is the multiple-selection call and is not on every
+        # wxWidgets build.
+        class OldDialog:
+            def GetPath(self):
+                return "/manga/Chapter 1"
+
+        self.assertEqual(self.chosen(OldDialog()), ["/manga/Chapter 1"])
+
+    def test_an_empty_selection_gives_nothing(self):
+        class Cancelled:
+            def GetPaths(self):
+                return []
+
+            def GetPath(self):
+                return ""
+
+        self.assertEqual(self.chosen(Cancelled()), [])
+
+    def test_an_archive_name_becomes_the_title(self):
+        self.assertEqual(self.archive_title("/manga/Volume 3.cbz"),
+                         "Volume 3")
+
+    def test_a_pdf_is_unpacked_as_a_pdf(self):
+        # PDFs are read differently from zipped archives, so the batch
+        # has to tell them apart per file rather than once.
+        self.assertEqual(self.archive_kind("/manga/Ch1.pdf"), "pdf")
+        self.assertEqual(self.archive_kind("/manga/Ch1.CBZ"), "book")
+        self.assertEqual(self.archive_kind("/manga/Ch1.zip"), "book")
+
+    def test_a_folder_name_becomes_the_title(self):
+        self.assertEqual(self.title("/manga/Chapter 12"), "Chapter 12")
+
+    def test_a_trailing_separator_is_ignored(self):
+        self.assertEqual(self.title("/manga/Chapter 12/"), "Chapter 12")
+
+
 class TestInstallKind(unittest.TestCase):
     """The app reaches people in three shapes and each updates
     differently, so getting this wrong means downloading the wrong

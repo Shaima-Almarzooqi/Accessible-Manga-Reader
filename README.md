@@ -43,6 +43,8 @@ Use the File menu to import:
 - **Image files** (Ctrl+I): selected page images, ordered by filename.
 - **Folder of images** (Ctrl+Shift+I): all supported images in a folder.
 
+You can select more than one archive, PDF, or folder at a time. Each is imported as a separate book, which is useful when a series has one chapter per file or folder. A single selection works as before. For multiple imports, the app reports the result once at the end, skips books already in the library, and continues if one item fails.
+
 Select the book and press Alt+P to process it. Before processing, you can enter book-specific instructions, such as character names and identifying features. This prompt can be disabled in Settings.
 
 Pages are processed in batches. The app saves each completed batch, so a cancelled or interrupted job can continue later. A partially processed book can be read while the remaining pages are processed.

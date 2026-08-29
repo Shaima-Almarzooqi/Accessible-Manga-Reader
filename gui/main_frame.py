@@ -26,6 +26,68 @@ ISSUES_URL = PROJECT_URL + "/issues"
 CONTACT_EMAIL = "sshaima004@gmail.com"
 
 
+def folder_title(path):
+    """The name a folder should appear under in the library."""
+    return os.path.basename(path.rstrip("\\/")) or "Folder"
+
+
+def chosen_paths(dialog):
+    """Everything picked in a dialog, whether it allowed one or many.
+
+    GetPaths is the multiple-selection call and is not guaranteed to
+    exist on every wxWidgets build, so a dialog that only knows GetPath
+    still works rather than raising.
+    """
+    try:
+        paths = list(dialog.GetPaths() or [])
+    except AttributeError:
+        paths = []
+    if paths:
+        return paths
+    try:
+        single = dialog.GetPath()
+    except AttributeError:
+        return []
+    return [single] if single else []
+
+
+def archive_title(path):
+    """The name an archive or PDF should appear under."""
+    return os.path.splitext(os.path.basename(path))[0] or "Book"
+
+
+def archive_kind(path):
+    """PDFs are unpacked differently from zipped archives."""
+    return "pdf" if path.lower().endswith(".pdf") else "book"
+
+
+def import_summary(imported, already, failed):
+    """One report for a batch of folders.
+
+    Written to be read aloud: the counts come first, and the names
+    only follow when there is something the reader has to act on.
+    """
+    lines = []
+    if imported:
+        lines.append("Imported %d book%s."
+                     % (len(imported), "" if len(imported) == 1 else "s"))
+    if already:
+        lines.append("%d %s already in your library."
+                     % (len(already),
+                        "was" if len(already) == 1 else "were"))
+    if failed:
+        lines.append("%d could not be imported:"
+                     % len(failed))
+        lines.extend("  " + name for name in failed)
+    if not lines:
+        lines.append("Nothing was imported.")
+    if imported:
+        lines.append("")
+        lines.append("Select a book and choose Process to start reading "
+                     "it.")
+    return "\n".join(lines)
+
+
 class MainFrame(wx.Frame):
     def __init__(self):
         super().__init__(None, title=config.APP_NAME, size=(760, 520))
@@ -282,17 +344,25 @@ class MainFrame(wx.Frame):
     # ----- importing -----------------------------------------------------------
 
     def on_import_archive(self, event):
+        # More than one can be chosen, for the same reason folders can:
+        # a series usually arrives as an archive per chapter. Each one
+        # becomes its own book.
         dialog = wx.FileDialog(
             self, "Import archive or PDF",
             wildcard=("Manga files (*.cbz;*.zip;*.pdf)|*.cbz;*.zip;*.pdf|"
                       "All files (*.*)|*.*"),
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE)
+        paths = []
         if dialog.ShowModal() == wx.ID_OK:
-            path = dialog.GetPath()
-            title = os.path.splitext(os.path.basename(path))[0]
-            kind = "pdf" if path.lower().endswith(".pdf") else "book"
-            self._import(path, path, title, kind)
+            paths = chosen_paths(dialog)
         dialog.Destroy()
+        if not paths:
+            return
+        if len(paths) == 1:
+            self._import(paths[0], paths[0], archive_title(paths[0]),
+                         archive_kind(paths[0]))
+            return
+        self._import_batch(paths, archive_title, archive_kind)
 
     def on_import_images(self, event):
         dialog = wx.FileDialog(
@@ -311,27 +381,68 @@ class MainFrame(wx.Frame):
         dialog.Destroy()
 
     def on_import_folder(self, event):
-        dialog = wx.DirDialog(self, "Import a folder of images")
+        # More than one folder can be chosen, because a book usually
+        # arrives as a folder per chapter and importing twenty of them
+        # one at a time is a chore. Each folder becomes its own book.
+        dialog = wx.DirDialog(
+            self, "Import a folder of images",
+            style=wx.DD_DEFAULT_STYLE | getattr(wx, "DD_MULTIPLE", 0))
+        paths = []
         if dialog.ShowModal() == wx.ID_OK:
-            path = dialog.GetPath()
-            title = os.path.basename(path.rstrip("\\/")) or "Folder"
-            self._import(path, path, title, "folder")
+            paths = chosen_paths(dialog)
         dialog.Destroy()
+        if not paths:
+            return
+        if len(paths) == 1:
+            self._import(paths[0], paths[0], folder_title(paths[0]),
+                         "folder")
+            return
+        self._import_batch(paths, folder_title,
+                           lambda path: "folder")
 
-    def _import(self, source, source_description, title, kind="book"):
+    def _import_batch(self, paths, name_of, kind_of):
+        """Import several things, one book each.
+
+        Reported once at the end rather than after every one: twenty
+        message boxes in a row is worse than no news at all, especially
+        read aloud. One failure does not stop the rest.
+        """
+        imported, already, failed = [], [], []
+        for path in sorted(paths):
+            name = name_of(path)
+            outcome, detail = self._import(
+                path, path, name, kind_of(path), quiet=True)
+            if outcome == "imported":
+                imported.append(name)
+            elif outcome == "already":
+                already.append(name)
+            else:
+                failed.append("%s (%s)" % (name, detail))
+        wx.MessageBox(import_summary(imported, already, failed),
+                      "Import", wx.OK | wx.ICON_INFORMATION, self)
+
+    def _import(self, source, source_description, title, kind="book",
+                quiet=False):
+        """Import one book. Returns (outcome, detail).
+
+        outcome is "imported", "already" or "failed". `quiet` skips the
+        dialogs, so importing a batch can report once at the end
+        instead of interrupting after every folder.
+        """
         book_id = extract.book_id_for_source(source_description)
         book = library.create_book(book_id, title, source_description, kind)
         if book.detect_page_count() > 0:
             book.save()
             self.refresh_books(select_book=book)
-            wx.MessageBox(
-                "This book is already in your library, so the existing "
-                "copy was selected.", "Already imported",
-                wx.OK | wx.ICON_INFORMATION, self)
-            return
+            if not quiet:
+                wx.MessageBox(
+                    "This book is already in your library, so the existing "
+                    "copy was selected.", "Already imported",
+                    wx.OK | wx.ICON_INFORMATION, self)
+            return "already", ""
 
         progress = wx.ProgressDialog(
-            "Importing", "Importing pages...", maximum=100, parent=self,
+            "Importing", "Importing %s..." % title, maximum=100, parent=self,
             style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE)
         done_event = threading.Event()
         state = {"error": "", "count": 0, "done": 0, "total": 1}
@@ -363,13 +474,16 @@ class MainFrame(wx.Frame):
         progress.Destroy()
 
         if state["error"]:
-            wx.MessageBox("Import failed: %s" % state["error"],
-                          "Import", wx.OK | wx.ICON_ERROR, self)
-            return
+            if not quiet:
+                wx.MessageBox("Import failed: %s" % state["error"],
+                              "Import", wx.OK | wx.ICON_ERROR, self)
+            return "failed", state["error"]
 
         book.detect_page_count()
         book.save()
         self.refresh_books(select_book=book)
+        if quiet:
+            return "imported", ""
         answer = wx.MessageBox(
             "Imported %d pages. Process the book now? You will be able "
             "to give the AI optional instructions first, like character "
@@ -378,6 +492,7 @@ class MainFrame(wx.Frame):
             "Import complete", wx.YES_NO | wx.ICON_QUESTION, self)
         if answer == wx.YES:
             self.on_process(None)
+        return "imported", ""
 
     # ----- book actions ---------------------------------------------------------
 

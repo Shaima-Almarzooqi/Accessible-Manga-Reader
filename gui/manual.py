@@ -104,6 +104,11 @@ file and are sent only to the selected provider.</p>
 folder</li>
 </ul>
 <p>Imported image files are ordered by filename.</p>
+<p>You can select more than one archive, PDF, or folder at a time. Each is
+imported as a separate book, which is useful when a series has one chapter
+per file or folder. A single selection works as before. For multiple imports,
+the app reports the result once at the end, skips books already in the
+library, and continues if one item fails.</p>
 
 <h2>Step 4: Process the book</h2>
 <ol>
