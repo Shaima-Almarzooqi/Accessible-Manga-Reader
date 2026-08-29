@@ -435,10 +435,9 @@ ORIGINAL_RULE = (
     "every speech bubble, caption, sound effect and piece of visible "
     "text exactly as written, and write your panel descriptions in "
     "that same language so the whole script reads as one piece. "
-    "Character names keep their original spelling, and honorifics and "
-    "titles are left exactly as printed. If a page carries text in "
-    "more than one language, keep each as it appears. Judge the "
-    "language from the pages themselves rather than assuming."
+    "Character names keep their original spelling. If a page carries "
+    "text in more than one language, keep each as it appears. Judge "
+    "the language from the pages themselves rather than assuming."
 )
 
 
