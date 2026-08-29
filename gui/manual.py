@@ -1,8 +1,6 @@
-﻿"""The in-app user manual, shown from the Help menu.
+"""The in-app user manual, shown from the Help menu.
 
-Rendered as an HTML document so screen reader browse mode can navigate
-it by heading (H, and the number keys for heading levels). The text is
-deliberately plain and step-by-step for readers new to the app.
+The manual is HTML so screen reader browse mode can navigate it by heading.
 """
 
 from core import config
@@ -10,452 +8,312 @@ from core import config
 _MANUAL_BODY = """
 <h1>Accessible Manga Reader — User Manual</h1>
 
-<h2>Before you start: what you need</h2>
-<p>Accessible Manga Reader does not come with any manga. It reads manga
-files that you already have on your computer. So the first step is to
-have a manga volume or chapter saved as one of these file types:</p>
+<h2>What you need</h2>
+<p>Accessible Manga Reader reads comic files already stored on your
+computer. Supported sources are:</p>
 <ul>
-<li>A CBZ file (the most common format for digital manga)</li>
-<li>A ZIP file containing the page images</li>
-<li>A PDF file</li>
-<li>A folder of image files, or the image files themselves, one image
-per page</li>
+<li>CBZ or ZIP archives containing page images</li>
+<li>PDF files</li>
+<li>Folders of page images</li>
+<li>Individual image files, with one image per page</li>
 </ul>
-<p>You can obtain manga in these formats from digital manga stores, from
-services you subscribe to, or from other sources on the internet. Please
-support creators by buying manga where you can. Once you have a file
-saved on your computer, you are ready to begin.</p>
+<p>CBR and RAR archives are not supported. Convert them to CBZ before
+importing them.</p>
 
-<h2>What this app does</h2>
-<p>Manga tells its story through drawings: the words are part of the
-artwork, and much of the meaning comes from pictures, facial
-expressions, and sound effects rather than dialogue alone. Ordinary
-screen readers cannot read any of this.</p>
-<p>Accessible Manga Reader sends each page to an AI service that can see
-images, and turns the page into text you can read with your screen
-reader. For every page you get a description of each panel, the dialogue
-with the name of the character speaking, the sound effects and what they
-mean, and descriptions of silent moments. You read the result as
-ordinary text.</p>
+<h2>What the app does</h2>
+<p>The app sends each page to an AI service and converts the result into
+screen-reader-accessible text. The text can include panel descriptions,
+attributed dialogue, captions, sound effects, and other visual details.</p>
+<p>Reading order is based on the comic type selected in Settings. The app
+supports manga, manhwa, manhua, webtoons, and Western comics.</p>
 
 <h2>Step 1: Get an API key</h2>
-<p>The app needs an AI service to read the pages for you. It does not
-include one, so you sign up for one and give the app a key. A key is a
-long password that lets the app use the service on your behalf.</p>
-<p>Google Gemini is the one to start with: it is free, it needs no card,
-and its free allowance covers hundreds of pages a day. Claude and
-ChatGPT read pages well too, but their keys only work once you have
-bought credit, so they are worth it only if you already pay for them.
-OpenRouter sits in between, with an email sign-up and some free models,
-though the free ones come and go and not all of them can see
-images.</p>
+<p>An API key is a credential that allows the app to use an AI service.
+Choose one of the supported providers below.</p>
 
-<h3>Google Gemini (free)</h3>
+<h3>Google Gemini</h3>
 <ol>
-<li>Go to <a href="https://aistudio.google.com">aistudio.google.com</a>
-and sign in with a Google account.</li>
-<li>Select Get API key in the left sidebar, then Create API key.</li>
-<li>You are asked which Google Cloud project the key belongs to. If this
-is your first key, choose to create a new project. The project is only a
-container for the key; it costs nothing and needs no card.</li>
-<li>Select Create API key again to finish, then copy the key. It starts
-with AIza. Google lets you see it again later, unlike the other
-services.</li>
+<li>Go to <a href="https://aistudio.google.com">Google AI Studio</a>
+and sign in.</li>
+<li>Select Get API key, then Create API key.</li>
+<li>Choose a Google Cloud project. Create a project if you do not have
+one.</li>
+<li>Create the key and copy it.</li>
 </ol>
-<p>If you want more than one key, make each one in a <em>different</em>
-project. Google counts its free allowance per project, so several keys
-from the same project all share one allowance and give you nothing
-extra. To use another project, open the Dashboard in AI Studio, select
-Projects, and add the project you want before creating the key.</p>
-<p>One thing worth knowing if you have had a Gemini key for a while:
-Google is retiring its older Standard keys, and from September 2026 the
-Gemini API stops accepting them. Keys made in AI Studio now are the
-newer kind and are fine. If an older key suddenly stops working, make a
-new one and paste it into the app.</p>
+<p>Gemini limits are applied per Google Cloud project. If you use several
+keys, each key must belong to a different project to provide a separate
+allowance. Keys from the same project share one allowance.</p>
 
-<h3>Claude, by Anthropic (needs credit)</h3>
-<p>There is no free level. The key itself costs nothing to create, but
-every page you process is billed, so you have to buy credit before it
-works at all. A key with no credit behind it is the usual reason a new
-Claude key fails.</p>
+<h3>Anthropic</h3>
+<p>Anthropic API use requires prepaid credit. A Claude Pro or Max
+subscription does not include API usage.</p>
 <ol>
-<li>Go to <a href="https://console.anthropic.com">console.anthropic.com</a>
-and sign up. You are asked to confirm a phone number by text
-message.</li>
-<li>Open Settings, then Billing, and buy some credit. A Claude Pro or
-Max subscription does not count: it is billed separately and does not
-include API use.</li>
-<li>Open Settings, then API Keys, and select Create Key. Give it a name
-you will recognise later.</li>
-<li>Copy the key straight away. It starts with sk-ant- and Anthropic
-shows it once only. If you lose it, delete it and make another.</li>
+<li>Go to
+<a href="https://console.anthropic.com">console.anthropic.com</a> and
+create an account.</li>
+<li>Open Settings, then Billing, and add credit.</li>
+<li>Open Settings, then API Keys, and select Create Key.</li>
+<li>Copy the key when it is shown. Anthropic does not show the full key
+again.</li>
 </ol>
 
-<h3>ChatGPT, by OpenAI (needs credit)</h3>
-<p>Also has no free level, and also needs credit bought up front before
-a key will do anything.</p>
+<h3>OpenAI</h3>
+<p>OpenAI API use requires prepaid credit. A ChatGPT Plus subscription
+does not include API usage.</p>
 <ol>
 <li>Go to
 <a href="https://platform.openai.com">platform.openai.com</a> and sign
-in. This is separate from ChatGPT itself, even though the sign-in is the
-same.</li>
-<li>Open Settings, then Billing, add a payment method and buy some
-credit. A ChatGPT Plus subscription does not cover API use.</li>
+in.</li>
+<li>Open Settings, then Billing. Add a payment method and buy credit.</li>
 <li>Open the API keys page and select Create new secret key.</li>
-<li>Copy the key straight away. It starts with sk- and OpenAI shows it
-once only.</li>
+<li>Copy the key when it is shown. OpenAI does not show the full key
+again.</li>
 </ol>
 
-<h3>OpenRouter (some free models)</h3>
+<h3>OpenRouter</h3>
 <ol>
-<li>Go to <a href="https://openrouter.ai">openrouter.ai</a> and sign up
-with an email address. No card is needed for the free models.</li>
-<li>Open Keys from your account menu and create a key.</li>
-<li>Copy the key and paste it into the app.</li>
+<li>Go to <a href="https://openrouter.ai">openrouter.ai</a> and create
+an account.</li>
+<li>Open Keys from the account menu and create a key.</li>
+<li>Copy the key.</li>
 </ol>
-<p>Two things to watch. A free OpenRouter account allows only a small
-number of requests a day, and each request covers a few pages, so a long
-book can run out partway. And most free models only handle text: the app
-needs one that can see images, so use Refresh model list in Settings and
-pick from what it offers.</p>
+<p>OpenRouter offers paid and free models. The available free models and
+their limits can change. Accessible Manga Reader requires a model that
+accepts images. Use Refresh model list in Settings to list compatible
+models for your account.</p>
 
-<h2>Step 2: Enter your key in the app</h2>
+<h2>Step 2: Enter the API key</h2>
 <ol>
-<li>Open the app.</li>
-<li>Press Alt plus S to open Settings.</li>
-<li>You will land on the AI engine tab. Choose your service in the
-service list; Gemini is the default.</li>
-<li>In the API keys box, paste your key. You can paste more than one
-key, one per line; when one key runs out for the day, the app moves to
-the next automatically.</li>
+<li>Open Accessible Manga Reader.</li>
+<li>Press Alt+S to open Settings.</li>
+<li>On the AI engine tab, choose the provider.</li>
+<li>Paste the key into the API keys box. Enter additional keys on
+separate lines.</li>
 <li>Select OK.</li>
 </ol>
-<p>You only do this once. Your key is saved on your computer and is
-never sent anywhere except to the service you chose.</p>
+<p>The app can store up to 10 keys for a provider. When one key reaches a
+limit, the app tries the next key. Keys are stored in the local settings
+file and are sent only to the selected provider.</p>
 
-<h2>Step 3: Add a manga to your library</h2>
-<p>The main window shows your library, which starts empty. To add a
-book, open the File menu and choose how to import it:</p>
+<h2>Step 3: Add a book</h2>
+<p>Open the File menu and choose an import command:</p>
 <ul>
-<li>Import archive or PDF, for a CBZ, ZIP, or PDF file. The shortcut is
-Ctrl plus O.</li>
-<li>Import image files, to pick the page images yourself. The shortcut
-is Ctrl plus I.</li>
-<li>Import folder of images, for a whole folder of pages. The shortcut
-is Ctrl plus Shift plus I.</li>
+<li>Import archive or PDF (Ctrl+O) for CBZ, ZIP, or PDF files</li>
+<li>Import image files (Ctrl+I) for selected page images</li>
+<li>Import folder of images (Ctrl+Shift+I) for all supported images in a
+folder</li>
 </ul>
-<p>Choose your file, and the book appears in your library list.</p>
+<p>Imported image files are ordered by filename.</p>
 
 <h2>Step 4: Process the book</h2>
-<p>Processing is when the app reads every page with the AI and saves the
-results. This happens once per book.</p>
 <ol>
-<li>Select the book in your library.</li>
-<li>Press Alt plus P to process it.</li>
-<li>First you are offered a box for optional notes to the AI. The most
-useful thing to add here is the cast: the characters' names and a short
-description of each, for example, "Aiko: short dark hair, school
-uniform, the class representative. Kenta: messy hair, always late." The
-AI will then use those names from the first page instead of guessing.
-You can also leave this empty.</li>
-<li>Select Save and process to begin.</li>
+<li>Select the book in the library.</li>
+<li>Press Alt+P.</li>
+<li>Enter optional instructions for this book. Character names and brief
+identifying details can improve speaker attribution. Leave the box empty
+if no instructions are needed.</li>
+<li>Select Save and process.</li>
 </ol>
-<p>If you prefer not to see this box each time, turn off "Ask for AI
-instructions before processing a book" in Settings. Processing then
-starts immediately, and the instructions stay available from the Book
-menu, where Save and reprocess applies new instructions to a book that
-is already processed.</p>
-<p>A progress window opens and tells you how far along it is. Processing
-a whole volume can take several minutes, because each page is sent to
-the AI in turn. You can cancel at any time; everything done so far is
-saved, and choosing Process again later continues from where it stopped.
-If you reach a service's daily limit partway through, the same applies:
-come back later and continue.</p>
-<p>When it finishes, a Read now button appears in that window, so you
-can start reading without going back to your library. Pressing Enter
-selects it. It also appears after a cancelled run, since the pages
-already saved can be read straight away.</p>
+<p>Turn off Ask for AI instructions before processing a book in Settings
+to start processing without this prompt. Book instructions remain
+available from the Book menu.</p>
+<p>The app processes pages in batches and saves each completed batch.
+Cancelling does not remove completed work. Select Process again to
+continue. The same applies after an API limit or temporary server
+failure.</p>
+<p>Select Read now when processing finishes. The button is also available
+after cancellation when at least one page has been processed.</p>
 
-<h3>Reading while a book is processed</h3>
-<p>Processing opens in its own window, so it does not lock the rest of
-the app. While a book is being converted you can switch back to your
-library with Alt plus Tab and open a different book, or carry on
-reading one you already had open.</p>
-<p>The processing window also has a Converted pages box, after the
-progress log, which fills in as each page is finished. You can read
-there straight away rather than waiting for the whole book.</p>
-<p>It shows one page at a time, like the reader does. Move between the
-pages converted so far with Alt plus N for the next and Alt plus P for
-the previous, or with Page Down and Page Up while you are in the box.
-There are Previous page and Next page buttons as well. The label above
-the box tells you which page you are on and how many have been
-converted so far. Pages that finish while you are reading do not move
-you: they simply become available, and the label count goes up.</p>
-<p>If you would rather see every converted page in one long list, turn
-off "Show one page at a time in the processing window" on the General
-tab of Settings.</p>
-<p>In your library, the book being processed is listed as "being
-processed now", so you can tell at a glance which one is busy.</p>
-<p>One book is processed at a time. If you start another while one is
-running, the app tells you which book is still going. A book being
-processed cannot be deleted, reprocessed, renamed, or have its pages
-freed until it finishes, and quitting the app while it is still working
-asks you first.</p>
+<h3>Read during processing</h3>
+<p>The processing window does not block the library or other reader
+windows. Use Alt+Tab to return to the library and open another book.</p>
+<p>The Converted pages area displays completed pages. Use Page Down and
+Page Up, Alt+N and Alt+P, or the Previous page and Next page buttons to
+move through them. New pages become available without changing the page
+currently displayed.</p>
+<p>Only one book can be processed at a time. A book being processed cannot
+be renamed, deleted, reprocessed, or cleared with Free up space.</p>
 
 <h2>Step 5: Read</h2>
-<p>Select Read now in the processing window, or select the book in your
-library and press Enter, or Alt plus R. The reader window opens.</p>
-<p>There are three ways to read, which you choose from the View menu, or
-set a default in Settings:</p>
+<p>Select Read now in the processing window, or select a book in the
+library and press Enter or Alt+R.</p>
+<p>The View menu contains three reading modes:</p>
 <ul>
-<li>Entire book, one continuous document. This is best for reading
-straight through with your screen reader's say-all command.</li>
-<li>One page at a time, with a line telling you which page you are
-on.</li>
-<li>One panel at a time, the closest to how a sighted reader takes in a
-page one piece at a time. Each panel tells you its position, for example
-"Page 3 of 20, panel 2 of 6, top right", so you can picture the
-page.</li>
+<li>Entire book: all processed text in one document</li>
+<li>One page at a time: one page with its position in the book</li>
+<li>One panel at a time: one panel with its page, number, and position</li>
 </ul>
-<p>In page and panel modes, use Page Down and Page Up to move forward
-and back. In every mode, Ctrl plus Page Down and Ctrl plus Page Up move
-between whole pages.</p>
+<p>In page and panel modes, use Page Down and Page Up to move between
+items. Ctrl+Page Down and Ctrl+Page Up move between full pages in every
+mode.</p>
 
-<h3>Panel labels on or off</h3>
-<p>By default the reader shows a short label before each panel, telling
-you its number and position. If you prefer to read without these labels,
-as flowing text, press Ctrl plus L, or open the View menu and turn off
-Show panel labels. The story then reads continuously. You can turn this
-on or off at any time; it changes only how the text is shown.</p>
+<h3>Panel labels</h3>
+<p>Panel labels show the panel number and position. Press Ctrl+L or use
+View, Show panel labels to show or hide them. This setting changes the
+display only; it does not change the saved text.</p>
 
 <h3>Ask about a page</h3>
-<p>If something in the description was unclear, you can ask the AI
-about it directly. In the reader, press Ctrl plus Q, or use the Ask
-button. Type your question, choose whether the AI should look at just
-the current page, the surrounding pages, or a small range, then select
-Ask. The AI looks at the original page images again, not just the
-text, so it can clarify details the description missed, and it knows
-the characters from the book's notes. You can ask follow-up questions
-in the same window, and copy the latest answer. The answers appear as a
-formatted document: each question is a heading and each answer is a
-heading under it, so in browse mode H moves through everything, 2 moves
-from question to question, and 3 from answer to answer. The newest
-exchange is at the end, so Control plus End jumps straight to it.</p>
-<p>Your question appears in the document as soon as you send it, with a
-note under its Answer heading saying the AI is working. While it works,
-the Ask button becomes Stop; choosing Stop abandons that question right
-away and gives you the Ask button back, leaving your question in the box
-so you can ask it again.</p>
-<p>Two things to know: each question uses your AI service the same way
-processing does, so it counts toward your allowance; and it needs the
-book's page images, so it is unavailable for a book whose images were
+<p>Press Ctrl+Q in the reader to ask a question about the current page.
+Choose the current page, surrounding pages, or a page range, then select
+Ask. The AI uses the stored page images and the book's character notes.</p>
+<p>Questions and answers are displayed as headings. In screen reader
+browse mode, use H to move through headings, 2 for questions, and 3 for
+answers. Ctrl+End moves to the latest exchange.</p>
+<p>Each question uses the selected AI service and counts toward its usage
+limit. This feature is unavailable after the page images have been
 removed with Free up space.</p>
 
-<h3>Speaker names</h3>
-<p>Comic artists show who is talking by drawing a small pointer on the
-speech bubble, called a tail, aimed at the character saying the line.
-The AI follows that tail rather than picking the character nearest the
-bubble, since bubbles are often placed closer to a listener than to the
-speaker. Each comic type follows the conventions of its own
-tradition.</p>
-<p>On crowded pages it will still sometimes get a name wrong. Two
-things help. Give the cast in the AI instructions for the book, as
-described under Processing a book: names with a short description of
-each let the AI recognise characters from the first page. And if a line
-looks wrong while reading, press Ctrl plus Q to ask about that page.
-The AI looks at the original artwork again and can tell you who the
-tail actually points at.</p>
+<h3>Speaker attribution</h3>
+<p>The AI uses speech-bubble tails and the conventions of the selected
+comic type to identify speakers. Attribution can still be incorrect on
+crowded or unclear pages. Book instructions with character names and
+identifying features can improve the result.</p>
+<p>Use Ctrl+Q to ask about a questionable line. Use Ctrl+R to replace the
+processed text for a page.</p>
 
-<h3>Reprocessing pages</h3>
-<p>If a page came out badly, you can send it to the AI again to replace
-it. In the reader press Ctrl plus R, or in your library choose
-Reprocess pages from the Book menu.</p>
-<p>You choose how much to redo. From the reader you can redo just the
-page you are on, which is usually what you want when you notice a
-problem while reading. You can also give a range, from one page number
-to another, or redo the whole book. Only the pages you choose are
-replaced; the rest of the book is left as it is.</p>
-<p>Redoing a page or a range keeps the AI's character notes for the
-book, so it still knows the cast. Redoing the whole book starts those
-notes again from the first page.</p>
-<p>For a one-off question about a page, such as who said a particular
-line, Ask about this page with Ctrl plus Q is quicker and costs less
-than reprocessing.</p>
+<h3>Reprocess pages</h3>
+<p>Press Ctrl+R in the reader, or choose Reprocess pages from the Book
+menu. Reprocess the current page, a page range, or the full book.</p>
+<p>Reprocessing a page or range keeps the existing character notes.
+Reprocessing the full book rebuilds the notes from the first page.</p>
 
-<h3>Import more pages</h3>
-<p>If you built a book from image files, you can add more pages to it
-while reading, without going back to your library. In the reader press
-Ctrl plus I, or choose Import more pages from the Book menu, and pick
-the image files to add. They are placed after the current last page,
-and the app offers to process them straight away. The pages you have
-already read keep their scripts. This is only available for books made
-from images; a book imported from an archive or PDF is fixed.</p>
+<h3>Add more image pages</h3>
+<p>For books imported from individual images, press Ctrl+I in the reader
+to add more pages. New pages are placed after the current last page. This
+command is not available for books imported from an archive or PDF.</p>
 
 <h3>HTML view</h3>
-<p>For a different way to navigate, press Ctrl plus H to open the HTML
-view. This shows the whole book in a window where each page and each
-panel is a heading. With your screen reader's browse mode you can jump
-by heading using the H key, jump between pages with the 2 key, and jump
-between panels with the 3 key. From that window you can also save the
-book as an HTML file to keep or open elsewhere.</p>
+<p>Press Ctrl+H to open the full book as structured HTML. Pages are
+level-2 headings and panels are level-3 headings. In browse mode, use H,
+2, and 3 to navigate. The HTML view can also save the document to a
+file.</p>
 
-<h2>Other things you can do</h2>
-
-<h3>Save a book in another format</h3>
-<p>A processed book can be saved to a file to keep, share, or read
-somewhere else. Choose Export from the Book menu, either in the reader
-or in your library with the book selected. You can also right arrow onto
-Export in the list's context menu. The formats are:</p>
+<h2>Export</h2>
+<p>Choose Export from the Book menu in the library or reader. Available
+formats are:</p>
 <ul>
-<li>Text file, plain text that opens in any program.</li>
-<li>HTML, a web file with a heading for each page and panel.</li>
-<li>EPUB book, for reading in any book reading app, with headings and a
-list of pages to jump between.</li>
-<li>Word document, with real heading styles, so Word's navigation pane
-and your screen reader's heading commands both work.</li>
-<li>PDF, tagged so a screen reader can move through it by heading, with
-the headings also listed in the bookmarks pane. This one is created
-using Microsoft Edge, which comes with Windows, so it needs Edge or
-Chrome to be installed. The file itself is an ordinary PDF that opens
-in whatever you normally use.</li>
+<li>Text</li>
+<li>HTML with page and panel headings</li>
+<li>EPUB with headings and page navigation</li>
+<li>Word with heading styles</li>
+<li>Tagged PDF with headings and bookmarks</li>
+<li>MP3 audio</li>
 </ul>
-<p>Ctrl plus E still saves as a text file and Ctrl plus Shift plus E as
-HTML.</p>
+<p>PDF export requires Microsoft Edge or Google Chrome. Ctrl+E exports
+text, and Ctrl+Shift+E exports HTML.</p>
 
-<h3>Change how detailed the descriptions are</h3>
-<p>In Settings, on the General tab, the Verbosity option controls how
-much the AI describes:</p>
+<h3>Audio export</h3>
+<p>MP3 export supports Gemini speech and offline Kokoro voices. Gemini
+uses the configured Gemini API keys. Kokoro runs on the computer and
+requires a one-time model and voice download.</p>
+<p>The progress window reports the percentage read and an estimated time
+remaining. A cancelled export can save the completed audio or discard
+it.</p>
+
+<h2>Settings</h2>
+
+<h3>AI engine</h3>
+<p>Select the provider, model, API keys, pages per request, and delay
+between requests. Use Refresh model list to retrieve models available to
+the current account.</p>
+
+<h3>Verbosity</h3>
 <ul>
-<li>Concise, a short line per panel, for quick reading.</li>
-<li>Detailed, a fuller description of action and expressions.</li>
-<li>Extensive, the most thorough, describing composition, each
-character's expression and pose, the background, and drawn effects.</li>
+<li>Concise: short panel descriptions</li>
+<li>Detailed: more information about action and expressions</li>
+<li>Extensive: detailed composition, poses, backgrounds, and drawn
+effects</li>
 </ul>
-<p>At every level, the AI is told to describe only what is actually
-drawn, without adding its own opinions.</p>
+<p>The prompt instructs the model to describe visible content without
+adding opinions.</p>
 
-<h3>Read in another language</h3>
-<p>Also on the General tab, Output language sets the language the whole
-script is written in: the descriptions, the dialogue, the speaker
-names, the sound effects, and the caption and thought labels. Choose
-from the list or type any language. If the comic itself is in a
-different language, its text is translated into your chosen one rather
-than copied, so a Japanese manga can be read entirely in Arabic.
-Character names are written in your language's own alphabet, so a name
-appears in Arabic letters when you choose Arabic, and keeps the same
-spelling throughout the book. Saved HTML, EPUB, Word and PDF documents
-also use the language's proper text direction: Arabic and other
-right-to-left scripts start at the right, while left-to-right languages
-start at the left.</p>
+<h3>Output language</h3>
+<p>Select a listed language or enter another language. Descriptions,
+dialogue, names, captions, sound effects, and labels are written in the
+selected language.</p>
+<p>Select Original (same as the comic) to avoid translation. The app
+transcribes the comic's text and writes descriptions in the comic's
+language. Exports do not assign a language in this mode.</p>
 
-<h3>Choose the comic type</h3>
-<p>On the General tab, Comic type tells the app how the pages should be
-read, which affects the order of panels and text:</p>
+<h3>Comic type</h3>
 <ul>
-<li>Manga, for Japanese comics, read right to left.</li>
-<li>Manhwa or Manhua, for Korean or Chinese comics, read left to right,
-usually as a vertical scroll in colour.</li>
-<li>Webtoon, for vertical-scroll comics read top to bottom.</li>
-<li>Western comic, read left to right.</li>
+<li>Manga: Japanese right-to-left reading order</li>
+<li>Manhwa or Manhua: Korean or Chinese left-to-right reading order</li>
+<li>Webtoon: vertical top-to-bottom reading order</li>
+<li>Western comic: left-to-right reading order</li>
 </ul>
-<p>Set this to match what you are reading before you process a book, so
-the panels come out in the right order.</p>
+<p>Select the comic type before processing so the correct layout rules
+are used.</p>
 
-<h3>Add your own instructions for a comic type</h3>
-<p>Below the comic type is a box for your own instructions for that
-type. Anything you put there is applied to every book you read as that
-type, so it is useful for a preference you always want, such as how much
-to describe backgrounds. Each comic type has its own box. This is
-separate from the notes you can give a single book, described below; if
-both are set, the book's own notes take priority.</p>
+<h3>Instructions</h3>
+<p>Comic-type instructions apply to every book of the selected type.
+Book instructions apply only to one book and take priority. Select a book
+and press Ctrl+T to edit its instructions.</p>
+<p>Instruction and verbosity changes affect pages processed after the
+change. Use Reprocess pages to replace existing text.</p>
 
-<h3>Give the AI notes about a book</h3>
-<p>To add or change the notes for a book, such as character names,
-select it in the library and press Ctrl plus T. Save keeps your notes
-for later; Save and reprocess applies them right away by processing the
-book again. Notes affect pages processed after you add them.</p>
-
-<h3>Free up disk space</h3>
-<p>After a book is fully processed, its page images are no longer needed
-for reading. To reclaim the space, select the book, open the Book menu,
-and choose Free up space. The book stays fully readable.</p>
+<h3>Free up space</h3>
+<p>After a book is fully processed, select Free up space from the Book
+menu to remove its stored page images. The processed text remains
+available. Reprocessing and page questions require the images.</p>
 
 <h3>Updates</h3>
-<p>The app checks for new versions when it starts and tells you when one
-is available, showing what has changed. You can turn this off, or choose
-not to be told about beta versions, in Settings.</p>
-<p>If you installed the app with the installer, or you are running the
-folder version, it can install the update for you. Choose Install now
-and it downloads the new version, closes, and reopens by itself. With
-the installed version Windows asks for permission first, because the app
-lives in Program Files and is shared by everyone on the computer.</p>
-<p>The single file version cannot replace itself while it is running, so
-for that one the app offers the download page instead and you replace
-the file yourself.</p>
-<p>Your books, settings and downloaded voices are kept separately from
-the program, so updating never touches them. The same is true if you
-uninstall and install again.</p>
+<p>The app checks for updates at startup unless this option is disabled in
+Settings. Include beta versions controls whether pre-release versions
+are offered.</p>
+<p>Installed copies and writable folder copies can apply updates from the
+update window. The app downloads the appropriate installer or ZIP,
+closes, applies the update, and restarts. Installed updates require
+administrator permission because the app is stored in Program Files.</p>
+<p>Updates and uninstallation do not remove books, settings, API keys, or
+downloaded voices.</p>
 
 <h2>Keyboard shortcuts</h2>
-<p>In the library:</p>
+<p>Library:</p>
 <ul>
-<li>Enter, or Alt plus R: read the selected book</li>
-<li>Alt plus P, or Ctrl plus P: process or continue processing</li>
-<li>Alt plus S: open Settings</li>
-<li>Ctrl plus T: notes for the selected book</li>
-<li>F2: rename. Delete: remove. Ctrl plus A: select all</li>
-<li>The Applications key opens a menu with every action for a book</li>
+<li>Enter or Alt+R: read the selected book</li>
+<li>Alt+P or Ctrl+P: process or continue processing</li>
+<li>Alt+S: open Settings</li>
+<li>Ctrl+T: edit instructions for the selected book</li>
+<li>F2: rename the selected book</li>
+<li>Delete: remove the selected book</li>
+<li>Ctrl+A: select all books</li>
+<li>Applications key: open the context menu</li>
 </ul>
-<p>In the reader:</p>
+<p>Reader:</p>
 <ul>
-<li>Page Down and Page Up: next and previous page or panel</li>
-<li>Ctrl plus Page Down and Ctrl plus Page Up: next and previous page in
-any mode</li>
-<li>Alt plus F: first page</li>
-<li>Alt plus L: last page</li>
-<li>Ctrl plus Home and Ctrl plus End: start and end of what you are reading. Page by page, that is this page.</li>
-<li>Alt plus G, or Ctrl plus G: go to a page</li>
-<li>Ctrl plus F: find text</li>
-<li>Ctrl plus L: show or hide panel labels</li>
-<li>Ctrl plus Q: ask about the current page</li>
-<li>Ctrl plus R: reprocess this page, a range, or the whole book</li>
-<li>Ctrl plus I: import more image pages (for books built from images)</li>
-<li>Ctrl plus E: save as a text file</li>
-<li>Ctrl plus Shift plus E: save as HTML</li>
-<li>Ctrl plus H: open the HTML view</li>
-<li>Alt plus C, or Escape: close the reader</li>
-</ul>
-
-<h2>If something goes wrong</h2>
-<ul>
-<li>If processing stops with a message about a limit or quota, you have
-reached the service's daily free allowance. Wait until it resets, then
-choose Process again to continue. Nothing is lost.</li>
-<li>If processing stops with a server error such as 503, the service's
-servers are temporarily overloaded. This is not caused by your key or
-settings; wait a few minutes and choose Process again.</li>
-<li>If a message says a model was not found, open Settings and use
-Refresh model list to see the models your key can use, then pick
-one.</li>
-<li>If a request is refused for being too large, lower Pages per request
-in Settings.</li>
-<li>If a page reads oddly, with headings the app does not use such as
-Composition or Setting, or with remarks from the AI about its own
-work, that model has drifted from the script format it was given. Redo
-those pages with Reprocess pages in the Book menu; a stronger model
-usually holds the format better.</li>
+<li>Page Down / Page Up: next / previous page or panel</li>
+<li>Ctrl+Page Down / Ctrl+Page Up: next / previous full page</li>
+<li>Alt+P / Alt+N: previous / next</li>
+<li>Alt+F / Alt+L: first / last page</li>
+<li>Ctrl+Home / Ctrl+End: start / end of the current text control</li>
+<li>Alt+G or Ctrl+G: go to a page</li>
+<li>Ctrl+F: find text</li>
+<li>Ctrl+L: show or hide panel labels</li>
+<li>Ctrl+Q: ask about the current page</li>
+<li>Ctrl+R: reprocess pages</li>
+<li>Ctrl+I: add pages to a book imported from images</li>
+<li>Ctrl+E: export as text</li>
+<li>Ctrl+Shift+E: export as HTML</li>
+<li>Ctrl+H: open HTML view</li>
+<li>Alt+C or Escape: close the reader</li>
 </ul>
 
-<h2>Getting help and giving feedback</h2>
-<p>If something does not work, or you have a suggestion, you can
-reach the developer from the Help menu:</p>
+<h2>Troubleshooting</h2>
 <ul>
-<li>Visit project page on GitHub, to open the project's main page.</li>
-<li>Report a problem, to open the page where you can describe an issue
-or suggestion.</li>
-<li>Contact developer by email, to show the developer's email address
-with a button to copy it.</li>
+<li>Limit or quota message: wait for the provider's allowance to reset,
+then select Process again.</li>
+<li>Server error such as 503: wait a few minutes and retry.</li>
+<li>Model not found: open Settings, select Refresh model list, and choose
+an available model.</li>
+<li>Request too large: reduce Pages per request in Settings.</li>
+<li>Incorrect or malformed page text: choose another model and reprocess
+the affected pages.</li>
 </ul>
+
+<h2>Help and feedback</h2>
+<p>The Help menu contains links to the project page, issue tracker, and
+developer contact information.</p>
 """
 
 _MANUAL_STYLE = """

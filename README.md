@@ -1,133 +1,138 @@
-﻿# Accessible Manga Reader
+# Accessible Manga Reader
 
-Manga read aloud properly for blind readers.
+Accessible Manga Reader converts comics into text that can be read with a screen reader. It supports manga, manhwa, manhua, webtoons, and Western comics.
 
-Comics are one of the few storytelling media that stayed almost entirely closed to blind readers: the words are drawn into the artwork, so no screen reader can touch them, and the story is carried as much by panels, expressions, and sound effects as by dialogue. Accessible Manga Reader sends each page to an AI vision model and turns it into a script you can read with your screen reader: panel-by-panel descriptions, dialogue attributed to the character speaking, sound effects with their meaning, and the silent panels that carry so much of the storytelling. It reads manga, manhwa and manhua, webtoons, and Western comics.
-
-It follows each tradition's own reading grammar, set by the comic type in Settings. Manga is read right to left, top to bottom — panels, speech bubbles inside a panel, and the artwork itself. Manhwa, manhua, and Western comics are read left to right, and webtoons as a single vertical scroll.
+The app sends page images to a supported AI service. The result includes panel descriptions, attributed dialogue, captions, sound effects, and relevant visual details. Reading order follows the comic type selected in Settings.
 
 ## Install
 
-Download from the [latest release](../../releases) and run it. Two formats are offered for each processor type, and they are the same app:
+Download the files for your processor from the [latest release](../../releases):
 
-* **`.exe`** — one single file. Simplest, but it unpacks itself every time it starts, so it is slower to open.
-* **`.zip`** — the app as a folder. Extract it anywhere and run the program inside. It opens much faster and is less likely to be wrongly flagged by antivirus software.
+- **`AccessibleMangaReader-<arch>-setup.exe`** installs the app in Program Files, creates shortcuts, and supports in-app updates. Installation and updates require administrator permission.
+- **`AccessibleMangaReader-<arch>.zip`** is the portable folder version. Extract the ZIP and run the executable inside. It can update itself if its folder is writable.
 
-* **`-setup.exe`** — the installer. Installs into Program Files like an ordinary program, adds shortcuts, and lets the app update itself.
+Use `x64` for most Windows computers. Use `arm64` for Windows on ARM devices, including Snapdragon-based computers.
 
-Pick `x64` for most Windows PCs, or `arm64` for Windows on ARM (Snapdragon).
+Windows SmartScreen may warn that the app is unrecognised because it is not code-signed. Select **More info**, then **Run anyway**, if you downloaded it from this repository.
 
-The app checks for updates on start. The installed and folder versions can install an update themselves; the single `.exe` can't replace itself while running, so it points you at the download instead. Books and settings live outside the program and are never touched by an update.
-
-* `AccessibleMangaReader-x64.exe` — for most Windows PCs.
-* `AccessibleMangaReader-arm64.exe` — for Windows on ARM machines (Snapdragon).
-
-If you are unsure, choose x64. Windows SmartScreen may warn about an unrecognised app on first run, since the executable is not code-signed; choose More info, then Run anyway.
+Books, settings, API keys, and downloaded voices are stored separately from the program files. Updating or uninstalling the app does not remove them.
 
 ## Get an API key
 
-The app needs an AI service to read the pages. A free key takes a minute:
+The app needs access to an AI service. Gemini is the default provider.
 
-1. Go to [aistudio.google.com](https://aistudio.google.com) and sign in with a Google account.
-2. Choose **Get API key**, then **Create API key**. You'll be asked which Google Cloud project the key belongs to — create a new one if this is your first key. It costs nothing and needs no card.
-3. Copy the key (it starts with `AIza`).
-4. In the app, press Alt+S for Settings and paste it into the API keys box.
+To create a Gemini key:
 
-Google's free tier covers hundreds of manga pages a day. If you want several keys, create each in a **different project** — Google counts its free allowance per project, so keys from the same project share one allowance.
+1. Go to [Google AI Studio](https://aistudio.google.com) and sign in.
+2. Select **Get API key**, then **Create API key**.
+3. Choose a Google Cloud project. Create a project if you do not already have one.
+4. Copy the key.
+5. In Accessible Manga Reader, press Alt+S and paste the key into the API keys box.
 
-Claude and ChatGPT read pages well but have no free tier: their keys only work once you've bought credit, so they're worth it only if you already pay for them. [OpenRouter](https://openrouter.ai) needs only an email and has some free models, though the free roster changes and not all of them can see images — use **Refresh model list** in Settings. Any OpenAI-compatible service works by entering its endpoint URL.
+Gemini usage limits are applied per Google Cloud project. Extra keys increase the available allowance only when each key belongs to a different project.
 
-The user manual (Help menu, or F1) has step-by-step instructions for each of these.
+Anthropic and OpenAI API keys require prepaid API credit. ChatGPT Plus and Claude Pro or Max subscriptions do not include API usage. OpenRouter offers some free models, but only models that accept images can process comics. Use **Refresh model list** in Settings to list compatible models for your account.
 
-## Reading a book
+The built-in manual, available from the Help menu or with F1, includes setup instructions for each provider.
 
-Import a book from the File menu:
+## Add and process a book
 
-* **Archive or PDF** (Ctrl+O) — a `.cbz`, `.zip`, or `.pdf` file.
-* **Image files** (Ctrl+I) — select all the pages of a chapter; they are ordered by filename.
-* **Folder of images** (Ctrl+Shift+I) — every image in a folder.
+Use the File menu to import:
 
-Then press Alt+P to process. You are offered a box for optional instructions to the AI first — the most useful thing to put there is the cast, for example: *Aiko: short dark hair, school uniform, the class representative. Kenta: messy hair, always late.* The AI will then use those names from the very first page instead of guessing.
+- **Archive or PDF** (Ctrl+O): CBZ, ZIP, or PDF.
+- **Image files** (Ctrl+I): selected page images, ordered by filename.
+- **Folder of images** (Ctrl+Shift+I): all supported images in a folder.
 
-Processing sends the pages to the AI in small batches and saves after every batch, so you can cancel any time, choose Process again to carry on where it stopped. Each book is processed once and then cached, so re-reading is instant.
+Select the book and press Alt+P to process it. Before processing, you can enter book-specific instructions, such as character names and identifying features. This prompt can be disabled in Settings.
 
-After a book is fully processed, **Free up space** in the Book menu deletes its stored page images. Reading is unaffected; processing the book again later requires importing the original file again.
+Pages are processed in batches. The app saves each completed batch, so a cancelled or interrupted job can continue later. A partially processed book can be read while the remaining pages are processed.
 
-When it is done, select **Read now** in the processing window to start reading straight away, or press Enter or Alt+R on the book in your library.
+After processing, choose **Read now**, press Enter on the book in the library, or press Alt+R.
 
 ## Reading modes
 
-The reader's View menu offers three ways to read, and the default is in Settings:
+The View menu provides three modes:
 
-* **Entire book** — one continuous document, ideal for say-all reading.
-* **One page at a time** — with a "Page 3 of 20" position line.
-* **One panel at a time** — the closest equivalent to how a sighted reader takes a page in, with a position line like "Page 3 of 20, panel 2 of 6, top right" so you build the same mental map of the page.
+- **Entire book** shows the processed book as one document.
+- **One page at a time** shows one page and its position in the book.
+- **One panel at a time** shows one panel and its page, panel number, and position.
 
-The View menu also has **Show panel labels**. When it is off, the "Panel N (position)" markers are hidden and each page reads as one continuous narrative. The processed text is unchanged; the option only affects the display. The same option is in Settings.
+**Show panel labels** controls whether labels such as “Panel 2 (top right)” are displayed. It does not change the stored text.
 
-**HTML view** (Ctrl+H) opens the book in a separate window as an HTML document. Each page is a level-2 heading and each panel a level-3 heading, so screen reader browse mode navigates with H, 2, and 3. With panel labels off, only page headings are used. The window has a Save as HTML button, and Ctrl+Shift+E in the reader saves the same document.
+**HTML view** (Ctrl+H) opens the book with page and panel headings. Screen reader browse mode can navigate those headings with H, 2, and 3. Ctrl+Shift+E saves the same structured document as HTML.
 
-The text area is an ordinary read-only text control, so say-all, review commands, and find all behave exactly as they do in any document.
-
-## Keyboard
+## Keyboard shortcuts
 
 In the library:
 
-* Enter or Alt+R — read the selected book
-* Alt+P or Ctrl+P — process or resume it
-* Alt+S — settings
-* Ctrl+T — AI instructions for this book
-* F2 — rename, Delete — remove, Ctrl+A — select all
-* Applications key — context menu with every book action
+- Enter or Alt+R — read the selected book
+- Alt+P or Ctrl+P — process or resume processing
+- Alt+S — open Settings
+- Ctrl+T — edit AI instructions for the selected book
+- F2 — rename the selected book
+- Delete — remove the selected book
+- Ctrl+A — select all books
+- Applications key — open the context menu
 
 In the reader:
 
-* PageDown / PageUp — next / previous page or panel
-* Ctrl+PageDown / Ctrl+PageUp — next / previous page in any mode
-* Alt+P / Alt+N — previous / next
-* Alt+F / Alt+L — first / last page
-* Ctrl+Home / Ctrl+End — start / end of what you are reading (page by page, the current page)
-* Alt+G or Ctrl+G — go to a page
-* Ctrl+F — find (entire-book mode)
-* Ctrl+E — save the whole book as a text file (Book menu, Export, for every format)
-* Ctrl+Q — ask the AI about the current page (it looks at the page image again to answer; uses your AI service like processing does)
-* Ctrl+R — reprocess this page, a page range, or the whole book
-* Ctrl+I — import more image pages (image-built books only)
-* Ctrl+H — open the HTML view
-* Ctrl+Shift+E — save as an HTML file
-* Alt+C or Escape — close, remembering your place
-
-Tab moves between controls; arrow keys stay inside the control that has focus. Shortcuts belong to the window they are shown in, so Alt+P means Process in the library and Previous in the reader.
+- Page Down / Page Up — next / previous page or panel
+- Ctrl+Page Down / Ctrl+Page Up — next / previous page in any mode
+- Alt+P / Alt+N — previous / next
+- Alt+F / Alt+L — first / last page
+- Ctrl+Home / Ctrl+End — start / end of the current text control
+- Alt+G or Ctrl+G — go to a page
+- Ctrl+F — find text in entire-book mode
+- Ctrl+Q — ask the AI about the current page
+- Ctrl+R — reprocess a page, range, or the full book
+- Ctrl+I — add pages to a book imported from images
+- Ctrl+E — export as text
+- Ctrl+H — open HTML view
+- Ctrl+Shift+E — export as HTML
+- Alt+C or Escape — close the reader and save the current position
 
 ## Settings
 
-**AI engine tab.** Choose the service, the model, and enter one or more API keys (one per line, up to 10 — when a key runs out of quota the next is used automatically). Use **Refresh model list** to fetch the models your key can actually use, straight from the service. Pages per request (default 4) trades fewer requests against larger ones; lower it if a service says a request is too large. The delay between requests keeps long runs under per-minute limits.
+The **AI engine** tab contains the provider, model, API keys, pages per request, and delay between requests. Up to 10 keys can be entered, one per line. The app rotates to the next key when the current key reaches a limit.
 
-**General tab.** Output language (choose from the list or type any language — the whole script is written in it: descriptions, dialogue, speaker names, sound effects and labels alike, with the comic's own text translated rather than copied, and character names written in that language's own alphabet). Verbosity: Concise, Detailed, or Extensive, which walks every panel through composition, each character's expression and pose, the background, and drawn effects like speed lines. Comic type, which sets the correct reading rules: Manga (Japanese, right to left), Manhwa or Manhua (Korean or Chinese, left to right), Webtoon (vertical scroll), or Western comic (left to right). Custom instructions for the selected comic type, applied to every book of that type (kept separate from a book's own instructions). Whether the AI-instructions box is offered before processing a book (off starts processing immediately; instructions stay available from the Book menu, where Save and reprocess applies them to an already processed book). The default reader view, and whether panel labels are shown.
+The **General** tab contains:
 
-Verbosity and AI instructions apply to pages processed from then on. To apply them to a book already processed, use **Reprocess pages** in the Book menu, which can redo a single page, a range, or the whole book.
+- **Output language.** Select a language or enter one. The app translates descriptions, dialogue, labels, sound effects, and names into that language. Select **Original (same as the comic)** to transcribe the comic without translation.
+- **Verbosity.** Concise, Detailed, or Extensive.
+- **Comic type.** Manga, Manhwa or Manhua, Webtoon, or Western comic. This controls reading order and layout rules.
+- **Comic-type instructions.** Instructions applied to every book of the selected type.
+- **Processing and reader options.** Controls for the instruction prompt, default reading mode, panel labels, and update checks.
+
+Changes to output language, verbosity, or instructions apply to newly processed pages. Use **Reprocess pages** to apply them to existing text.
+
+## Export and audio
+
+Processed books can be exported as text, HTML, EPUB, Word, tagged PDF, or MP3. PDF export requires Microsoft Edge or Google Chrome. Audio export supports Gemini speech and offline Kokoro voices. Kokoro model files are downloaded on first use and stored in the app data folder.
 
 ## Notes and limits
 
-* **Speaker attribution** follows the speech bubble's tail — the pointer an artist draws toward whoever is talking — rather than whichever character sits nearest the bubble, with the conventions of each comic type. It is good but not perfect on crowded pages; where the speaker cannot be established the AI says "Unknown" rather than guessing. If a line looks misattributed, Ctrl+Q in the reader asks about the page from the original image and can correct it.
-* **Some models follow the script format more closely than others.** The AI is told to describe a page panel by panel in reading order and to write nothing but the script. If a model still drifts — adding its own headings, or remarks about its own work — a stronger model usually fixes it; **Reprocess pages** in the Book menu redoes the pages affected.
-* **Your keys stay on your computer**, in a settings file in your app data folder. They are never sent anywhere except to the service you chose.
-* **Interface language** is English regardless of the output language setting; only the AI's script is translated.
-* **`.cbr` (RAR) archives** are not supported — convert to `.cbz` first.
+- Speaker attribution uses speech-bubble tails and the conventions of the selected comic type. Crowded or unclear pages may still be misattributed.
+- If a model does not follow the required script format, select another model and reprocess the affected pages.
+- API keys remain in the local settings file and are sent only to the selected provider.
+- The interface is in English. The output-language setting applies to processed comic text.
+- CBR/RAR archives are not supported. Convert them to CBZ first.
+- **Free up space** removes stored page images after a book is fully processed. Reading still works, but reprocessing and page questions require the images.
 
-## Running from source
+## Run from source
 
-    pip install -r requirements.txt
-    python main.py
+```text
+pip install -r requirements.txt
+python main.py
+```
 
-Run the tests before changing anything:
+Run the test suite with:
 
-    python run_tests.py
+```text
+python run_tests.py
+```
 
 ## Licence
 
-GNU General Public License, version 3 or later. See LICENSE.
+Accessible Manga Reader is licensed under GNU GPL version 3 or later. See [LICENSE](LICENSE).
 
-The app builds on other people's work, including the Kokoro voice model (Apache 2.0), eSpeak NG (GPL v3), pypdfium2 (Apache/BSD) and several others, each under its own licence. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists them all.
-
-The offline voice model is not part of the download: it is fetched from its own project the first time you choose an offline voice.
+Third-party components and their licences are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
