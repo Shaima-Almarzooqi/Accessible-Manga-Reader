@@ -133,15 +133,17 @@ jobs:
             ForEach-Object { Write-Host "  included $($_.Name)" }
 
       # Built from the folder version, so the installed copy starts
-      # quickly instead of unpacking itself each time. Per-user, so
-      # neither installing nor updating raises an administrator
-      # prompt.
+      # quickly instead of unpacking itself each time. It is installed
+      # per-machine in Program Files, so Windows asks for administrator
+      # permission during installation and updates.
       - name: Build installer
         run: |
           choco install innosetup -y --no-progress
-          & "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" `
+          $appVersion = python -c "from core.config import APP_VERSION; print(APP_VERSION)"
+          $compiler = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          & $compiler `
             /DArchName=${{ matrix.arch }} `
-            /DAppVersion=${{ github.ref_name }} `
+            /DAppVersion=$appVersion `
             installer.iss
         shell: pwsh
 
