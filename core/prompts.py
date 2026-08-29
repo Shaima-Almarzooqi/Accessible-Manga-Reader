@@ -24,6 +24,8 @@ Output format the model is instructed to produce:
 
 import re
 
+from .config import ORIGINAL_LANGUAGE
+
 PAGE_HEADER_RE = re.compile(r"^===\s*PAGE\s+(\d+)\s*===\s*$", re.MULTILINE)
 NOTES_HEADER_RE = re.compile(r"^===\s*CHARACTER NOTES\s*===\s*$", re.MULTILINE)
 
@@ -413,6 +415,33 @@ VERBOSITY_TEXT = {
 }
 
 
+TRANSLATED_RULE = (
+    "WRITE THE ENTIRE SCRIPT IN {output_language}: every panel "
+    "description, every speaker label, every caption, every sound "
+    "effect, and all dialogue. The comic's own text may be in another "
+    "language; translate it into {output_language} rather than "
+    "reproducing the original, and render sound effects with their "
+    "meaning in {output_language}. Character names are transliterated "
+    "into the {output_language} alphabet, not left in their original "
+    "spelling -- if the descriptions call a character by a "
+    "{output_language} spelling, the speaker label for that same "
+    "character uses that identical spelling. Do not add or remove "
+    "honorifics or titles of your own accord."
+)
+
+ORIGINAL_RULE = (
+    "WRITE THE ENTIRE SCRIPT IN THE COMIC'S OWN LANGUAGE -- the "
+    "language its dialogue is printed in. Do not translate: transcribe "
+    "every speech bubble, caption, sound effect and piece of visible "
+    "text exactly as written, and write your panel descriptions in "
+    "that same language so the whole script reads as one piece. "
+    "Character names keep their original spelling, and honorifics and "
+    "titles are left exactly as printed. If a page carries text in "
+    "more than one language, keep each as it appears. Judge the "
+    "language from the pages themselves rather than assuming."
+)
+
+
 def build_system_prompt(comic_type, verbosity, output_language,
                         custom_prompt=""):
     resolved = LEGACY_DIRECTION_MAP.get(comic_type, comic_type)
@@ -420,6 +449,14 @@ def build_system_prompt(comic_type, verbosity, output_language,
     tails = TAIL_TEXT.get(resolved, TAIL_TEXT["manga"])
     layout = LAYOUT_TEXT.get(resolved, LAYOUT_TEXT["manga"])
     verbosity_rules = VERBOSITY_TEXT.get(verbosity, VERBOSITY_TEXT["detailed"])
+    if output_language == ORIGINAL_LANGUAGE:
+        language_rule = ORIGINAL_RULE
+        # Everywhere else the prompt names the language; with nothing to
+        # name, it refers to the comic's own instead.
+        output_language = "the comic's own language"
+    else:
+        language_rule = TRANSLATED_RULE.format(
+            output_language=output_language)
     custom_block = ""
     if custom_prompt and custom_prompt.strip():
         custom_block = (
@@ -460,7 +497,7 @@ The <Speaker> name, the "(thinking)" qualifier, and the "Narration:", "SFX:" and
 Rules:
 - Dialogue lines come AFTER the panel description line for their panel, in the order the bubbles are read, each attached to the character who speaks it.
 - Attribute every line of dialogue to a character. Use bubble tail position, who is shown speaking, and the CHARACTER NOTES to identify speakers. If genuinely uncertain, use the {output_language} equivalent of "Off-panel voice:" or "Unknown:" rather than guessing a name.
-- WRITE THE ENTIRE SCRIPT IN {output_language}: every panel description, every speaker label, every caption, every sound effect, and all dialogue. The comic's own text may be in another language; translate it into {output_language} rather than reproducing the original, and render sound effects with their meaning in {output_language}. Character names are transliterated into the {output_language} alphabet, not left in their original spelling -- if the descriptions call a character by a {output_language} spelling, the speaker label for that same character uses that identical spelling. Do not add or remove honorifics or titles of your own accord. The ONLY things that stay in English, exactly as shown, are the three structural markers the app reads: the "=== PAGE n ===" line, the "Panel n (position):" prefix including the position word inside the brackets, and the "=== CHARACTER NOTES ===" line. Everything after those markers -- the panel's description, the speaker names, the dialogue -- is in {output_language}. The qualifiers "(thinking)" and "(off-panel)", and the "Narration:", "SFX:", and "Text:" labels, are written in {output_language} too.
+- {language_rule} The ONLY things that stay in English, exactly as shown, are the three structural markers the app reads: the "=== PAGE n ===" line, the "Panel n (position):" prefix including the position word inside the brackets, and the "=== CHARACTER NOTES ===" line. Everything after those markers -- the panel's description, the speaker names, the dialogue -- is in {output_language}. The qualifiers "(thinking)" and "(off-panel)", and the "Narration:", "SFX:", and "Text:" labels, are written in {output_language} too.
 - Silent panels matter: describe them like any other panel. A wordless close-up or a held beat is storytelling; a line like "Panel 4: Silent. Aiko stares at the empty chair." is perfect.
 - Text visible in the art (signs, phone screens, letters) goes on a "Text:" line with a short location note tying it to the object it appears on.
 - COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, write "Text: (illegible)" at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.

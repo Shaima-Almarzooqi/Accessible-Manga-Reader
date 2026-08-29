@@ -14,7 +14,12 @@ RELEASES_URL = ("https://api.github.com/repos/"
                 "Shaima-Almarzooqi/Accessible-Manga-Reader/releases")
 TIMEOUT_SECONDS = 5
 
-Update = namedtuple("Update", ["version", "notes", "url"])
+Update = namedtuple("Update", ["version", "notes", "url", "assets"])
+
+# What a release offers to download. name is the file name, url is
+# the direct link, size is in bytes so a truncated download can be
+# spotted before it is run.
+Asset = namedtuple("Asset", ["name", "url", "size"])
 
 
 def parse_version(text):
@@ -61,10 +66,20 @@ def newest_release(releases, current_version, include_betas=True):
             best = release
     if best is None:
         return None
+    assets = []
+    for item in best.get("assets") or []:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or ""
+        url = item.get("browser_download_url") or ""
+        if name and url:
+            assets.append(Asset(name=name, url=url,
+                                size=int(item.get("size") or 0)))
     return Update(
         version=".".join(str(part) for part in best_version),
         notes=best.get("body") or "",
-        url=best.get("html_url") or "")
+        url=best.get("html_url") or "",
+        assets=assets)
 
 
 def check_for_update(current_version, include_betas=True):

@@ -132,6 +132,19 @@ jobs:
           Get-Item "$folder/LICENSE", "$folder/THIRD-PARTY-NOTICES.md" |
             ForEach-Object { Write-Host "  included $($_.Name)" }
 
+      # Built from the folder version, so the installed copy starts
+      # quickly instead of unpacking itself each time. Per-user, so
+      # neither installing nor updating raises an administrator
+      # prompt.
+      - name: Build installer
+        run: |
+          choco install innosetup -y --no-progress
+          & "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" `
+            /DArchName=${{ matrix.arch }} `
+            /DAppVersion=${{ github.ref_name }} `
+            installer.iss
+        shell: pwsh
+
       - name: Zip folder version
         shell: pwsh
         run: >
@@ -145,6 +158,7 @@ jobs:
           path: |
             dist/AccessibleMangaReader-${{ matrix.arch }}.exe
             dist/AccessibleMangaReader-${{ matrix.arch }}.zip
+            dist/AccessibleMangaReader-${{ matrix.arch }}-setup.exe
           if-no-files-found: error
 
   release:
@@ -165,3 +179,4 @@ jobs:
           files: |
             artifacts/**/*.exe
             artifacts/**/*.zip
+            artifacts/**/*-setup.exe

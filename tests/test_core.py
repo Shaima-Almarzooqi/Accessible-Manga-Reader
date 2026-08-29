@@ -16,6 +16,8 @@ import os
 import shutil
 import sys
 import tempfile
+import types
+import subprocess
 import unittest
 import zipfile
 
@@ -310,10 +312,10 @@ class TestConfig(unittest.TestCase):
         os.environ["APPDATA"] = tmp
         try:
             with open(config.settings_path(), "w", encoding="utf-8") as f:
-                json.dump({"gemini_model": "gemini-2.5-flash-lite"}, f)
+                json.dump({"gemini_model": "gemini-3.1-flash-lite"}, f)
             settings = config.load_settings()
             self.assertEqual(settings["gemini_model"],
-                             "gemini-2.5-flash-lite")
+                             "gemini-3.1-flash-lite")
             self.assertEqual(settings["provider"], "gemini")
             self.assertEqual(settings["verbosity"],
                              config.DEFAULT_SETTINGS["verbosity"])
@@ -418,7 +420,7 @@ class TestProviderClients(unittest.TestCase):
         client = api_client.create_client(settings)
         self.assertIsInstance(client, api_client.RotatingClient)
         self.assertIs(client.client_class, api_client.GeminiClient)
-        self.assertEqual(client.model, "gemini-3.5-flash")
+        self.assertEqual(client.model, "gemini-3.6-flash")
 
 
 class TestSettingsMigration(unittest.TestCase):
@@ -684,7 +686,7 @@ class TestBookKindAndPositions(unittest.TestCase):
         self.assertEqual(config.DEFAULT_SETTINGS["reader_view"], "book")
         self.assertIn("openai", config.SUGGESTED_MODELS)
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.5-flash")
+                         "gemini-3.6-flash")
 
 
 
@@ -1146,6 +1148,544 @@ class TestKeyRotation(unittest.TestCase):
         with self.assertRaises(api_client.ApiError) as caught:
             client.request_scripts("sys", [])
         self.assertIn("daily quota used up", str(caught.exception))
+
+
+class TestInstallKind(unittest.TestCase):
+    """The app reaches people in three shapes and each updates
+    differently, so getting this wrong means downloading the wrong
+    thing or replacing the wrong folder."""
+
+    def setUp(self):
+        from core import install
+        self.install = install
+        self.installed = "/home/me/AppData/Local/Programs/AMR"
+
+    def test_a_copy_under_the_install_folder_is_installed(self):
+        self.assertEqual(
+            self.install.install_kind(
+                executable=self.installed + "/app.exe",
+                meipass=self.installed + "/_internal",
+                frozen=True, installed=self.installed),
+            self.install.INSTALLED)
+
+    def test_a_copy_beside_its_parts_is_a_folder(self):
+        self.assertEqual(
+            self.install.install_kind(
+                executable="/portable/amr/app.exe",
+                meipass="/portable/amr/_internal",
+                frozen=True, installed=self.installed),
+            self.install.FOLDER)
+
+    def test_a_copy_unpacked_elsewhere_is_the_single_file(self):
+        # A one-file build extracts itself to a temporary folder to
+        # run, which is what distinguishes it.
+        self.assertEqual(
+            self.install.install_kind(
+                executable="/downloads/app.exe", meipass="/tmp/_MEI123",
+                frozen=True, installed=self.installed),
+            self.install.SINGLE)
+
+    def test_running_from_source_is_recognised(self):
+        self.assertEqual(self.install.install_kind(frozen=False),
+                         self.install.SOURCE)
+
+
+class TestChoosingADownload(unittest.TestCase):
+    """Handing somebody the wrong download means a program their
+    machine cannot run, so the name has to match on both counts."""
+
+    def setUp(self):
+        from core import install, updates
+        self.install = install
+        self.assets = [
+            updates.Asset("AccessibleMangaReader-x64-setup.exe", "a", 1),
+            updates.Asset("AccessibleMangaReader-x64.exe", "b", 2),
+            updates.Asset("AccessibleMangaReader-x64.zip", "c", 3),
+            updates.Asset("AccessibleMangaReader-arm64-setup.exe", "d", 4),
+            updates.Asset("AccessibleMangaReader-arm64.exe", "e", 5),
+            updates.Asset("AccessibleMangaReader-arm64.zip", "f", 6),
+        ]
+
+    def _pick(self, kind, arch):
+        chosen = self.install.choose_asset(self.assets, kind, arch)
+        return chosen.name if chosen else None
+
+    def test_an_installed_copy_gets_the_installer(self):
+        self.assertEqual(self._pick(self.install.INSTALLED, "x64"),
+                         "AccessibleMangaReader-x64-setup.exe")
+
+    def test_a_folder_copy_gets_the_zip(self):
+        self.assertEqual(self._pick(self.install.FOLDER, "arm64"),
+                         "AccessibleMangaReader-arm64.zip")
+
+    def test_a_single_file_copy_gets_the_plain_exe(self):
+        # Not the installer, even though both end in .exe.
+        self.assertEqual(self._pick(self.install.SINGLE, "x64"),
+                         "AccessibleMangaReader-x64.exe")
+
+    def test_the_architecture_is_respected(self):
+        for kind in (self.install.INSTALLED, self.install.FOLDER,
+                     self.install.SINGLE):
+            self.assertIn("arm64", self._pick(kind, "arm64"))
+            self.assertNotIn("arm64", self._pick(kind, "x64"))
+
+    def test_nothing_suitable_returns_nothing(self):
+        self.assertIsNone(
+            self.install.choose_asset([], self.install.FOLDER, "x64"))
+
+
+class TestUpdateRefusals(unittest.TestCase):
+    """Better to say why an update cannot be applied than to try and
+    leave somebody with a broken copy."""
+
+    def setUp(self):
+        from core import install
+        self.install = install
+
+    def test_the_single_file_explains_itself(self):
+        reason = self.install.can_update_here(self.install.SINGLE)
+        self.assertIn("cannot replace itself", reason)
+
+    def test_source_checkouts_are_left_alone(self):
+        self.assertIn("git", self.install.can_update_here(
+            self.install.SOURCE))
+
+    def test_an_unwritable_folder_is_caught_before_downloading(self):
+        reason = self.install.can_update_here(
+            self.install.FOLDER, folder="/definitely/not/writable/here")
+        self.assertIsNotNone(reason)
+
+    def test_a_writable_folder_is_fine(self):
+        self.assertIsNone(self.install.can_update_here(
+            self.install.FOLDER, folder=tempfile.mkdtemp()))
+
+
+class TestUpdateDownload(unittest.TestCase):
+    """A half-finished download must never be mistaken for an
+    installer and run."""
+
+    def setUp(self):
+        from core import install
+        self.install = install
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _serve(self, payload, length=None):
+        import core.install as module
+
+        class FakeResponse:
+            headers = {"Content-Length": str(
+                length if length is not None else len(payload))}
+
+            def raise_for_status(self):
+                pass
+
+            def iter_content(self, chunk_size=1):
+                for start in range(0, len(payload), chunk_size):
+                    yield payload[start:start + chunk_size]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        fake = types.ModuleType("requests")
+        fake.get = lambda url, **kw: FakeResponse()
+        sys.modules["requests"] = fake
+        return module
+
+    def test_a_complete_download_is_kept(self):
+        module = self._serve(b"installer bytes")
+        target = os.path.join(self.tmp, "setup.exe")
+        result = module.download("http://x", target,
+                                 expected_size=len(b"installer bytes"))
+        self.assertEqual(result, target)
+        with open(target, "rb") as handle:
+            self.assertEqual(handle.read(), b"installer bytes")
+
+    def test_a_truncated_download_is_discarded(self):
+        # The server promised more than it sent.
+        module = self._serve(b"short", length=999)
+        target = os.path.join(self.tmp, "setup.exe")
+        with self.assertRaises(OSError):
+            module.download("http://x", target, expected_size=999)
+        self.assertFalse(os.path.exists(target))
+
+    def test_nothing_is_left_behind_when_cancelled(self):
+        module = self._serve(b"abcdefgh" * 100)
+        target = os.path.join(self.tmp, "setup.exe")
+        result = module.download("http://x", target,
+                                 cancel_check=lambda: True)
+        self.assertIsNone(result)
+        self.assertFalse(os.path.exists(target))
+        self.assertFalse(os.path.exists(target + ".part"))
+
+
+class TestFolderUpdate(unittest.TestCase):
+    """Unpack fully before moving anything, so a bad download is found
+    while the working copy is still untouched."""
+
+    def setUp(self):
+        from core import install
+        self.install = install
+        self.tmp = tempfile.mkdtemp()
+        self.folder = os.path.join(self.tmp, "amr")
+        os.makedirs(self.folder)
+        with open(os.path.join(self.folder, "app.exe"), "w") as handle:
+            handle.write("old")
+        self.launched = []
+        self.real_popen = subprocess.Popen
+        subprocess.Popen = lambda *a, **k: (
+            self.launched.append(a[0]) or type("P", (), {})())
+
+    def tearDown(self):
+        subprocess.Popen = self.real_popen
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _zip(self, entries):
+        path = os.path.join(self.tmp, "update.zip")
+        with zipfile.ZipFile(path, "w") as archive:
+            for name, body in entries.items():
+                archive.writestr(name, body)
+        return path
+
+    def test_the_working_copy_is_untouched_until_the_app_exits(self):
+        self.install.apply_folder_update(
+            self._zip({"app.exe": "new"}), folder=self.folder,
+            executable=os.path.join(self.folder, "app.exe"))
+        with open(os.path.join(self.folder, "app.exe")) as handle:
+            self.assertEqual(handle.read(), "old")
+
+    def test_the_new_copy_is_unpacked_beside_it(self):
+        self.install.apply_folder_update(
+            self._zip({"app.exe": "new", "_internal/lib.dll": "x"}),
+            folder=self.folder,
+            executable=os.path.join(self.folder, "app.exe"))
+        self.assertTrue(os.path.isdir(self.folder + ".new"))
+        with open(os.path.join(self.folder + ".new", "app.exe")) as handle:
+            self.assertEqual(handle.read(), "new")
+
+    def test_the_swap_is_handed_to_a_script(self):
+        script = self.install.apply_folder_update(
+            self._zip({"app.exe": "new"}), folder=self.folder,
+            executable=os.path.join(self.folder, "app.exe"))
+        self.assertTrue(script.endswith(".bat"))
+        self.assertEqual(self.launched[0][:2], ["cmd", "/c"])
+
+    def test_an_empty_archive_changes_nothing(self):
+        with self.assertRaises(OSError):
+            self.install.apply_folder_update(
+                self._zip({}), folder=self.folder,
+                executable=os.path.join(self.folder, "app.exe"))
+        with open(os.path.join(self.folder, "app.exe")) as handle:
+            self.assertEqual(handle.read(), "old")
+
+
+class TestSwapScript(unittest.TestCase):
+    """The folder swap happens after the app exits, from a script that
+    outlives it. If it goes wrong the reader must still have a working
+    app, so the old copy is moved aside rather than deleted."""
+
+    def setUp(self):
+        from core import install
+        self.script = install.swap_script(
+            r"C:\amr", r"C:\amr.new", r"C:\amr\app.exe", r"C:\amr.old")
+
+    def test_the_old_copy_is_kept_until_the_new_one_is_in_place(self):
+        moved = self.script.index("move \"C:\\amr\" \"C:\\amr.old\"")
+        replaced = self.script.index("move \"C:\\amr.new\" \"C:\\amr\"")
+        self.assertLess(moved, replaced)
+
+    def test_a_failure_puts_the_old_copy_back(self):
+        self.assertIn(":restore", self.script)
+        self.assertIn("move \"C:\\amr.old\" \"C:\\amr\"", self.script)
+
+    def test_the_app_restarts_whether_or_not_it_worked(self):
+        self.assertEqual(self.script.count('start ""'), 2)
+
+    def test_it_waits_before_touching_anything(self):
+        # Windows holds the running program's files open.
+        self.assertIn("ping", self.script.split("move")[0])
+
+    def test_it_removes_itself(self):
+        self.assertIn('del "%~f0"', self.script)
+
+
+class TestRetiredModels(unittest.TestCase):
+    """Somebody sitting on a shut-down model is moved off it quietly.
+
+    Otherwise their next book stops working with a message about a
+    model they never chose.
+    """
+
+    def setUp(self):
+        self.appdata = tempfile.mkdtemp()
+        self.previous = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = self.appdata
+        os.makedirs(config.data_dir(), exist_ok=True)
+
+    def tearDown(self):
+        if self.previous is None:
+            os.environ.pop("APPDATA", None)
+        else:
+            os.environ["APPDATA"] = self.previous
+        shutil.rmtree(self.appdata, ignore_errors=True)
+
+    def _load_with(self, model):
+        with open(config.settings_path(), "w", encoding="utf-8") as handle:
+            json.dump({"provider": "gemini", "gemini_model": model,
+                       "gemini_api_keys": ["k"]}, handle)
+        return config.load_settings()
+
+    def test_a_shutdown_model_is_replaced(self):
+        self.assertEqual(
+            self._load_with("gemini-2.5-flash")["gemini_model"],
+            "gemini-3.5-flash")
+
+    def test_the_lite_model_moves_to_a_lite_model(self):
+        # Somebody chose a cheap, fast model on purpose; the
+        # replacement should keep that character.
+        self.assertEqual(
+            self._load_with("gemini-2.5-flash-lite")["gemini_model"],
+            "gemini-3.5-flash-lite")
+
+    def test_a_current_model_is_left_alone(self):
+        self.assertEqual(
+            self._load_with("gemini-3.6-flash")["gemini_model"],
+            "gemini-3.6-flash")
+
+    def test_other_settings_survive_the_move(self):
+        self.assertEqual(
+            self._load_with("gemini-2.5-flash")["gemini_api_keys"], ["k"])
+
+    def test_no_offered_model_is_a_retired_one(self):
+        retired = config.RETIRED_MODELS["gemini_model"]
+        for model in config.SUGGESTED_MODELS["gemini"]:
+            self.assertNotIn(model, retired)
+
+    def test_every_replacement_is_one_we_offer(self):
+        for replacement in config.RETIRED_MODELS["gemini_model"].values():
+            self.assertIn(replacement, config.SUGGESTED_MODELS["gemini"])
+
+
+class TestRateLimitRotation(unittest.TestCase):
+    """A rate limited key should be left alone, not waited on.
+
+    Waiting several minutes on one key while keys from other projects
+    sit idle was why a reader with ten keys still hit "quota" after a
+    handful of chapters. A daily quota is different -- that key really
+    is finished -- but a per-minute limit clears on its own, and another
+    project's key answers straight away.
+    """
+
+    def _rotating(self, keys=("k1", "k2", "k3")):
+        from core import api_client
+        waited = []
+
+        class FakeClient(api_client._RetryMixin):
+            def __init__(self, api_key, model, max_tokens=8000):
+                self.api_key = api_key
+
+            def request_scripts(self, system_prompt, content,
+                                cancel_check=None):
+                if self.api_key in ("k1", "k2"):
+                    if self.rotate_on_rate_limit:
+                        raise api_client.ApiError(
+                            "rate limited", key_exhausted=True)
+                    waited.append(self.api_key)
+                    raise api_client.ApiError(
+                        "still limited", key_exhausted=True)
+                return "=== PAGE 1 ===\nPanel 1 (top right): ok."
+
+        return api_client.RotatingClient(
+            FakeClient, list(keys), "model"), waited
+
+    def test_a_limited_key_is_passed_over_without_waiting(self):
+        client, waited = self._rotating()
+        self.assertIn("ok.", client.request_scripts("s", []))
+        self.assertEqual(waited, [])
+
+    def test_the_working_key_is_reached(self):
+        client, _ = self._rotating()
+        client.request_scripts("s", [])
+        self.assertEqual(client.api_keys[client.index], "k3")
+
+    def test_waiting_still_happens_when_every_key_is_limited(self):
+        # Nowhere left to go, so waiting is the only thing left.
+        from core import api_client
+        waited = []
+
+        class AlwaysLimited(api_client._RetryMixin):
+            def __init__(self, api_key, model, max_tokens=8000):
+                self.api_key = api_key
+
+            def request_scripts(self, system_prompt, content,
+                                cancel_check=None):
+                if not self.rotate_on_rate_limit:
+                    waited.append(self.api_key)
+                raise api_client.ApiError("limited", key_exhausted=True)
+
+        client = api_client.RotatingClient(
+            AlwaysLimited, ["k1", "k2"], "model")
+        with self.assertRaises(api_client.ApiError):
+            client.request_scripts("s", [])
+        self.assertTrue(waited)
+
+    def test_a_single_key_still_waits_rather_than_giving_up(self):
+        from core import api_client
+        waited = []
+
+        class OneKey(api_client._RetryMixin):
+            def __init__(self, api_key, model, max_tokens=8000):
+                self.api_key = api_key
+
+            def request_scripts(self, system_prompt, content,
+                                cancel_check=None):
+                self.assertFalse = None
+                if not self.rotate_on_rate_limit:
+                    waited.append(self.api_key)
+                raise api_client.ApiError("limited", key_exhausted=True)
+
+        client = api_client.RotatingClient(OneKey, ["only"], "model")
+        with self.assertRaises(api_client.ApiError):
+            client.request_scripts("s", [])
+        self.assertEqual(waited, ["only"])
+
+
+class TestOriginalLanguage(unittest.TestCase):
+    """Leaving a comic in its own language is now a choice.
+
+    Before this the app always translated, so someone who reads
+    Japanese got their Japanese manga rendered into English unless
+    they knew to go and change a setting.
+    """
+
+    def test_it_is_offered_first(self):
+        self.assertEqual(config.SUGGESTED_LANGUAGES[0],
+                         config.ORIGINAL_LANGUAGE)
+
+    def test_the_prompt_stops_asking_for_a_translation(self):
+        prompt = prompts.build_system_prompt(
+            "manga", "detailed", config.ORIGINAL_LANGUAGE)
+        self.assertIn("Do not translate", prompt)
+        self.assertNotIn("translate it into", prompt)
+
+    def test_a_named_language_still_translates(self):
+        prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
+        self.assertIn("translate it into Arabic", prompt)
+        self.assertNotIn("Do not translate", prompt)
+
+    def test_the_structural_markers_survive_either_way(self):
+        # The parser depends on these, so they stay English regardless.
+        for language in (config.ORIGINAL_LANGUAGE, "Japanese"):
+            prompt = prompts.build_system_prompt(
+                "manga", "detailed", language)
+            self.assertIn("=== PAGE n ===", prompt)
+            self.assertIn("=== CHARACTER NOTES ===", prompt)
+
+    def test_exports_do_not_claim_a_language_they_cannot_know(self):
+        # Saying "English" would have a screen reader read a Japanese
+        # book in an English voice.
+        self.assertEqual(
+            config.language_code(config.ORIGINAL_LANGUAGE), "")
+
+    def test_a_named_language_still_gets_a_code(self):
+        self.assertEqual(config.language_code("Japanese"), "ja")
+
+
+class TestAudioKeyRotation(unittest.TestCase):
+    """Audio export had the same flaw the page reader did: a piece
+    stuck to one key and waited it out while other keys sat idle."""
+
+    def _limited(self, working=("k3",)):
+        import urllib.error, io, json as _json
+        tried = []
+
+        def speak(text, key):
+            tried.append(key)
+            if key in working:
+                return b"\x00\x00" * 100
+            body = _json.dumps({"error": {"details": [{"retryDelay": "60s"}]}})
+            raise urllib.error.HTTPError(
+                "u", 429, "Too Many", {}, io.BytesIO(body.encode()))
+
+        return speak, tried
+
+    def setUp(self):
+        from core import tts
+        self.tts = tts
+        self.waits = []
+        self.real_wait = tts._wait
+        tts._wait = lambda seconds, cancel_check=None: (
+            self.waits.append(seconds) or True)
+
+    def tearDown(self):
+        self.tts._wait = self.real_wait
+
+    def test_a_limited_key_is_passed_over(self):
+        speak, tried = self._limited()
+        self.tts._speak_with_retry(speak, "hi", ["k1", "k2", "k3"], 0)
+        self.assertEqual(tried, ["k1", "k2", "k3"])
+        self.assertEqual(self.waits, [])
+
+    def test_pieces_start_on_different_keys(self):
+        # Work is spread rather than piled onto the first key.
+        speak, tried = self._limited(working=("k1", "k2", "k3"))
+        self.tts._speak_with_retry(speak, "hi", ["k1", "k2", "k3"], 1)
+        self.assertEqual(tried, ["k2"])
+
+    def test_waiting_returns_once_every_key_is_limited(self):
+        speak, tried = self._limited(working=())
+        with self.assertRaises(self.tts.SpeechError):
+            self.tts._speak_with_retry(speak, "hi", ["k1", "k2"], 0)
+        self.assertTrue(self.waits)
+
+    def test_a_single_key_still_waits(self):
+        speak, tried = self._limited(working=())
+        with self.assertRaises(self.tts.SpeechError):
+            self.tts._speak_with_retry(speak, "hi", ["only"], 0)
+        self.assertTrue(self.waits)
+
+
+class TestEmptyResponseRetry(unittest.TestCase):
+    """A 200 carrying no text is a hiccup, not a verdict on the pages.
+
+    It used to fail the batch outright, which is why a reader saw
+    "Gemini returned an empty response" and then found it working
+    again moments later.
+    """
+
+    def test_an_empty_reply_is_marked_retryable(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            api_client.GeminiClient.extract_text(
+                {"candidates": [{"content": {"parts": [{"text": " "}]}}]})
+        self.assertTrue(caught.exception.retryable)
+
+    def test_no_candidates_is_marked_retryable(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            api_client.GeminiClient.extract_text({"candidates": []})
+        self.assertTrue(caught.exception.retryable)
+
+    def test_a_blocked_batch_is_not_retryable(self):
+        # That is a decision about the content, not a blip, so repeating
+        # the request would only waste the reader's allowance.
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            api_client.GeminiClient.extract_text(
+                {"promptFeedback": {"blockReason": "SAFETY"}})
+        self.assertFalse(caught.exception.retryable)
+
+    def test_good_text_is_returned(self):
+        from core import api_client
+        self.assertEqual(
+            api_client.GeminiClient.extract_text(
+                {"candidates": [{"content": {"parts": [{"text": "hi"}]}}]}),
+            "hi")
 
 
 class TestKeyListMigration(unittest.TestCase):
@@ -1669,10 +2209,18 @@ class TestComicTypeSettings(unittest.TestCase):
 
 class TestModelDefaultsAndLists(unittest.TestCase):
     def test_gemini_default_is_stable_flash(self):
-        self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.5-flash")
+        # The newest model is offered first, but the DEFAULT is not
+        # automatically the newest. 3.7 Flash's published gains are in
+        # coding and agent work, with some evaluations flat or slightly
+        # lower; none of that says anything about describing a comic
+        # page, which is the only thing this app asks of it. So 3.6
+        # keeps reading books until the two are compared on real pages.
         self.assertEqual(config.SUGGESTED_MODELS["gemini"][0],
-                         "gemini-3.5-flash")
+                         "gemini-3.7-flash")
+        self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
+                         "gemini-3.6-flash")
+        self.assertIn(config.DEFAULT_SETTINGS["gemini_model"],
+                      config.SUGGESTED_MODELS["gemini"])
 
     def test_every_default_model_is_in_its_suggested_list(self):
         for service in ("gemini", "anthropic", "openai", "openrouter"):
@@ -1686,7 +2234,9 @@ class TestModelDefaultsAndLists(unittest.TestCase):
 
     def test_gemini_list_offers_several_current_models(self):
         models = config.SUGGESTED_MODELS["gemini"]
-        self.assertGreaterEqual(len(models), 5)
+        # Four, since the 2.5 pair were removed ahead of their
+        # October shutdown and the preview id with them.
+        self.assertGreaterEqual(len(models), 4)
         self.assertEqual(len(set(models)), len(models))  # no duplicates
 
 
@@ -2734,7 +3284,7 @@ class TestSpeech(unittest.TestCase):
             return self.silence
 
         def progress(message, done, total):
-            if message.startswith("Read 1 of"):
+            if "percent" in message and not cancelled.is_set():
                 cancelled.set()
 
         try:
@@ -2767,7 +3317,7 @@ class TestSpeech(unittest.TestCase):
             return self.silence
 
         def progress(message, done, total):
-            if message.startswith("Read 1 of"):
+            if "percent" in message and not cancelled.is_set():
                 cancelled.set()
 
         path = self._path("discarded-gemini.mp3")
@@ -3093,83 +3643,6 @@ class TestSpeech(unittest.TestCase):
         with self.assertRaises(self.tts.SpeechError):
             self.tts.sample_voice("Kore", {},
                                   request=lambda text: self.silence)
-
-    def test_legacy_voices_are_filtered_out(self):
-        # The old flat voices are what a program is given by default,
-        # and offering them beside the good ones invites a
-        # disappointing choice.
-        from core import winspeech
-        for name in ("Microsoft David Desktop - English (United States)",
-                     "Microsoft Zira Desktop", "Microsoft Mark",
-                     "Microsoft Hazel Desktop - English (Great Britain)",
-                     "Microsoft Sara Desktop"):
-            self.assertTrue(winspeech.is_legacy(name), name)
-
-    def test_better_voices_are_kept(self):
-        from core import winspeech
-        for name in ("Microsoft Aria Online (Natural)",
-                     "Microsoft Guy", "Microsoft Jenny",
-                     "Microsoft Sonia Online"):
-            self.assertFalse(winspeech.is_legacy(name), name)
-
-    def test_local_default_cannot_fall_back_to_a_legacy_voice(self):
-        from core import winspeech
-
-        class Token:
-            def __init__(self, identifier, description):
-                self.Id = identifier
-                self.description = description
-
-            def GetDescription(self):
-                return self.description
-
-        tokens = [
-            Token("legacy", "Microsoft David Desktop"),
-            Token("onecore", "Microsoft Aria"),
-        ]
-        self.assertEqual(
-            winspeech._chosen_token(tokens).Id, "onecore")
-        with self.assertRaises(winspeech.WindowsSpeechError):
-            winspeech._chosen_token(tokens, "missing")
-
-    def test_no_voices_is_not_an_error(self):
-        # A computer with nothing worth offering should simply not
-        # offer the engine, rather than fail.
-        from core import winspeech
-        self.assertEqual(winspeech.voices() if not winspeech.available()
-                         else [], [])
-
-    def test_local_engine_needs_no_key(self):
-        # The whole point: no account, no allowance, no network.
-        import core.tts as module
-        from core import winspeech
-        real_available = winspeech.available
-        real_speak = winspeech.speak
-        winspeech.available = lambda: True
-        winspeech.speak = lambda text, voice_id=None: (
-            self.silence, 24000, 1)
-        try:
-            seconds = module.write_mp3(
-                self.book, self._path("local.mp3"),
-                {"tts_engine": "windows"})   # no keys at all
-        finally:
-            winspeech.available = real_available
-            winspeech.speak = real_speak
-        self.assertGreater(seconds, 0)
-        self.assertTrue(os.path.exists(self._path("local.mp3")))
-
-    def test_local_engine_says_so_when_unavailable(self):
-        import core.tts as module
-        from core import winspeech
-        real = winspeech.available
-        winspeech.available = lambda: False
-        try:
-            with self.assertRaises(module.SpeechError) as caught:
-                module.write_mp3(self.book, self._path(), {
-                    "tts_engine": "windows"})
-        finally:
-            winspeech.available = real
-        self.assertIn("Gemini instead", str(caught.exception))
 
     def test_audio_is_encoded_at_the_rate_it_was_spoken(self):
         # A Windows voice picks its own rate; encoding at Gemini's
@@ -3558,7 +4031,7 @@ class TestKokoroAudio(unittest.TestCase):
             return self.silence, 24000, 1
 
         def progress(message, done, total):
-            if message.startswith("Generated 1 of"):
+            if "percent" in message and not cancelled.is_set():
                 cancelled.set()
 
         path = self._path("partial-kokoro.mp3")

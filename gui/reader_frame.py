@@ -119,9 +119,9 @@ class ReaderFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_previous,
                   nav.Append(wx.ID_ANY, "&Previous\tCtrl+PageUp"))
         self.Bind(wx.EVT_MENU, self.on_first_page,
-                  nav.Append(wx.ID_ANY, "&First page\tCtrl+Home"))
+                  nav.Append(wx.ID_ANY, "&First page\tAlt+F"))
         self.Bind(wx.EVT_MENU, self.on_last_page,
-                  nav.Append(wx.ID_ANY, "&Last page\tCtrl+End"))
+                  nav.Append(wx.ID_ANY, "&Last page\tAlt+L"))
         self.Bind(wx.EVT_MENU, self.on_go_to_page,
                   nav.Append(wx.ID_ANY, "&Go to page...\tCtrl+G"))
         self.Bind(wx.EVT_MENU, self.on_find,
@@ -315,18 +315,12 @@ class ReaderFrame(wx.Frame):
                 self._go_page(current)
 
     def _on_char_hook(self, event):
-        code = event.GetKeyCode()
-        # The text control treats Ctrl+Home and Ctrl+End as start and
-        # end of the text and swallows them before the menu accelerator
-        # can fire, so they are handled here instead.
-        if event.ControlDown() and code == wx.WXK_HOME:
-            self.on_first_page(event)
-            return
-        if event.ControlDown() and code == wx.WXK_END:
-            self.on_last_page(event)
-            return
-        # The text area needs arrows for reading; buttons must not
-        # navigate with them (Tab does that).
+        # Ctrl+Home and Ctrl+End are deliberately left to the text
+        # control. Whatever it is showing, they move to the start and
+        # end of that -- which page by page means this page, which is
+        # where a reader expects them to go. First and last page are on
+        # Alt+F and Alt+L instead, where they do not fight a reading
+        # key everyone already knows.
         if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
             return
         event.Skip()

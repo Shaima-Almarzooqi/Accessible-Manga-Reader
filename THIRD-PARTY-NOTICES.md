@@ -21,7 +21,6 @@ compatible with GPL v3.
 | [Misaki](https://github.com/hexgrad/misaki) | Turning text into sounds for the offline voices | Apache 2.0 |
 | [eSpeak NG](https://github.com/espeak-ng/espeak-ng) | Turning text into sounds for the offline voices | GPL v3 or later |
 | [phonemizer-fork](https://github.com/thewh1teagle/phonemizer-fork) | Turning text into sounds for the offline voices | GPL v3 or later |
-| [comtypes](https://github.com/enthought/comtypes) | Reaching the voices already installed on Windows | MIT |
 
 ## Downloaded when you first use an offline voice
 

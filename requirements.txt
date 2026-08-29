@@ -23,8 +23,3 @@ lameenc>=1.8
 kokoro-onnx==0.5.0
 onnxruntime==1.28.0
 misaki-fork[zh]==0.9.6; python_version < "3.13"
-
-# Reaching the speech voices already on the computer, so a book can
-# be read aloud with no key and no allowance. Pure Python, so it
-# works on every architecture.
-comtypes>=1.4

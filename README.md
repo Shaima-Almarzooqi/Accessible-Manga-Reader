@@ -13,7 +13,11 @@ Download from the [latest release](../../releases) and run it. Two formats are o
 * **`.exe`** — one single file. Simplest, but it unpacks itself every time it starts, so it is slower to open.
 * **`.zip`** — the app as a folder. Extract it anywhere and run the program inside. It opens much faster and is less likely to be wrongly flagged by antivirus software.
 
+* **`-setup.exe`** — the installer. Installs into Program Files like an ordinary program, adds shortcuts, and lets the app update itself.
+
 Pick `x64` for most Windows PCs, or `arm64` for Windows on ARM (Snapdragon).
+
+The app checks for updates on start. The installed and folder versions can install an update themselves; the single `.exe` can't replace itself while running, so it points you at the download instead. Books and settings live outside the program and are never touched by an update.
 
 * `AccessibleMangaReader-x64.exe` — for most Windows PCs.
 * `AccessibleMangaReader-arm64.exe` — for Windows on ARM machines (Snapdragon).
@@ -24,10 +28,16 @@ If you are unsure, choose x64. Windows SmartScreen may warn about an unrecognise
 
 The app needs an AI service to read the pages. A free key takes a minute:
 
-1. Go to [aistudio.google.com](https://aistudio.google.com), sign in with a Google account, and choose **Get API key**. No credit card is needed.
-2. In the app, press Alt+S for Settings and paste the key into the API keys box.
+1. Go to [aistudio.google.com](https://aistudio.google.com) and sign in with a Google account.
+2. Choose **Get API key**, then **Create API key**. You'll be asked which Google Cloud project the key belongs to — create a new one if this is your first key. It costs nothing and needs no card.
+3. Copy the key (it starts with `AIza`).
+4. In the app, press Alt+S for Settings and paste it into the API keys box.
 
-Google's free tier is generous — enough for hundreds of manga pages a day. [OpenRouter](https://openrouter.ai) is a good alternative (email signup, no credit card, free vision-capable models), and Claude and ChatGPT work too if you have paid API access. Any OpenAI-compatible service can be used by entering its endpoint URL.
+Google's free tier covers hundreds of manga pages a day. If you want several keys, create each in a **different project** — Google counts its free allowance per project, so keys from the same project share one allowance.
+
+Claude and ChatGPT read pages well but have no free tier: their keys only work once you've bought credit, so they're worth it only if you already pay for them. [OpenRouter](https://openrouter.ai) needs only an email and has some free models, though the free roster changes and not all of them can see images — use **Refresh model list** in Settings. Any OpenAI-compatible service works by entering its endpoint URL.
+
+The user manual (Help menu, or F1) has step-by-step instructions for each of these.
 
 ## Reading a book
 
@@ -75,7 +85,8 @@ In the reader:
 * PageDown / PageUp — next / previous page or panel
 * Ctrl+PageDown / Ctrl+PageUp — next / previous page in any mode
 * Alt+P / Alt+N — previous / next
-* Ctrl+Home / Ctrl+End — first / last page
+* Alt+F / Alt+L — first / last page
+* Ctrl+Home / Ctrl+End — start / end of what you are reading (page by page, the current page)
 * Alt+G or Ctrl+G — go to a page
 * Ctrl+F — find (entire-book mode)
 * Ctrl+E — save the whole book as a text file (Book menu, Export, for every format)

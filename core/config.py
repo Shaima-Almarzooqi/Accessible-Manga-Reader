@@ -1,4 +1,4 @@
-"""Configuration, versioning, and data directories."""
+﻿"""Configuration, versioning, and data directories."""
 
 import json
 import os
@@ -21,7 +21,7 @@ DEFAULT_SETTINGS = {
     # Default confirmed working on current free-tier projects; older
     # gemini-2.5-* models are no longer served to all projects. Use the
     # "Refresh model list" button in Settings to fetch what YOUR key can use.
-    "gemini_model": "gemini-3.5-flash",
+    "gemini_model": "gemini-3.6-flash",
     "anthropic_api_keys": [],
     "anthropic_model": "claude-sonnet-5",
     "openai_api_keys": [],
@@ -81,14 +81,16 @@ DEFAULT_SETTINGS = {
 # the Refresh button in Settings (which queries the service's own
 # list-models endpoint and is always the source of truth).
 SUGGESTED_MODELS = {
+    # 2.5 Flash and 2.5 Flash-Lite are gone from this list: Google has
+    # them shutting down in October 2026, and 2.5 Flash was already
+    # reported unavailable months before its stated date, so leaving
+    # them here would only offer readers a model that stops answering.
     "gemini": [
-        "gemini-3.5-flash",
+        "gemini-3.7-flash",
         "gemini-3.6-flash",
+        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
-        "gemini-3-flash-preview",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
     ],
     "anthropic": [
         "claude-sonnet-5",
@@ -117,7 +119,15 @@ SUGGESTED_MODELS = {
 
 # Offered in the Settings language box, which stays editable: any
 # language the AI service knows can be typed in instead.
+# Chosen instead of a language name when the reader wants the comic
+# left as it is, rather than translated.
+ORIGINAL_LANGUAGE = "Original (same as the comic)"
+
 SUGGESTED_LANGUAGES = [
+    # First, because leaving a comic in its own language is a real
+    # choice and not an exotic one: a reader who reads Japanese should
+    # not have to know to go looking for it.
+    ORIGINAL_LANGUAGE,
     "English",
     "Arabic",
     "Chinese (Simplified)",
@@ -177,6 +187,12 @@ def language_code(name):
     in by hand still works. Unknown names fall back to English rather
     than producing an invalid document.
     """
+    if name == ORIGINAL_LANGUAGE:
+        # The comic's own language, which we have no way of knowing.
+        # Claiming English would make a screen reader read a Japanese
+        # book in an English voice, so the document says nothing and
+        # lets the reader's own settings decide.
+        return ""
     if not name:
         return "en"
     if name in LANGUAGE_CODES:
@@ -293,6 +309,19 @@ def parse_api_keys(text):
     return keys
 
 
+# Models that have been retired, and what to move a reader to. Leaving
+# somebody pointed at a shut-down model means their next book simply
+# stops working with a message about a model they never chose, so the
+# move happens quietly when settings are loaded.
+RETIRED_MODELS = {
+    "gemini_model": {
+        "gemini-2.5-flash": "gemini-3.5-flash",
+        "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+        "gemini-3-flash-preview": "gemini-3.6-flash",
+    },
+}
+
+
 def _migrate(saved):
     """Migrate settings from older versions in place."""
     # Pre-provider single key/model.
@@ -309,6 +338,10 @@ def _migrate(saved):
         if single in saved and plural not in saved:
             value = saved.pop(single)
             saved[plural] = [value] if isinstance(value, str) and value else []
+    # Models that no longer exist.
+    for setting, replacements in RETIRED_MODELS.items():
+        if saved.get(setting) in replacements:
+            saved[setting] = replacements[saved[setting]]
     # reading_direction (rtl/ltr/vertical) -> comic_type.
     if "reading_direction" in saved and "comic_type" not in saved:
         legacy = {"rtl": "manga", "ltr": "western", "vertical": "webtoon"}

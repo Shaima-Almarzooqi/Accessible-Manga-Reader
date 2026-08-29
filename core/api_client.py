@@ -1,4 +1,4 @@
-"""Provider-agnostic API clients.
+﻿"""Provider-agnostic API clients.
 
 Two providers are supported:
 
@@ -71,11 +71,16 @@ class ApiError(Exception):
     key_exhausted marks failures that are specific to the API key in
     use (quota used up, key rejected), which means trying a different
     key could succeed. RotatingClient uses this to switch keys.
+
+    retryable marks failures that say nothing about the request itself:
+    the service answered, but with nothing usable. Asking again
+    generally works, so these are retried rather than surfaced.
     """
 
-    def __init__(self, message, key_exhausted=False):
+    def __init__(self, message, key_exhausted=False, retryable=False):
         super().__init__(message)
         self.key_exhausted = key_exhausted
+        self.retryable = retryable
 
 
 def encode_image(path):
@@ -194,6 +199,15 @@ class _RetryMixin:
     MAX_ATTEMPTS = 5
     INITIAL_BACKOFF = 10.0
 
+    # Set by RotatingClient when there are other keys to fall back on.
+    # A per-minute rate limit is the one failure where another project's
+    # key is instant relief, so waiting several minutes on this one
+    # while the others sit idle is exactly the wrong move. When this is
+    # true a rate limit is reported straight away so the caller can
+    # switch; when it is false the client waits and retries as before,
+    # which is right when there is nowhere else to go.
+    rotate_on_rate_limit = False
+
     def _wait(self, seconds, cancel_check):
         waited = 0.0
         while waited < seconds:
@@ -254,7 +268,8 @@ class GeminiClient(_RetryMixin):
                 "different model." % feedback["blockReason"])
         candidates = data.get("candidates") or []
         if not candidates:
-            raise ApiError("Gemini returned no response for this batch.")
+            raise ApiError("Gemini returned no response for this batch.",
+                           retryable=True)
         candidate = candidates[0]
         if candidate.get("finishReason") == "SAFETY":
             raise ApiError(
@@ -263,7 +278,8 @@ class GeminiClient(_RetryMixin):
         parts = candidate.get("content", {}).get("parts", [])
         text = "".join(part.get("text", "") for part in parts)
         if not text.strip():
-            raise ApiError("Gemini returned an empty response.")
+            raise ApiError("Gemini returned an empty response.",
+                           retryable=True)
         return text
 
     def request_scripts(self, system_prompt, content, cancel_check=None):
@@ -297,6 +313,19 @@ class GeminiClient(_RetryMixin):
                     return self.extract_text(response.json())
                 except ValueError:
                     raise ApiError("Gemini returned an unreadable response.")
+                except ApiError as error:
+                    # A 200 that carries no usable text is a hiccup, not
+                    # a verdict on the pages: it answered, just with
+                    # nothing in it. Worth asking again before giving up
+                    # on the batch.
+                    if not getattr(error, "retryable", False):
+                        raise
+                    last_error = str(error)
+                    if attempt == self.MAX_ATTEMPTS:
+                        break
+                    self._wait(min(delay, 120), cancel_check)
+                    delay *= 2
+                    continue
             if response.status_code in (401, 403):
                 raise ApiError(
                     "Gemini rejected the API key. Check your Gemini API key "
@@ -324,6 +353,10 @@ class GeminiClient(_RetryMixin):
                         "reset (or switch to a model with a higher daily "
                         "limit, like a flash-lite model). Google's "
                         "explanation: %s" % message, key_exhausted=True)
+                if self.rotate_on_rate_limit:
+                    raise ApiError(
+                        "Gemini is limiting how often this key may be "
+                        "used right now. %s" % message, key_exhausted=True)
                 last_error = "rate limit: %s. %s" % (message, http_hint(429))
                 if attempt == self.MAX_ATTEMPTS:
                     break
@@ -678,9 +711,44 @@ class RotatingClient:
         return self._cache[index]
 
     def request_scripts(self, system_prompt, content, cancel_check=None):
+        """Ask each key in turn, then wait if they are all limited.
+
+        Two passes, because the two failures want opposite responses.
+        A key that is rate limited right now is best abandoned at once:
+        another project's key answers immediately, whereas waiting
+        several minutes leaves every other key idle. But if every key
+        is limited there is nowhere to go, and waiting is the only
+        thing left -- so the second pass restores the ordinary
+        wait-and-retry behaviour.
+        """
         problems = []
-        for attempt in range(len(self.api_keys)):
+        if len(self.api_keys) > 1:
+            answer = self._try_each_key(
+                system_prompt, content, cancel_check, problems,
+                hand_back_rate_limits=True)
+            if answer is not None:
+                return answer
+        answer = self._try_each_key(
+            system_prompt, content, cancel_check, problems,
+            hand_back_rate_limits=False, keys_to_try=1)
+        if answer is not None:
+            return answer
+        raise ApiError(
+            "All %d API keys for this service are unavailable. Note that "
+            "keys from the same project or account share one quota, so "
+            "rotation only helps with keys from different projects or "
+            "accounts. Details -- %s"
+            % (len(self.api_keys), " | ".join(problems)))
+
+
+    def _try_each_key(self, system_prompt, content, cancel_check, problems,
+                      hand_back_rate_limits, keys_to_try=None):
+        """One sweep through the keys. Returns the reply, or None if
+        every key tried refused in a way another key might survive."""
+        rounds = keys_to_try or len(self.api_keys)
+        for attempt in range(rounds):
             client = self._client_for(self.index)
+            client.rotate_on_rate_limit = hand_back_rate_limits
             try:
                 return client.request_scripts(
                     system_prompt, content, cancel_check=cancel_check)
@@ -691,15 +759,10 @@ class RotatingClient:
                 if len(self.api_keys) == 1:
                     raise
                 self.index = (self.index + 1) % len(self.api_keys)
-                if attempt < len(self.api_keys) - 1 and self.on_key_switch:
+                if attempt < rounds - 1 and self.on_key_switch:
                     self.on_key_switch(self.index + 1, len(self.api_keys),
                                        str(error))
-        raise ApiError(
-            "All %d API keys for this service are unavailable. Note that "
-            "keys from the same project or account share one quota, so "
-            "rotation only helps with keys from different projects or "
-            "accounts. Details -- %s"
-            % (len(self.api_keys), " | ".join(problems)))
+        return None
 
 
 def set_retry_limits(client, max_attempts, initial_backoff):

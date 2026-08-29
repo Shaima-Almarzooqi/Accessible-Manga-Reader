@@ -11,7 +11,7 @@ import webbrowser
 
 import wx
 
-from core import config, extract, jobs, library, updates
+from core import config, extract, install, jobs, library, updates
 from .html_view import show_html_view
 from .processing_dialog import start_processing
 from . import export_menu
@@ -716,12 +716,32 @@ class MainFrame(wx.Frame):
     def _offer_update(self, update):
         dialog = UpdateDialog(self, update)
         answer = dialog.ShowModal()
+        asset, kind = dialog.asset, dialog.kind
         if dialog.dismissed():
             self.settings["dismissed_update_version"] = update.version
             config.save_settings(self.settings)
+        dialog.Destroy()
         if answer == wx.ID_YES:
             webbrowser.open(update.url)
-        dialog.Destroy()
+        elif answer == wx.ID_OK:
+            self._install_update(update, asset, kind)
+
+    def _install_update(self, update, asset, kind):
+        """Download the update, then hand over to it and close.
+
+        The download runs in its own window so it can be watched and
+        stopped; a book being processed is checked first, because
+        closing partway through would throw that work away.
+        """
+        if jobs.registry.is_busy():
+            wx.MessageBox(
+                "'%s' is still being processed. The update needs the app "
+                "to close, so let it finish first."
+                % (jobs.registry.current_title() or "A book"),
+                "Update", wx.OK | wx.ICON_INFORMATION, self)
+            return
+        window = UpdateDownloadWindow(self, update, asset, kind)
+        window.Show()
 
 
     def on_context_menu(self, event):
@@ -812,6 +832,133 @@ class ContactDialog(wx.Dialog):
         webbrowser.open("mailto:%s" % CONTACT_EMAIL)
 
 
+class UpdateDownloadWindow(wx.Frame):
+    """Downloads an update and hands over to it.
+
+    A frame rather than a dialog so it has its own place in Alt+Tab and
+    does not trap the reader while a large file arrives. Progress goes
+    in a log rather than a label, because a label that changes quietly
+    is never read out.
+    """
+
+    def __init__(self, parent, update, asset, kind):
+        super().__init__(parent, title="Downloading version %s"
+                         % update.version, size=(520, 300),
+                         style=wx.DEFAULT_FRAME_STYLE)
+        self.update = update
+        self.asset = asset
+        self.kind = kind
+        self._cancel = threading.Event()
+        self._closed = False
+        self._finished = False
+
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(panel, label="&Progress:"), 0, wx.ALL, 8)
+        self.log = wx.TextCtrl(
+            panel, style=wx.TE_MULTILINE | wx.TE_READONLY, size=(480, 160))
+        sizer.Add(self.log, 1, wx.EXPAND | wx.ALL, 8)
+        self.gauge = wx.Gauge(panel, range=100)
+        sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        self.button = wx.Button(panel, wx.ID_CANCEL, "&Cancel")
+        self.button.Bind(wx.EVT_BUTTON, self.on_cancel)
+        sizer.Add(self.button, 0, wx.ALL | wx.ALIGN_RIGHT, 8)
+        panel.SetSizer(sizer)
+        outer = wx.BoxSizer(wx.VERTICAL)
+        outer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(outer)
+        self.log.SetFocus()
+
+        self.Bind(wx.EVT_CLOSE, self.on_close)
+        self._say("Downloading %s." % asset.name)
+        threading.Thread(target=self._run, daemon=True).start()
+
+    # ----- worker ---------------------------------------------------------
+
+    def _run(self):
+        try:
+            target = os.path.join(install.staging_dir(), self.asset.name)
+            path = install.download(
+                self.asset.url, target, expected_size=self.asset.size,
+                on_progress=lambda percent: self._post(
+                    self._progress, percent),
+                cancel_check=self._cancel.is_set)
+            if path is None:
+                self._post(self._say, "Cancelled. Nothing was changed.")
+                self._post(self._done)
+                return
+            self._post(self._say, "Download finished. Installing.")
+            if self.kind == install.INSTALLED:
+                install.apply_installer(path)
+            else:
+                install.apply_folder_update(path)
+        except Exception as error:
+            self._post(self._say, "Could not install the update: %s" % error)
+            self._post(self._say,
+                       "Nothing was changed, so the app still works.")
+            self._post(self._done)
+            return
+        self._post(self._hand_over)
+
+    def _post(self, function, *args):
+        def safe():
+            if self._closed:
+                return
+            try:
+                function(*args)
+            except RuntimeError:
+                pass
+        wx.CallAfter(safe)
+
+    # ----- UI thread ------------------------------------------------------
+
+    def _progress(self, percent):
+        self.gauge.SetValue(percent)
+        # Every tenth, so a screen reader is told how it is going
+        # without being talked over continuously.
+        if percent and percent % 10 == 0:
+            self._say("%d percent downloaded." % percent)
+
+    def _say(self, message):
+        self.log.AppendText(message + "\n")
+
+    def _done(self):
+        self._finished = True
+        self.button.SetLabel("&Close")
+        self.button.SetFocus()
+
+    def _hand_over(self):
+        self._say("Closing so the update can finish. The app will "
+                  "reopen by itself.")
+        self._finished = True
+        wx.CallLater(1500, self._quit)
+
+    def _quit(self):
+        self._closed = True
+        parent = self.GetParent()
+        self.Destroy()
+        if parent:
+            parent.Close(True)
+
+    # ----- closing --------------------------------------------------------
+
+    def on_cancel(self, event):
+        if self._finished:
+            self._shut()
+            return
+        self._cancel.set()
+        self._say("Stopping.")
+
+    def on_close(self, event):
+        if not self._finished:
+            self._cancel.set()
+        self._shut()
+
+    def _shut(self):
+        self._closed = True
+        self.Destroy()
+
+
 class UpdateDialog(wx.Dialog):
     """Tells the reader a newer version exists and offers the download
     page. Standard modal dialog: Escape closes it (as No), and the
@@ -837,8 +984,26 @@ class UpdateDialog(wx.Dialog):
             style=wx.TE_MULTILINE | wx.TE_READONLY, size=(540, 200))
         sizer.Add(self.notes, 1, wx.EXPAND | wx.ALL, 8)
 
-        question = wx.StaticText(
-            self, label="Open the download page in your web browser?")
+        # What this copy can actually do decides what is offered: a
+        # single file cannot replace itself, and a copy somewhere
+        # unwritable cannot be updated in place at all.
+        self.kind = install.install_kind()
+        self.asset = install.choose_asset(update.assets, self.kind)
+        self.refusal = install.can_update_here(self.kind)
+        self.can_install = bool(self.asset) and not self.refusal
+
+        if self.can_install:
+            message = "Install it now? The app will close and reopen."
+            if self.kind == install.INSTALLED:
+                message += (" Windows will ask for permission, because "
+                            "the app is installed for everyone on this "
+                            "computer.")
+        elif self.refusal:
+            message = self.refusal + " Open the download page instead?"
+        else:
+            message = "Open the download page in your web browser?"
+        question = wx.StaticText(self, label=message)
+        question.Wrap(520)
         sizer.Add(question, 0, wx.LEFT | wx.BOTTOM, 8)
 
         self.dismiss_box = wx.CheckBox(
@@ -846,20 +1011,30 @@ class UpdateDialog(wx.Dialog):
         sizer.Add(self.dismiss_box, 0, wx.LEFT | wx.BOTTOM, 8)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)
-        yes_button = wx.Button(self, wx.ID_YES, "&Yes")
+        buttons.AddStretchSpacer()
+        if self.can_install:
+            install_button = wx.Button(self, wx.ID_OK, "&Install now")
+            install_button.Bind(wx.EVT_BUTTON,
+                                lambda e: self.EndModal(wx.ID_OK))
+            buttons.Add(install_button, 0, wx.RIGHT, 6)
+            yes_button = wx.Button(self, wx.ID_YES, "Open &download page")
+        else:
+            yes_button = wx.Button(self, wx.ID_YES, "&Yes")
         yes_button.Bind(wx.EVT_BUTTON,
                         lambda e: self.EndModal(wx.ID_YES))
-        no_button = wx.Button(self, wx.ID_NO, "&No")
+        no_button = wx.Button(self, wx.ID_NO, "&Not now")
         no_button.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_NO))
-        buttons.AddStretchSpacer()
         buttons.Add(yes_button, 0, wx.RIGHT, 6)
         buttons.Add(no_button, 0)
+        if self.can_install:
+            install_button.SetDefault()
         sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 8)
 
-        yes_button.SetDefault()
+        if not self.can_install:
+            yes_button.SetDefault()
         self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
         self.SetSizerAndFit(sizer)
-        yes_button.SetFocus()
+        self.notes.SetFocus()
 
     def dismissed(self):
         return self.dismiss_box.GetValue()

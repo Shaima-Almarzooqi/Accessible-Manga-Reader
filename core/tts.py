@@ -1,4 +1,4 @@
-"""Turning a processed book into spoken audio.
+﻿"""Turning a processed book into spoken audio.
 
 Gemini's text-to-speech models return raw PCM: 16-bit signed samples at
 24 kHz, with no container. That is unusable as a file -- a four hour
@@ -77,7 +77,6 @@ DEFAULT_VOICE = "Kore"
 # Kokoro and Gemini.
 ENGINE_GEMINI = "gemini"
 ENGINE_KOKORO = "kokoro"
-ENGINE_WINDOWS = "windows"
 DEFAULT_ENGINE = ENGINE_KOKORO
 
 # Voice models, offered when saving as audio so a reader can try
@@ -483,7 +482,7 @@ def retry_delay_from(error):
     return None
 
 
-def _speak_with_retry(speak, text, key, index, notify=None,
+def _speak_with_retry(speak, text, keys, index, notify=None,
                       cancel_check=None, pacer=None):
     """One piece, retried. Returns PCM or raises the last failure.
 
@@ -494,6 +493,11 @@ def _speak_with_retry(speak, text, key, index, notify=None,
     for as long as the service itself asks, rather than giving up on a
     book most of the way through.
     """
+    keys = list(keys) or [None]
+    # Each piece starts on the key its position suggests, so work is
+    # spread rather than piled onto the first one.
+    position = index % len(keys)
+    tried_every_key = False
     last = None
     rate_limited = 0
     attempt = 0
@@ -501,7 +505,7 @@ def _speak_with_retry(speak, text, key, index, notify=None,
         try:
             if pacer is not None and not pacer.wait_turn(cancel_check):
                 raise SpeechError("Stopped.")
-            return speak(text, key)
+            return speak(text, keys[position])
         except SpeechError as error:
             last = error
             wait = 3 * (attempt + 1)
@@ -522,6 +526,16 @@ def _speak_with_retry(speak, text, key, index, notify=None,
                         "Today's Gemini limit has been used up, so "
                         "nothing more can be read aloud today. It "
                         "resets at midnight Pacific time.")
+                if len(keys) > 1 and not tried_every_key:
+                    # Another project's key is instant relief, so try
+                    # the others before sitting out a wait here. Only
+                    # once they have all refused is waiting the only
+                    # thing left.
+                    position = (position + 1) % len(keys)
+                    if position == index % len(keys):
+                        tried_every_key = True
+                    else:
+                        continue
                 wait = asked or RATE_LIMIT_WAITS[rate_limited]
                 # A little randomness so pieces that were refused
                 # together do not wake together and collide again.
@@ -554,55 +568,6 @@ def _speak_with_retry(speak, text, key, index, notify=None,
     raise last or SpeechError("Part %d could not be read aloud." % (index + 1))
 
 
-def _write_mp3_locally(book, path, settings, on_progress=None,
-                       cancel_check=None):
-    """Read a book with the computer's own voice.
-
-    Much simpler than going out to a service: there is no allowance to
-    run out of, nothing to be refused by and no waiting between pieces.
-    The book is still cut up, but only so progress can be reported and
-    a cancel noticed part way through.
-    """
-    from . import winspeech
-    if not winspeech.available():
-        raise SpeechError(
-            "This computer's own voices are not available, so choose "
-            "Gemini instead.")
-    lines = book_text(
-        book, show_panel_labels=bool(settings.get("show_panel_labels", True)),
-        pages=settings.get("_pages"))
-    if not lines:
-        raise SpeechError("There are no processed pages in that range to read.")
-    chunks = split_for_speech(lines)
-    voice_id = settings.get("windows_voice") or None
-
-    audio = bytearray()
-    rate = None
-    channels = 1
-    for index, chunk in enumerate(chunks, start=1):
-        if cancel_check and cancel_check():
-            return None
-        if on_progress:
-            on_progress("Reading part %d of %d." % (index, len(chunks)),
-                        index - 1, len(chunks) + 1)
-        try:
-            pcm, chunk_rate, chunk_channels = winspeech.speak(chunk, voice_id)
-        except winspeech.WindowsSpeechError as error:
-            raise SpeechError(str(error))
-        if rate is None:
-            rate, channels = chunk_rate, chunk_channels
-        audio.extend(pcm)
-
-    if cancel_check and cancel_check():
-        return None
-    if on_progress:
-        on_progress("Saving the audio file.", len(chunks), len(chunks) + 1)
-    with open(path, "wb") as handle:
-        handle.write(encode_mp3(bytes(audio), sample_rate=rate,
-                                channels=channels))
-    return len(audio) / float((rate or SAMPLE_RATE) * SAMPLE_WIDTH * channels)
-
-
 def _temporary_audio_path(path):
     """A private file beside the destination, suitable for atomic replace."""
     folder = os.path.dirname(os.path.abspath(path))
@@ -629,9 +594,7 @@ def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
     language = settings.get("kokoro_language", kokoro.DEFAULT_LANGUAGE)
 
     if on_progress:
-        on_progress("Preparing %d part%s for Kokoro."
-                    % (len(chunks), "" if len(chunks) == 1 else "s"),
-                    0, len(chunks) + 1)
+        on_progress("Getting ready to read.", 0, len(chunks) + 1)
 
     try:
         if request is not None:
@@ -706,8 +669,8 @@ def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
                 completed = index
                 if on_progress:
                     on_progress(
-                        "Generated %d of %d parts with Kokoro."
-                        % (index, len(work_items)),
+                        "%d percent read."
+                        % (index * 100 // len(work_items)),
                         index, len(work_items) + 1)
                 if cancel_check and cancel_check():
                     stopped = True
@@ -774,9 +737,6 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
             book, path, settings, on_progress, cancel_check,
             request=request, workers=workers, pages=pages,
             save_partial_check=save_partial_check)
-    if engine == ENGINE_WINDOWS:
-        return _write_mp3_locally(book, path, dict(settings, _pages=pages),
-                                  on_progress, cancel_check)
     keys = [key for key in settings.get("gemini_api_keys", []) if key.strip()]
     if not keys:
         raise SpeechError(
@@ -820,14 +780,12 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
 
     def work(index):
         return index, _speak_with_retry(
-            speak, chunks[index], keys[index % len(keys)], index,
+            speak, chunks[index], keys, index,
             notify=announce, cancel_check=cancel_check,
             pacer=pacer)
 
     if on_progress:
-        on_progress("Reading %d part%s aloud."
-                    % (len(chunks), "" if len(chunks) == 1 else "s"),
-                    0, len(chunks) + 1)
+        on_progress("Starting to read.", 0, len(chunks) + 1)
 
     temporary = _temporary_audio_path(path)
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=limit)
@@ -855,7 +813,8 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
                     done += 1
                     if on_progress:
                         on_progress(
-                            "Read %d of %d parts." % (done, len(chunks)),
+                            "%d percent read."
+                            % (done * 100 // len(chunks)),
                             done, len(chunks) + 1)
                 while (next_to_write < len(pieces)
                        and pieces[next_to_write] is not None):

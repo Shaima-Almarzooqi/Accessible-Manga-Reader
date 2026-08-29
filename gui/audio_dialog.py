@@ -1,4 +1,4 @@
-"""Choose the pages, speech engine, language, and voice for an MP3."""
+﻿"""Choose the pages, speech engine, language, and voice for an MP3."""
 
 import os
 import re
@@ -87,8 +87,6 @@ class AudioOptionsDialog(wx.Dialog):
             panel, label="Read with", choices=["&Kokoro", "&Gemini"],
             majorDimension=1, style=wx.RA_SPECIFY_COLS)
         chosen_engine = settings.get("tts_engine", tts.DEFAULT_ENGINE)
-        if chosen_engine == tts.ENGINE_WINDOWS:
-            chosen_engine = tts.ENGINE_KOKORO
         if chosen_engine not in self._engine_ids:
             chosen_engine = tts.DEFAULT_ENGINE
         self.engine.SetSelection(self._engine_ids.index(chosen_engine))

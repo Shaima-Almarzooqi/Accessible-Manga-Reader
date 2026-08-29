@@ -42,20 +42,82 @@ ordinary text.</p>
 <p>The app needs an AI service to read the pages for you. It does not
 include one, so you sign up for one and give the app a key. A key is a
 long password that lets the app use the service on your behalf.</p>
-<p>The easiest free option is Google Gemini:</p>
+<p>Google Gemini is the one to start with: it is free, it needs no card,
+and its free allowance covers hundreds of pages a day. Claude and
+ChatGPT read pages well too, but their keys only work once you have
+bought credit, so they are worth it only if you already pay for them.
+OpenRouter sits in between, with an email sign-up and some free models,
+though the free ones come and go and not all of them can see
+images.</p>
+
+<h3>Google Gemini (free)</h3>
 <ol>
-<li>Open your web browser and go to
-<a href="https://aistudio.google.com">aistudio.google.com</a>.</li>
-<li>Sign in with a Google account.</li>
-<li>Find the button labelled Get API key and select it.</li>
-<li>Create a key, then copy it. No credit card is required.</li>
+<li>Go to <a href="https://aistudio.google.com">aistudio.google.com</a>
+and sign in with a Google account.</li>
+<li>Select Get API key in the left sidebar, then Create API key.</li>
+<li>You are asked which Google Cloud project the key belongs to. If this
+is your first key, choose to create a new project. The project is only a
+container for the key; it costs nothing and needs no card.</li>
+<li>Select Create API key again to finish, then copy the key. It starts
+with AIza. Google lets you see it again later, unlike the other
+services.</li>
 </ol>
-<p>Google's free level is generous, enough for hundreds of manga pages
-per day.</p>
-<p>Other services work too. OpenRouter (openrouter.ai) also has a free
-option and only needs an email address. Claude and ChatGPT work if you
-have paid access to their APIs. There is also an option for any other
-compatible service if you know its address.</p>
+<p>If you want more than one key, make each one in a <em>different</em>
+project. Google counts its free allowance per project, so several keys
+from the same project all share one allowance and give you nothing
+extra. To use another project, open the Dashboard in AI Studio, select
+Projects, and add the project you want before creating the key.</p>
+<p>One thing worth knowing if you have had a Gemini key for a while:
+Google is retiring its older Standard keys, and from September 2026 the
+Gemini API stops accepting them. Keys made in AI Studio now are the
+newer kind and are fine. If an older key suddenly stops working, make a
+new one and paste it into the app.</p>
+
+<h3>Claude, by Anthropic (needs credit)</h3>
+<p>There is no free level. The key itself costs nothing to create, but
+every page you process is billed, so you have to buy credit before it
+works at all. A key with no credit behind it is the usual reason a new
+Claude key fails.</p>
+<ol>
+<li>Go to <a href="https://console.anthropic.com">console.anthropic.com</a>
+and sign up. You are asked to confirm a phone number by text
+message.</li>
+<li>Open Settings, then Billing, and buy some credit. A Claude Pro or
+Max subscription does not count: it is billed separately and does not
+include API use.</li>
+<li>Open Settings, then API Keys, and select Create Key. Give it a name
+you will recognise later.</li>
+<li>Copy the key straight away. It starts with sk-ant- and Anthropic
+shows it once only. If you lose it, delete it and make another.</li>
+</ol>
+
+<h3>ChatGPT, by OpenAI (needs credit)</h3>
+<p>Also has no free level, and also needs credit bought up front before
+a key will do anything.</p>
+<ol>
+<li>Go to
+<a href="https://platform.openai.com">platform.openai.com</a> and sign
+in. This is separate from ChatGPT itself, even though the sign-in is the
+same.</li>
+<li>Open Settings, then Billing, add a payment method and buy some
+credit. A ChatGPT Plus subscription does not cover API use.</li>
+<li>Open the API keys page and select Create new secret key.</li>
+<li>Copy the key straight away. It starts with sk- and OpenAI shows it
+once only.</li>
+</ol>
+
+<h3>OpenRouter (some free models)</h3>
+<ol>
+<li>Go to <a href="https://openrouter.ai">openrouter.ai</a> and sign up
+with an email address. No card is needed for the free models.</li>
+<li>Open Keys from your account menu and create a key.</li>
+<li>Copy the key and paste it into the app.</li>
+</ol>
+<p>Two things to watch. A free OpenRouter account allows only a small
+number of requests a day, and each request covers a few pages, so a long
+book can run out partway. And most free models only handle text: the app
+needs one that can see images, so use Refresh model list in Settings and
+pick from what it offers.</p>
 
 <h2>Step 2: Enter your key in the app</h2>
 <ol>
@@ -319,10 +381,20 @@ for reading. To reclaim the space, select the book, open the Book menu,
 and choose Free up space. The book stays fully readable.</p>
 
 <h3>Updates</h3>
-<p>The app can check for new versions when it starts and tell you when
-one is available, showing what has changed and offering to open the
-download page. You can turn this off, or choose not to be told about
-beta versions, in Settings.</p>
+<p>The app checks for new versions when it starts and tells you when one
+is available, showing what has changed. You can turn this off, or choose
+not to be told about beta versions, in Settings.</p>
+<p>If you installed the app with the installer, or you are running the
+folder version, it can install the update for you. Choose Install now
+and it downloads the new version, closes, and reopens by itself. With
+the installed version Windows asks for permission first, because the app
+lives in Program Files and is shared by everyone on the computer.</p>
+<p>The single file version cannot replace itself while it is running, so
+for that one the app offers the download page instead and you replace
+the file yourself.</p>
+<p>Your books, settings and downloaded voices are kept separately from
+the program, so updating never touches them. The same is true if you
+uninstall and install again.</p>
 
 <h2>Keyboard shortcuts</h2>
 <p>In the library:</p>
@@ -339,8 +411,9 @@ beta versions, in Settings.</p>
 <li>Page Down and Page Up: next and previous page or panel</li>
 <li>Ctrl plus Page Down and Ctrl plus Page Up: next and previous page in
 any mode</li>
-<li>Ctrl plus Home: first page</li>
-<li>Ctrl plus End: last page</li>
+<li>Alt plus F: first page</li>
+<li>Alt plus L: last page</li>
+<li>Ctrl plus Home and Ctrl plus End: start and end of what you are reading. Page by page, that is this page.</li>
 <li>Alt plus G, or Ctrl plus G: go to a page</li>
 <li>Ctrl plus F: find text</li>
 <li>Ctrl plus L: show or hide panel labels</li>
@@ -374,9 +447,8 @@ usually holds the format better.</li>
 </ul>
 
 <h2>Getting help and giving feedback</h2>
-<p>This app is in beta, which means it is still being improved. If
-something does not work or you have a suggestion, you can reach the
-developer from the Help menu:</p>
+<p>If something does not work, or you have a suggestion, you can
+reach the developer from the Help menu:</p>
 <ul>
 <li>Visit project page on GitHub, to open the project's main page.</li>
 <li>Report a problem, to open the page where you can describe an issue

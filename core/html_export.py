@@ -1,4 +1,4 @@
-"""Build an HTML document of a processed book for reading in a web
+﻿"""Build an HTML document of a processed book for reading in a web
 browser, where screen reader browse mode gives heading navigation for
 free: H jumps to the next heading, 2 to the next page, 3 to the next
 panel.
@@ -43,10 +43,16 @@ def build_html(book, show_panel_labels=True, language="en"):
     language = config.language_code(language)
     direction = "rtl" if config.is_rtl(language) else "ltr"
     title = html.escape(book.title or "Book")
+    # An unknown language is left unstated rather than guessed: each
+    # block already carries dir="auto", so the text still reads the
+    # right way round.
+    opening = '<html dir="%s">' % direction
+    if language:
+        opening = ('<html lang="%s" dir="%s">'
+                   % (html.escape(language), direction))
     parts = [
         "<!DOCTYPE html>",
-        '<html lang="%s" dir="%s">'
-        % (html.escape(language), direction),
+        opening,
         "<head>",
         '<meta charset="utf-8">',
         "<title>%s</title>" % title,
