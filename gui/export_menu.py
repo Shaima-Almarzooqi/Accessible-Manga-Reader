@@ -121,6 +121,7 @@ def save_book_as_audio(parent, book, settings):
     language = chooser.chosen_language()
     model = chooser.chosen_model()
     pages = chooser.chosen_pages()
+    say_pages = chooser.says_page_numbers()
     suffix = chooser.range_label()
     chooser.Destroy()
     if not proceed:
@@ -135,6 +136,7 @@ def save_book_as_audio(parent, book, settings):
         return
     # Remembered so the next book starts from the same choice.
     settings["tts_engine"] = engine
+    settings["say_page_numbers"] = say_pages
     if engine == tts.ENGINE_KOKORO:
         settings["kokoro_language"] = language
         settings["kokoro_voice"] = voice

@@ -62,6 +62,7 @@ DEFAULT_SETTINGS = {
     "show_panel_labels": True,
     "converted_pages_one_page": True,
     "tts_engine": "kokoro",
+    "say_page_numbers": False,
     "kokoro_language": "en-us",
     "kokoro_voice": "af_heart",
     "kokoro_voice_by_language": {},

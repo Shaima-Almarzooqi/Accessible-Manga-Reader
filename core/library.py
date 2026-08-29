@@ -190,6 +190,23 @@ def list_books():
     return books
 
 
+def current_page_of(book, reader=None):
+    """The page a range should start from.
+
+    The page open in the reader when there is one, otherwise the page
+    the book was last left on. Starting every range at page one means
+    retyping the number you are already looking at.
+    """
+    page = getattr(reader, "current_page", None)
+    if not page:
+        page = getattr(book, "last_page", 1)
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(page, max(1, getattr(book, "page_count", 1))))
+
+
 def create_book(book_id, title, source_description, source_kind="book"):
     """Create (or reuse) a workspace for a new book."""
     workspace = os.path.join(config.books_dir(), book_id)

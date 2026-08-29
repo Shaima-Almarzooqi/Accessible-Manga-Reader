@@ -111,6 +111,8 @@ Changes to output language, verbosity, or instructions apply to newly processed 
 
 Processed books can be exported as text, HTML, EPUB, Word, tagged PDF, or MP3. PDF export requires Microsoft Edge or Google Chrome. Audio export supports Gemini speech and offline Kokoro voices. Kokoro model files are downloaded on first use and stored in the app data folder.
 
+When a command asks for a page range, the first page starts at the page you are on instead of page one. Audio does not announce page numbers by default. Select **Say the page number before each page** in the audio window to include them.
+
 ## Notes and limits
 
 - Speaker attribution uses speech-bubble tails and the conventions of the selected comic type. Crowded or unclear pages may still be misattributed.

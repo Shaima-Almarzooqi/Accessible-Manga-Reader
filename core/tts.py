@@ -168,12 +168,18 @@ class SpeechError(Exception):
     """Raised when a book cannot be turned into audio."""
 
 
-def book_text(book, show_panel_labels=True, pages=None):
+def book_text(book, show_panel_labels=True, pages=None,
+              say_page_numbers=False):
     """The book as plain lines to be spoken, one per line.
 
     Built from the same outline as every other export, so the audio
-    says exactly what the other formats show. `pages` narrows it to a
-    range, which is how a reader keeps the cost of a long book down.
+    says the same things the other formats show. `pages` narrows it to
+    a range, which is how a reader keeps the cost of a long book down.
+
+    Page numbers are left out by default. In a written export a heading
+    is something to skim past or jump to; in a recording it is a
+    sentence read aloud between every page, and there is nothing to
+    jump to in an audio file anyway.
     """
     # Unprocessed pages are left out rather than read: an audiobook
     # announcing "this page has not been processed yet" every so often
@@ -187,6 +193,8 @@ def book_text(book, show_panel_labels=True, pages=None):
             book, show_panel_labels=show_panel_labels, pages=ready):
         text = text.strip()
         if not text:
+            continue
+        if kind == "h2" and not say_page_numbers:
             continue
         # A heading read straight into the next sentence is hard to
         # follow, so each one ends with a full stop if it has no
@@ -585,7 +593,8 @@ def _write_mp3_with_kokoro(book, path, settings, on_progress=None,
 
     lines = book_text(
         book, show_panel_labels=bool(settings.get("show_panel_labels", True)),
-        pages=pages)
+        pages=pages,
+        say_page_numbers=bool(settings.get("say_page_numbers", False)))
     if not lines:
         raise SpeechError("There are no processed pages in that range to read.")
     chunks = split_for_kokoro(lines, kokoro_chunk_size(lines))
@@ -752,7 +761,8 @@ def write_mp3(book, path, settings, on_progress=None, cancel_check=None,
 
     lines = book_text(
         book, show_panel_labels=bool(settings.get("show_panel_labels", True)),
-        pages=pages)
+        pages=pages,
+        say_page_numbers=bool(settings.get("say_page_numbers", False)))
     if not lines:
         raise SpeechError(
             "There are no processed pages in that range to read.")

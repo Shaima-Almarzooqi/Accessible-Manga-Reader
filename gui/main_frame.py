@@ -616,7 +616,8 @@ class MainFrame(wx.Frame):
                 "Settings, or Alt+S).",
                 "API key required", wx.OK | wx.ICON_INFORMATION, self)
             return
-        dialog = ReprocessDialog(self, book)
+        dialog = ReprocessDialog(
+            self, book, current_page=library.current_page_of(book))
         proceed = dialog.ShowModal() == wx.ID_OK
         scope, pages = dialog.scope, list(dialog.pages)
         dialog.Destroy()

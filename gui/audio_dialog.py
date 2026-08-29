@@ -7,7 +7,7 @@ import threading
 import wx
 import wx.adv
 
-from core import config, export, kokoro, tts
+from core import config, export, kokoro, library, tts
 
 from . import keys as keyhelp
 
@@ -38,7 +38,7 @@ def _is_button_activation_key(code):
 
 
 class AudioOptionsDialog(wx.Dialog):
-    def __init__(self, parent, book, settings):
+    def __init__(self, parent, book, settings, current_page=None):
         super().__init__(parent, title="Save as audio")
         self.book = book
         self.settings = settings
@@ -65,7 +65,10 @@ class AudioOptionsDialog(wx.Dialog):
         row.Add(wx.StaticText(panel, label="&From page:"), 0,
                 wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
         last = max(1, book.page_count)
-        self.from_ctrl = wx.SpinCtrl(panel, min=1, max=last, initial=1)
+        # Starts where the reader is, not at page one: retyping the
+        # number you are already looking at is a small thing done often.
+        start = current_page or library.current_page_of(book, parent)
+        self.from_ctrl = wx.SpinCtrl(panel, min=1, max=last, initial=start)
         row.Add(self.from_ctrl, 0, wx.RIGHT, 16)
         row.Add(wx.StaticText(panel, label="T&o page:"), 0,
                 wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
@@ -77,6 +80,12 @@ class AudioOptionsDialog(wx.Dialog):
             control.Bind(wx.EVT_TEXT, self.on_range_typed)
             control.Bind(wx.EVT_SPINCTRL, self.on_range_typed)
         sizer.Add(row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        self.say_pages = wx.CheckBox(
+            panel, label="Say the page &number before each page")
+        self.say_pages.SetValue(
+            bool(settings.get("say_page_numbers", False)))
+        sizer.Add(self.say_pages, 0, wx.LEFT | wx.BOTTOM, 10)
 
         self.estimate = wx.StaticText(panel, label="")
         sizer.Add(self.estimate, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -248,6 +257,9 @@ class AudioOptionsDialog(wx.Dialog):
         if self.chosen_engine() == tts.ENGINE_KOKORO:
             return kokoro.default_voice(self.chosen_language())
         return tts.DEFAULT_VOICE
+
+    def says_page_numbers(self):
+        return bool(self.say_pages.GetValue())
 
     def chosen_model(self):
         index = self.model.GetSelection()

@@ -179,6 +179,8 @@ processed text for a page.</p>
 <h3>Reprocess pages</h3>
 <p>Press Ctrl+R in the reader, or choose Reprocess pages from the Book
 menu. Reprocess the current page, a page range, or the full book.</p>
+<p>When a command asks for a page range, the first page starts at the page
+you are on instead of page one.</p>
 <p>Reprocessing a page or range keeps the existing character notes.
 Reprocessing the full book rebuilds the notes from the first page.</p>
 
@@ -211,6 +213,8 @@ text, and Ctrl+Shift+E exports HTML.</p>
 <p>MP3 export supports Gemini speech and offline Kokoro voices. Gemini
 uses the configured Gemini API keys. Kokoro runs on the computer and
 requires a one-time model and voice download.</p>
+<p>Audio does not announce page numbers by default. Select Say the page
+number before each page in the audio window to include them.</p>
 <p>The progress window reports the percentage read and an estimated time
 remaining. A cancelled export can save the completed audio or discard
 it.</p>

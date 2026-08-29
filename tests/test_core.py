@@ -1150,6 +1150,46 @@ class TestKeyRotation(unittest.TestCase):
         self.assertIn("daily quota used up", str(caught.exception))
 
 
+class TestCurrentPageForRanges(unittest.TestCase):
+    """Every range dialog starts on the page you are on.
+
+    Starting at page one meant retyping the number already in front of
+    you, every time.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tmp, "pages"))
+        self.book = library.Book(self.tmp)
+        self.book.page_count = 189
+        self.book.last_page = 42
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_the_reader_wins_when_a_book_is_open(self):
+        class Reader:
+            current_page = 77
+
+        self.assertEqual(
+            library.current_page_of(self.book, Reader()), 77)
+
+    def test_the_saved_position_is_used_from_the_library(self):
+        self.assertEqual(library.current_page_of(self.book), 42)
+
+    def test_a_position_past_the_end_is_brought_back(self):
+        self.book.last_page = 5000
+        self.assertEqual(library.current_page_of(self.book), 189)
+
+    def test_an_unread_book_starts_at_one(self):
+        self.book.last_page = 0
+        self.assertEqual(library.current_page_of(self.book), 1)
+
+    def test_nonsense_does_not_break_it(self):
+        self.book.last_page = "somewhere"
+        self.assertEqual(library.current_page_of(self.book), 1)
+
+
 class TestFolderImportSummary(unittest.TestCase):
     """Importing a batch of folders reports once at the end.
 
@@ -3277,10 +3317,27 @@ class TestSpeech(unittest.TestCase):
 
     # ----- what gets spoken -------------------------------------------
 
+    def test_page_numbers_are_not_read_by_default(self):
+        # In a written export a heading is something to skim past; in a
+        # recording it is a sentence read aloud between every page, and
+        # there is nothing to jump to in an audio file anyway.
+        spoken = self.tts.book_text(self.book)
+        self.assertFalse(any(line.startswith("Page ") for line in spoken))
+
+    def test_page_numbers_can_be_asked_for(self):
+        spoken = self.tts.book_text(self.book, say_page_numbers=True)
+        self.assertTrue(any(line.startswith("Page ") for line in spoken))
+
+    def test_leaving_them_out_keeps_everything_else(self):
+        without = self.tts.book_text(self.book)
+        with_them = self.tts.book_text(self.book, say_page_numbers=True)
+        for line in without:
+            self.assertIn(line, with_them)
+
     def test_headings_are_given_an_ending(self):
         # A heading running straight into the next sentence is hard to
         # follow when read aloud.
-        lines = self.tts.book_text(self.book)
+        lines = self.tts.book_text(self.book, say_page_numbers=True)
         self.assertTrue(lines[0].endswith("."))
         self.assertIn("Page 1 of 2.", lines)
 
@@ -3555,7 +3612,8 @@ class TestSpeech(unittest.TestCase):
         self.book.page_count = 20
         self.book.scripts = {
             n: "Panel 1 (top right): x." for n in range(1, 21)}
-        spoken = self.tts.book_text(self.book, pages=[12, 13])
+        spoken = self.tts.book_text(self.book, pages=[12, 13],
+                                    say_page_numbers=True)
         self.assertIn("Page 12 of 20.", spoken)
         self.assertNotIn("Page 1 of 2.", spoken)
 

@@ -34,7 +34,7 @@ import webbrowser
 
 import wx
 
-from core import config, extract, html_export, jobs, prompts
+from core import config, extract, html_export, jobs, library, prompts
 
 from .ask_dialog import AskDialog
 from .html_view import show_html_view
@@ -525,8 +525,9 @@ class ReaderFrame(wx.Frame):
             return
         if self.view == VIEW_BOOK:
             self.current_page = self._page_at_caret()
-        dialog = ReprocessDialog(self, self.book,
-                                 current_page=self.current_page)
+        dialog = ReprocessDialog(
+            self, self.book,
+            current_page=library.current_page_of(self.book, self))
         proceed = dialog.ShowModal() == wx.ID_OK
         scope, pages = dialog.scope, list(dialog.pages)
         dialog.Destroy()
