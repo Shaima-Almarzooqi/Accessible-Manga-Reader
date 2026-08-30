@@ -67,8 +67,11 @@ class AudioOptionsDialog(wx.Dialog):
         last = max(1, book.page_count)
         # Starts where the reader is, not at page one: retyping the
         # number you are already looking at is a small thing done often.
-        start = current_page or library.current_page_of(book, parent)
-        self.from_ctrl = wx.SpinCtrl(panel, min=1, max=last, initial=start)
+        self._start_page = current_page or library.current_page_of(
+            book, parent)
+        self._filling = False
+        self.from_ctrl = wx.SpinCtrl(panel, min=1, max=last,
+                                     initial=self._start_page)
         row.Add(self.from_ctrl, 0, wx.RIGHT, 16)
         row.Add(wx.StaticText(panel, label="T&o page:"), 0,
                 wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
@@ -315,10 +318,34 @@ class AudioOptionsDialog(wx.Dialog):
                 "API." % length)
 
     def on_changed(self, event):
+        """Make the page numbers agree with the choice.
+
+        The fields stay enabled so a screen reader still announces
+        them, which means they are read out whatever is selected.
+        Left alone they would say "from page 42" while the choice
+        says the whole book, so they are moved to match.
+        """
+        scope = "whole" if self.scope.GetSelection() == 0 else "range"
+        first, last = library.range_for_scope(
+            scope, self._start_page, self.book.page_count)
+        self._set_range(first, last)
         self._update_estimate()
         event.Skip()
 
+    def _set_range(self, first, last):
+        """Set both fields without the change looking like typing."""
+        self._filling = True
+        try:
+            self.from_ctrl.SetValue(first)
+            self.to_ctrl.SetValue(last)
+        finally:
+            self._filling = False
+
     def on_range_typed(self, event):
+        if self._filling:
+            # Put there by the choice itself, not typed by anyone.
+            event.Skip()
+            return
         if self.scope.GetSelection() != 1:
             self.scope.SetSelection(1)
         self._update_estimate()

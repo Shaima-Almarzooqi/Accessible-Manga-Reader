@@ -14,6 +14,8 @@ user meant anyway.
 
 import wx
 
+from core import library
+
 from . import keys as keyhelp
 
 # ShowModal returns one of these.
@@ -53,6 +55,9 @@ class ReprocessDialog(wx.Dialog):
         self._choice_scopes.append("range")
         choices.append("The &whole book")
         self._choice_scopes.append("whole")
+
+        self.current_page = current_page
+        self._filling = False
 
         self.scope_box = wx.RadioBox(
             panel, label="Pages to reprocess", choices=choices,
@@ -109,11 +114,34 @@ class ReprocessDialog(wx.Dialog):
         return self._choice_scopes[self.scope_box.GetSelection()]
 
     def on_scope_changed(self, event):
+        """Make the page numbers agree with the choice.
+
+        The fields stay enabled so a screen reader still announces
+        them, which means they are read out whatever is selected. Left
+        alone they would say "from page 42" while the choice says the
+        whole book, so they are moved to match.
+        """
+        first, last = library.range_for_scope(
+            self._selected_scope(), self.current_page, self.book.page_count)
+        self._set_range(first, last)
         event.Skip()
+
+    def _set_range(self, first, last):
+        """Set both fields without the change looking like typing."""
+        self._filling = True
+        try:
+            self.from_ctrl.SetValue(first)
+            self.to_ctrl.SetValue(last)
+        finally:
+            self._filling = False
 
     def on_range_typed(self, event):
         """Typing a page number means the range option, so select it
         rather than making the user go back to the radio box."""
+        if self._filling:
+            # Put there by the choice itself, not typed by anyone.
+            event.Skip()
+            return
         if self._selected_scope() != "range":
             self.scope_box.SetSelection(self._choice_scopes.index("range"))
         event.Skip()

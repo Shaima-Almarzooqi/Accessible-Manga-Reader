@@ -1190,6 +1190,47 @@ class TestCurrentPageForRanges(unittest.TestCase):
         self.assertEqual(library.current_page_of(self.book), 1)
 
 
+class TestRangeForScope(unittest.TestCase):
+    """The page fields have to agree with the chosen scope.
+
+    They stay enabled whatever is selected, because a disabled control
+    is skipped by Tab and its value is never announced. That means they
+    are read out even when the choice is the whole book, so leaving
+    them showing "from page 42" contradicted the choice.
+    """
+
+    def test_the_whole_book_starts_at_one(self):
+        self.assertEqual(library.range_for_scope("whole", 42, 189),
+                         (1, 189))
+
+    def test_a_range_starts_where_the_reader_is(self):
+        self.assertEqual(library.range_for_scope("range", 42, 189),
+                         (42, 189))
+
+    def test_this_page_is_just_that_page(self):
+        self.assertEqual(library.range_for_scope("current", 42, 189),
+                         (42, 42))
+
+    def test_a_position_past_the_end_is_brought_back(self):
+        self.assertEqual(library.range_for_scope("range", 500, 189),
+                         (189, 189))
+
+    def test_an_unread_book_starts_at_one(self):
+        self.assertEqual(library.range_for_scope("range", 0, 189),
+                         (1, 189))
+
+    def test_a_single_page_book_is_not_confused(self):
+        self.assertEqual(library.range_for_scope("whole", 1, 1), (1, 1))
+
+    def test_changing_your_mind_returns_the_reader(self):
+        # Choosing the whole book and going back to a range should not
+        # lose the page you were on.
+        self.assertEqual(library.range_for_scope("whole", 42, 189),
+                         (1, 189))
+        self.assertEqual(library.range_for_scope("range", 42, 189),
+                         (42, 189))
+
+
 class TestFolderImportSummary(unittest.TestCase):
     """Importing a batch of folders reports once at the end.
 

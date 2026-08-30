@@ -207,6 +207,24 @@ def current_page_of(book, reader=None):
     return max(1, min(page, max(1, getattr(book, "page_count", 1))))
 
 
+def range_for_scope(scope, current_page, page_count):
+    """The page numbers a range should show for the chosen scope.
+
+    The From and To fields stay enabled whatever is selected, because a
+    disabled control is skipped by Tab and its value is not announced.
+    That means they are read out even when the choice is the whole
+    book, so they have to agree with it rather than still showing where
+    the reader happened to be.
+    """
+    last = max(1, int(page_count or 1))
+    page = max(1, min(int(current_page or 1), last))
+    if scope == "whole":
+        return 1, last
+    if scope == "current":
+        return page, page
+    return page, last
+
+
 def create_book(book_id, title, source_description, source_kind="book"):
     """Create (or reuse) a workspace for a new book."""
     workspace = os.path.join(config.books_dir(), book_id)
