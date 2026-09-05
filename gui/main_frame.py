@@ -191,6 +191,24 @@ class MainFrame(wx.Frame):
             wx.ID_ANY, "&Free up space (remove page images)...",
             "Delete the stored page images of a fully processed book; "
             "reading is unaffected"))
+        book_menu.AppendSeparator()
+        move_up = book_menu.Append(
+            wx.ID_ANY, "Move &up\tCtrl+,",
+            "Move this book one place up your list")
+        self.Bind(wx.EVT_MENU, self.on_move_up, move_up)
+        move_down = book_menu.Append(
+            wx.ID_ANY, "Move do&wn\tCtrl+.",
+            "Move this book one place down your list")
+        self.Bind(wx.EVT_MENU, self.on_move_down, move_down)
+        # Bound explicitly as well as in the label. Punctuation
+        # accelerators are not parsed the same way on every build, and a
+        # shortcut that silently does nothing is worse than one that is
+        # only in the menu.
+        self.SetAcceleratorTable(wx.AcceleratorTable([
+            wx.AcceleratorEntry(wx.ACCEL_CTRL, ord(","), move_up.GetId()),
+            wx.AcceleratorEntry(wx.ACCEL_CTRL, ord("."), move_down.GetId()),
+        ]))
+        book_menu.AppendSeparator()
         self.Bind(wx.EVT_MENU, self.on_rename, book_menu.Append(
             wx.ID_ANY, "Re&name...\tF2"))
         self.Bind(wx.EVT_MENU, self.on_delete, book_menu.Append(
@@ -705,6 +723,30 @@ class MainFrame(wx.Frame):
         if result == wx.ID_APPLY:
             self.on_reprocess(event)
 
+    def on_move_up(self, event):
+        self._move_selected(-1)
+
+    def on_move_down(self, event):
+        self._move_selected(1)
+
+    def _move_selected(self, direction):
+        """Move the selected book one place, and keep it selected.
+
+        Reaching the top or bottom is a bell rather than a message: it
+        happens every time somebody holds the key to get a book to the
+        end, and a dialog each time would be worse than the silence.
+        """
+        book = self._selected_book()
+        if not book:
+            return
+        if library.move_book(book, direction) is None:
+            wx.Bell()
+            return
+        # Reselecting the same book means the reader stays on it and a
+        # screen reader reads out where it has landed.
+        self.refresh_books(select_book=book)
+        self.book_list.SetFocus()
+
     def on_rename(self, event):
         book = self._selected_book()
         if not book:
@@ -883,6 +925,12 @@ class MainFrame(wx.Frame):
                 export_menu.build_export_menu(
                     self, self._selected_book, lambda: self.settings),
                 "&Export")
+            menu.AppendSeparator()
+            self.Bind(wx.EVT_MENU, self.on_move_up,
+                      menu.Append(wx.ID_ANY, "Move &up"))
+            self.Bind(wx.EVT_MENU, self.on_move_down,
+                      menu.Append(wx.ID_ANY, "Move do&wn"))
+            menu.AppendSeparator()
             self.Bind(wx.EVT_MENU, self.on_rename,
                       menu.Append(wx.ID_ANY, "Re&name..."))
             self.Bind(wx.EVT_MENU, self.on_delete,

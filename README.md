@@ -45,6 +45,8 @@ Use the File menu to import:
 
 You can select more than one archive, PDF, or folder at a time. Each is imported as a separate book, which is useful when a series has one chapter per file or folder. A single selection works as before. For multiple imports, the app reports the result once at the end, skips books already in the library, and continues if one item fails.
 
+Books are listed alphabetically until you reorder them. Use Ctrl+, to move a selected book up and Ctrl+. to move it down. These commands are also in the Book menu and the book's context menu. The app remembers the order. Once you reorder the library, newly imported books go to the bottom.
+
 Select the book and press Alt+P to process it. Before processing, you can enter book-specific instructions, such as character names and identifying features. This prompt can be disabled in Settings.
 
 Pages are processed in batches. The app saves each completed batch, so a cancelled or interrupted job can continue later. A partially processed book can be read while the remaining pages are processed.
@@ -72,6 +74,7 @@ In the library:
 - Alt+S — open Settings
 - Ctrl+T — edit AI instructions for the selected book
 - F2 — rename the selected book
+- Ctrl+, / Ctrl+. — move the selected book up / down
 - Delete — remove the selected book
 - Ctrl+A — select all books
 - Applications key — open the context menu

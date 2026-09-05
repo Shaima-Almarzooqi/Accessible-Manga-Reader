@@ -39,6 +39,10 @@ class Book:
         self.last_position = 0  # caret offset in full-book view
         self.last_page = 1
         self.last_panel = 0
+        # Where this book sits in the library. Zero means "never
+        # moved", so a library nobody has reordered still comes out in
+        # title order exactly as before.
+        self.position = 0
 
     # ----- persistence -------------------------------------------------
 
@@ -59,6 +63,7 @@ class Book:
             "last_position": self.last_position,
             "last_page": self.last_page,
             "last_panel": self.last_panel,
+            "position": self.position,
         }
         tmp = self.meta_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -82,6 +87,7 @@ class Book:
             book.last_position = int(data.get("last_position", 0))
             book.last_page = int(data.get("last_page", 1))
             book.last_panel = int(data.get("last_panel", 0))
+            book.position = int(data.get("position", 0))
         except (OSError, ValueError, KeyError):
             pass
         return book
@@ -178,7 +184,12 @@ class Book:
 
 
 def list_books():
-    """All books in the library, sorted by title."""
+    """All books in the library, in the order they should be shown.
+
+    By where they have been moved to, then by title. A library nobody
+    has reordered has every position at zero, so it still comes out
+    alphabetically, exactly as it did before moving was possible.
+    """
     books = []
     root = config.books_dir()
     for name in sorted(os.listdir(root)):
@@ -186,7 +197,7 @@ def list_books():
         if os.path.isdir(workspace) and os.path.exists(
                 os.path.join(workspace, "book.json")):
             books.append(Book.load(workspace))
-    books.sort(key=lambda b: b.title.lower())
+    books.sort(key=lambda b: (b.position or 0, b.title.lower()))
     return books
 
 
@@ -225,6 +236,38 @@ def range_for_scope(scope, current_page, page_count):
     return page, last
 
 
+def move_book(book, direction, books=None):
+    """Move a book one place up or down the library.
+
+    Returns the new list of books in order, or None when the book is
+    already at that end and cannot move -- which the caller reports as
+    a bell rather than a message, since pressing the key repeatedly to
+    reach the top is a normal thing to do.
+
+    Positions are renumbered from one across the whole library, but
+    only the books whose number actually changed are written back. The
+    first move writes every book, because until then they are all
+    zero; after that a move touches two.
+    """
+    books = list(books if books is not None else list_books())
+    here = None
+    for index, other in enumerate(books):
+        if other.workspace == book.workspace:
+            here = index
+            break
+    if here is None:
+        return None
+    target = here + direction
+    if not 0 <= target < len(books):
+        return None
+    books[here], books[target] = books[target], books[here]
+    for index, other in enumerate(books, start=1):
+        if other.position != index:
+            other.position = index
+            other.save()
+    return books
+
+
 def create_book(book_id, title, source_description, source_kind="book"):
     """Create (or reuse) a workspace for a new book."""
     workspace = os.path.join(config.books_dir(), book_id)
@@ -238,8 +281,22 @@ def create_book(book_id, title, source_description, source_kind="book"):
     book.title = title
     book.source = source_description
     book.source_kind = source_kind
+    # A new book joins the end of an arranged library rather than the
+    # front. Position zero would sort it above everything, which puts
+    # the newest import ahead of an order the reader chose on purpose.
+    # In a library nobody has arranged every position is still zero, so
+    # this stays out of the way and titles decide as before.
+    book.position = next_position()
     book.save()
     return book
+
+
+def next_position():
+    """One past the last arranged book, or zero if none are arranged."""
+    highest = 0
+    for other in list_books():
+        highest = max(highest, other.position or 0)
+    return highest + 1 if highest else 0
 
 
 def delete_book(book):

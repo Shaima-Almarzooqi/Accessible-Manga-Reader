@@ -87,6 +87,7 @@ SUGGESTED_MODELS = {
     # reported unavailable months before its stated date, so leaving
     # them here would only offer readers a model that stops answering.
     "gemini": [
+        "gemini-3.8-flash",
         "gemini-3.7-flash",
         "gemini-3.6-flash",
         "gemini-3.5-flash",
@@ -96,7 +97,7 @@ SUGGESTED_MODELS = {
     "anthropic": [
         "claude-sonnet-5",
         "claude-opus-5",
-        "claude-fable-5",
+        "claude-fable-5-1",
         "claude-haiku-4-5-20251001",
     ],
     "openai": [

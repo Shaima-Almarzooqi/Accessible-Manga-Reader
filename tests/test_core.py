@@ -361,7 +361,7 @@ class TestProviderClients(unittest.TestCase):
             make_test_image(10, 10).save(f, "JPEG")
             image_path = f.name
         try:
-            client = api_client.GeminiClient("key", "gemini-2.5-flash",
+            client = api_client.GeminiClient("key", "gemini-3.6-flash",
                                              max_tokens=1234)
             content = api_client.build_content([1], [image_path], "go")
             payload = client._build_payload("system text", content)
@@ -1188,6 +1188,102 @@ class TestCurrentPageForRanges(unittest.TestCase):
     def test_nonsense_does_not_break_it(self):
         self.book.last_page = "somewhere"
         self.assertEqual(library.current_page_of(self.book), 1)
+
+
+class TestMovingBooks(unittest.TestCase):
+    """Books can be put in the order the reader wants them.
+
+    A library nobody has reordered still comes out alphabetically, so
+    this changes nothing until somebody uses it.
+    """
+
+    def setUp(self):
+        self.appdata = tempfile.mkdtemp()
+        self.previous = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = self.appdata
+        root = config.books_dir()
+        os.makedirs(root, exist_ok=True)
+        for folder, title in (("a", "Cherry"), ("b", "Apple"),
+                              ("c", "Banana")):
+            workspace = os.path.join(root, folder)
+            os.makedirs(os.path.join(workspace, "pages"), exist_ok=True)
+            book = library.Book(workspace)
+            book.title = title
+            book.page_count = 1
+            book.save()
+
+    def tearDown(self):
+        if self.previous is None:
+            os.environ.pop("APPDATA", None)
+        else:
+            os.environ["APPDATA"] = self.previous
+        shutil.rmtree(self.appdata, ignore_errors=True)
+
+    def _titles(self):
+        return [book.title for book in library.list_books()]
+
+    def _find(self, title):
+        return [b for b in library.list_books() if b.title == title][0]
+
+    def test_an_untouched_library_is_still_alphabetical(self):
+        self.assertEqual(self._titles(), ["Apple", "Banana", "Cherry"])
+
+    def test_a_book_moves_up(self):
+        library.move_book(self._find("Banana"), -1)
+        self.assertEqual(self._titles(), ["Banana", "Apple", "Cherry"])
+
+    def test_a_book_moves_down(self):
+        library.move_book(self._find("Apple"), 1)
+        self.assertEqual(self._titles(), ["Banana", "Apple", "Cherry"])
+
+    def test_the_order_survives_reloading(self):
+        # The whole point: it is remembered, not just shown.
+        library.move_book(self._find("Cherry"), -1)
+        self.assertEqual(self._titles(), ["Apple", "Cherry", "Banana"])
+        self.assertEqual(self._titles(), ["Apple", "Cherry", "Banana"])
+
+    def test_the_top_book_cannot_go_further_up(self):
+        self.assertIsNone(library.move_book(self._find("Apple"), -1))
+
+    def test_the_bottom_book_cannot_go_further_down(self):
+        self.assertIsNone(library.move_book(self._find("Cherry"), 1))
+
+    def test_a_refused_move_changes_nothing(self):
+        before = self._titles()
+        library.move_book(self._find("Apple"), -1)
+        self.assertEqual(self._titles(), before)
+
+    def test_moving_back_and_forth_returns_to_where_it_was(self):
+        library.move_book(self._find("Apple"), 1)
+        library.move_book(self._find("Apple"), -1)
+        self.assertEqual(self._titles(), ["Apple", "Banana", "Cherry"])
+
+    def test_a_new_book_joins_the_end_of_an_arranged_library(self):
+        # Not the front: putting the newest import above an order the
+        # reader chose on purpose would undo the arranging.
+        library.move_book(self._find("Cherry"), -1)
+        arranged = self._titles()
+        library.create_book("d", "Damson", "src")
+        self.assertEqual(self._titles(), arranged + ["Damson"])
+
+    def test_new_books_still_sort_by_title_until_something_is_moved(self):
+        # Nothing has been arranged, so titles decide, and an import
+        # lands where the alphabet puts it rather than at the end.
+        library.create_book("d", "Damson", "src")
+        self.assertEqual(self._titles(),
+                         ["Apple", "Banana", "Cherry", "Damson"])
+
+    def test_several_imports_keep_their_order_at_the_end(self):
+        library.move_book(self._find("Cherry"), -1)
+        library.create_book("d", "Zebra", "src")
+        library.create_book("e", "Mango", "src")
+        self.assertEqual(self._titles()[-2:], ["Zebra", "Mango"])
+
+    def test_a_book_imported_at_the_end_can_still_be_moved(self):
+        library.move_book(self._find("Cherry"), -1)
+        library.create_book("d", "Damson", "src")
+        library.move_book(self._find("Damson"), -1)
+        self.assertEqual(self._titles()[-2:], ["Damson", "Banana"])
 
 
 class TestRangeForScope(unittest.TestCase):
@@ -2386,13 +2482,13 @@ class TestComicTypeSettings(unittest.TestCase):
 class TestModelDefaultsAndLists(unittest.TestCase):
     def test_gemini_default_is_stable_flash(self):
         # The newest model is offered first, but the DEFAULT is not
-        # automatically the newest. 3.7 Flash's published gains are in
-        # coding and agent work, with some evaluations flat or slightly
-        # lower; none of that says anything about describing a comic
-        # page, which is the only thing this app asks of it. So 3.6
-        # keeps reading books until the two are compared on real pages.
+        # automatically the newest. The gains published for 3.7 and 3.8
+        # Flash are in coding and agent work, and say nothing about
+        # describing a comic page, which is the only thing this app
+        # asks of a model. So 3.6 keeps reading books until they are
+        # compared on real pages.
         self.assertEqual(config.SUGGESTED_MODELS["gemini"][0],
-                         "gemini-3.7-flash")
+                         "gemini-3.8-flash")
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
                          "gemini-3.6-flash")
         self.assertIn(config.DEFAULT_SETTINGS["gemini_model"],

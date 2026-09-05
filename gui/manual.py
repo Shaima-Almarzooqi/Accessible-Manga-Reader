@@ -110,6 +110,11 @@ per file or folder. A single selection works as before. For multiple imports,
 the app reports the result once at the end, skips books already in the
 library, and continues if one item fails.</p>
 
+<p>Books are listed alphabetically until you reorder them. Use Ctrl+, to
+move a selected book up and Ctrl+. to move it down. These commands are also
+in the Book menu and the book's context menu. The app remembers the order.
+Once you reorder the library, newly imported books go to the bottom.</p>
+
 <h2>Step 4: Process the book</h2>
 <ol>
 <li>Select the book in the library.</li>
@@ -285,6 +290,7 @@ downloaded voices.</p>
 <li>Alt+S: open Settings</li>
 <li>Ctrl+T: edit instructions for the selected book</li>
 <li>F2: rename the selected book</li>
+<li>Ctrl+, / Ctrl+.: move the selected book up / down</li>
 <li>Delete: remove the selected book</li>
 <li>Ctrl+A: select all books</li>
 <li>Applications key: open the context menu</li>
