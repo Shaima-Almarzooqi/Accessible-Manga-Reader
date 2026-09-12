@@ -151,14 +151,36 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare release notes from the changelog
+        shell: python
+        run: |
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8-sig")
+          section = re.search(
+              r"(?ms)^## " + re.escape(version) + r"\s*\n(.*?)(?=^## |\Z)",
+              changelog,
+          )
+          if not section:
+              raise SystemExit("No changelog entry for " + version)
+          Path("release-notes.md").write_text(
+              section.group(1).strip() + "\n", encoding="utf-8"
+          )
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - uses: softprops/action-gh-release@v2
         with:
-          prerelease: true
-          generate_release_notes: true
+          draft: true
+          prerelease: false
+          body_path: release-notes.md
           files: |
             artifacts/**/*.zip
             artifacts/**/*-setup.exe

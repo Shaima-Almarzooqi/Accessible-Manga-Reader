@@ -43,7 +43,6 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - Empty successful API responses are retried with backoff. Content blocks are
   still reported without retrying.
 - Keyboard focus returns to the selected voice after a sample starts.
-- Removed the unused Windows speech engine and its `comtypes` dependency.
 
 ## 0.20.0
 

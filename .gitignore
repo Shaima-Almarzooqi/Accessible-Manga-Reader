@@ -9,3 +9,5 @@ settings.json
 .agents/
 .claude/
 .cursor/
+/.codex-artifacts/
+/.tmp/
