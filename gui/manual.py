@@ -242,9 +242,10 @@ effects</li>
 adding opinions.</p>
 
 <h3>Output language</h3>
-<p>Select a listed language or enter another language. Descriptions,
-dialogue, names, captions, sound effects, and labels are written in the
-selected language.</p>
+<p>Select a listed language or enter another language. All script content uses
+the selected language, including descriptions, dialogue, character names, and
+the labels for narration, sound effects, visible text, and thoughts. Label
+wording and character name spellings remain consistent throughout a book.</p>
 <p>Select Original (same as the comic) to avoid translation. The app
 transcribes the comic's text and writes descriptions in the comic's
 language. Exports do not assign a language in this mode.</p>

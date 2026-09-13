@@ -148,7 +148,7 @@ TAIL_TEXT = {
         "voice:\" only when the story really does not show who it is.\n"
         "- A tail drawn as a chain of small circles or bubbles leading "
         "back to a character's head means thought, not speech: use the "
-        "(thinking) form. A cloud-shaped bubble, or a bubble made of "
+        "<THINKING> form. A cloud-shaped bubble, or a bubble made of "
         "radiating rays with no tail, is likewise inner thought.\n"
         "- Jagged or spiked outlines mean shouting or anger; a dashed or "
         "dotted outline means whispering; a rectangular or squared "
@@ -156,7 +156,7 @@ TAIL_TEXT = {
         "or speaker. These change HOW the line is said, not who says it, "
         "so keep the speaker from the tail and note the manner briefly.\n"
         "- A plain rectangular box with no tail at all is narration, not "
-        "speech: use the Narration form, never a character name."
+        "speech: use the <NARRATION> form, never a character name."
     ),
     "manhwa": (
         "- The tail is a spike or point on the bubble's outline; follow "
@@ -177,12 +177,12 @@ TAIL_TEXT = {
         "elsewhere in the strip, usually just above or below. Use the "
         "surrounding panels to name them.\n"
         "- A cloud-shaped bubble, or one trailing small circles to a "
-        "character's head, is thought: use the (thinking) form. Faded, "
+        "character's head, is thought: use the <THINKING> form. Faded, "
         "borderless, or free-floating text over the art is usually "
         "internal monologue -- attribute it to the viewpoint character "
         "when clear, otherwise mark it as narration.\n"
         "- Coloured caption boxes, common at the top of a panel, are "
-        "narration: use the Narration form, not a character name.\n"
+        "narration: use the <NARRATION> form, not a character name.\n"
         "- Jagged outlines mean shouting; dashed outlines mean "
         "whispering; angular or squared bubbles mean an electronic or "
         "broadcast voice. Note the manner, but take the speaker from "
@@ -209,12 +209,12 @@ TAIL_TEXT = {
         "elsewhere in the strip, usually just above or below. Use the "
         "surrounding panels to name them.\n"
         "- A cloud-shaped bubble, or one trailing small circles toward a "
-        "head, is thought: use the (thinking) form. Free-floating or "
+        "head, is thought: use the <THINKING> form. Free-floating or "
         "faded text with no bubble is usually internal monologue -- "
         "attribute it to the viewpoint character when clear, otherwise "
         "treat it as narration.\n"
         "- Caption boxes, often coloured and set at the top of a panel, "
-        "are narration: use the Narration form, not a character name.\n"
+        "are narration: use the <NARRATION> form, not a character name.\n"
         "- Jagged outlines mean shouting; dashed outlines mean "
         "whispering; angular or squared bubbles mean an electronic "
         "voice. Note the manner, but take the speaker from the tail."
@@ -238,10 +238,10 @@ TAIL_TEXT = {
         "- A balloon with no tail normally continues the previous "
         "speaker; carry that speaker forward.\n"
         "- A cloud or scalloped balloon trailing small circles to a "
-        "character's head is thought: use the (thinking) form.\n"
+        "character's head is thought: use the <THINKING> form.\n"
         "- Rectangular caption boxes, usually at the top or bottom of "
         "the panel, are narration or a character's retrospective "
-        "voice-over. Use the Narration form; only attribute a caption to "
+        "voice-over. Use the <NARRATION> form; only attribute a caption to "
         "a character when the art or the story makes the narrator "
         "explicit.\n"
         "- Jagged or burst outlines mean shouting; dashed outlines mean "
@@ -488,29 +488,31 @@ using exactly the page number given with that image (this marker line stays in E
 Panel <n> (<position>): <description of the scene and action>
 where <position> is the panel's physical location on the page, chosen from exactly this vocabulary: top right, top center, top left, middle right, center, middle left, bottom right, bottom center, bottom left, right half, left half, top half, bottom half, full width top, full width middle, full width bottom, full page. (For vertical webtoons and manhwa strips use top, middle, bottom, full width.) Pick the position from the page map you built under MAPPING THE PAGE. The "Panel n (position):" prefix, including the position word, stays in English exactly as listed; the description after the colon is in the output language. The position lets a blind reader build the same mental map of the page a sighted reader has.
 <Speaker>: "<dialogue>"
-<Speaker> (thinking): <inner thoughts, no quotes>
-Narration: <caption or narrator box text>
-SFX: <sound> -- <what it conveys, e.g. "a door slamming">
-The <Speaker> name, the "(thinking)" qualifier, and the "Narration:", "SFX:" and "Text:" labels shown here are written in the output language (they appear in English above only because these instructions are in English); the structural markers "=== PAGE n ===", "Panel n (position):" and "=== CHARACTER NOTES ===" are the sole exceptions and always stay in English.
+<Speaker> (<THINKING>): <inner thoughts, no quotes>
+<NARRATION>: <caption or narrator box text>
+<SFX>: <sound> -- <what it conveys, e.g. "a door slamming">
+<TEXT>: <words visible in the art> -- <where they appear>
+
+<THINKING>, <NARRATION>, <SFX> and <TEXT> are placeholders, not words to copy. Replace each with the ordinary {output_language} word for "thinking", "narration", "sound effect" and "text". Before you write anything, settle on those four words and on the {output_language} spelling of each character's name, then use exactly those, unchanged, on every line of every page. A script that labels some lines in {output_language} and others in English has failed, and so has one that spells a character's name two different ways. Only three things are ever written in English: the "=== PAGE n ===" line, the "Panel n (position):" prefix including the position word, and the "=== CHARACTER NOTES ===" line. Those three are read by the app; everything else on every other line belongs to the reader and is in {output_language}.
 
 Rules:
 - Dialogue lines come AFTER the panel description line for their panel, in the order the bubbles are read, each attached to the character who speaks it.
 - Attribute every line of dialogue to a character. Use bubble tail position, who is shown speaking, and the CHARACTER NOTES to identify speakers. If genuinely uncertain, use the {output_language} equivalent of "Off-panel voice:" or "Unknown:" rather than guessing a name.
-- {language_rule} The ONLY things that stay in English, exactly as shown, are the three structural markers the app reads: the "=== PAGE n ===" line, the "Panel n (position):" prefix including the position word inside the brackets, and the "=== CHARACTER NOTES ===" line. Everything after those markers -- the panel's description, the speaker names, the dialogue -- is in {output_language}. The qualifiers "(thinking)" and "(off-panel)", and the "Narration:", "SFX:", and "Text:" labels, are written in {output_language} too.
+- {language_rule} This governs every line: the panel descriptions, the speaker names, the dialogue, the four labels described above, and any qualifier such as the one marking a speaker who is off-panel. The three structural markers named above are the only English.
 - Silent panels matter: describe them like any other panel. A wordless close-up or a held beat is storytelling; a line like "Panel 4: Silent. Aiko stares at the empty chair." is perfect.
-- Text visible in the art (signs, phone screens, letters) goes on a "Text:" line with a short location note tying it to the object it appears on.
-- COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, write "Text: (illegible)" at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.
+- Words visible in the art (signs, phone screens, letters) go on a <TEXT> line with a short location note tying them to the object they appear on.
+- COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, put the {output_language} equivalent of "(illegible)" on a <TEXT> line at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.
 - OBJECTIVITY IS STRICT, AT EVERY VERBOSITY LEVEL: you are a camera, not a critic. Describe only what is visibly drawn on the page. Never add your own interpretation, symbolism, atmosphere poetry, or emotional commentary. Banned: "as if", "seemingly", "a sense of", "one can feel", "beautifully", "hauntingly", "symbolizing", and any sentence about what a moment "means". When emotion is visible, name its visible signs: write "tears well up in her eyes and her hands tremble", never "her heart breaks" or "the weight of loss fills the panel".
 - Do not add commentary, summaries, chapter recaps, or opinions. Only the script.
 - NEVER WRITE ABOUT YOURSELF OR YOUR OWN WORK. The script contains the comic and nothing else. Never mention what you noticed, forgot, missed, corrected, or found difficult; never apologise, never correct yourself in the output, never flag your own uncertainty as an aside, and never address the reader. Banned outright: "I forgot", "I missed", "oops", "wait", "correction", "apologies", "sorry", "let me", "actually", "on closer inspection", "I should have", "note that I", "as an AI", "I cannot tell". If you realise partway that an earlier line was wrong, silently write the page correctly -- do not narrate the fix. If a bubble's speaker or a piece of art is unclear, settle it by the rules above and carry on writing the script.
 - THE PANEL FORMAT IS THE ONLY STRUCTURE. Output the page as the panel lines defined above, in reading order, and nothing else. Never reorganise a page into general image-description categories: no "Composition", "Setting", "Characters", "Context", "Overall", "Summary", "Analysis", "Mood", "Art style", "Visual elements", or any other heading of your own invention. Never describe the page as a whole before or after the panels, and never group all the characters, all the dialogue, or all the background together across panels. Each panel is described where it falls in the reading order, with its own dialogue directly beneath it. The page map you build under MAPPING THE PAGE is working-out for your own use: it decides the order and the position words, and is never written out as a list, a layout summary, or a line of its own. A page broken into categories instead of panels is a failed script, however accurate its content.
-- NO HEADINGS, LABELS, OR MARKDOWN OF YOUR OWN. The only lines permitted are the page header, panel lines, and the speaker, thinking, Narration, SFX, and Text lines defined above. Do not add bold, italics, bullet points, numbered lists, horizontal rules, or any heading beyond the page header. Do not open with a sentence introducing the page and do not close with one wrapping it up: the first line of a page is its page header and the last is the final panel's last line.
+- NO HEADINGS, LABELS, OR MARKDOWN OF YOUR OWN. The only lines permitted are the page header, panel lines, speaker lines, and the four placeholder-labelled lines defined above. Do not add bold, italics, bullet points, numbered lists, horizontal rules, or any heading beyond the page header. Do not open with a sentence introducing the page and do not close with one wrapping it up: the first line of a page is its page header and the last is the final panel's last line.
 - If a page is a cover, title page, table of contents, or author note, still give it a PAGE header and briefly describe/transcribe it.
 
 CHARACTER CONSISTENCY
 You will receive CHARACTER NOTES describing characters identified so far. Use those exact names. If READER'S INSTRUCTIONS name or describe characters, those are canonical: match the characters you see to those descriptions and use those exact names from their very first appearance, even before the story itself reveals them. After the final page, output:
 === CHARACTER NOTES ===
-followed by an updated compact list (one line per character: name, key visual features, role/relationships). Write this list in {output_language} too, using each character's name in the same {output_language} spelling you use in the script, so names stay identical from one batch to the next. Only the "=== CHARACTER NOTES ===" marker line itself stays in English. Add newly introduced characters, refine existing entries, and correct earlier uncertainty. Keep the whole block under 200 words. If a character's name has not been revealed yet, use a stable descriptive label in {output_language} (for example the {output_language} words for "the scarred man") and keep using it until the story names them."""
+followed by a line reading LABELS: <THINKING>, <NARRATION>, <SFX>, <TEXT> giving the four {output_language} words you used, and then an updated compact list (one line per character: name, key visual features, role/relationships). If the notes you were given already carry a LABELS line, reuse those exact four words rather than choosing your own, so the labels do not change halfway through a book. Write the list in {output_language} too, using each character's name in the same {output_language} spelling you use in the script, so names stay identical from one batch to the next. Only the "=== CHARACTER NOTES ===" marker line itself stays in English. Add newly introduced characters, refine existing entries, and correct earlier uncertainty. Keep the whole block under 200 words. If a character's name has not been revealed yet, use a stable descriptive label in {output_language} (for example the {output_language} words for "the scarred man") and keep using it until the story names them."""
 
 
 def build_user_text(page_numbers, character_notes, book_title="",

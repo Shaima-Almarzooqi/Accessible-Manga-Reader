@@ -102,7 +102,7 @@ The **AI engine** tab contains the provider, model, API keys, pages per request,
 
 The **General** tab contains:
 
-- **Output language.** Select a language or enter one. The app translates descriptions, dialogue, labels, sound effects, and names into that language. Select **Original (same as the comic)** to transcribe the comic without translation.
+- **Output language.** Select a language or enter one. All script content uses that language, including descriptions, dialogue, character names, and the labels for narration, sound effects, visible text, and thoughts. Label wording and character name spellings remain consistent throughout a book. Select **Original (same as the comic)** to transcribe the comic without translation.
 - **Verbosity.** Concise, Detailed, or Extensive.
 - **Comic type.** Manga, Manhwa or Manhua, Webtoon, or Western comic. This controls reading order and layout rules.
 - **Comic-type instructions.** Instructions applied to every book of the selected type.

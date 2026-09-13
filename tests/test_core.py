@@ -2150,13 +2150,33 @@ class TestLanguageSetting(unittest.TestCase):
         self.assertIn("all dialogue", prompt)
 
     def test_labels_and_speaker_names_are_in_target_language(self):
-        # Speaker names, the thinking/off-panel qualifiers and the
-        # SFX/Narration/Text labels all go in the output language.
+        # The labels used to be printed in English in the template with
+        # a note underneath saying they were only English because the
+        # instructions were. Models copied the template and ignored the
+        # note, so the template now carries placeholders instead and
+        # there is no English label left to copy.
+        for comic_type in prompts.COMIC_TYPE_TEXT:
+            for language in ("English", "Arabic",
+                             config.ORIGINAL_LANGUAGE):
+                prompt = prompts.build_system_prompt(
+                    comic_type, "detailed", language)
+                self.assertIn("<NARRATION>", prompt)
+                self.assertIn("<SFX>", prompt)
+                self.assertIn("<TEXT>", prompt)
+                self.assertIn("<THINKING>", prompt)
+                self.assertIn("placeholders, not words to copy", prompt)
+                for literal in ("Narration:", "SFX:", "Text:",
+                                "(thinking)"):
+                    self.assertNotIn(literal, prompt)
+        self.assertIn("ordinary Arabic word", prompts.build_system_prompt(
+            "manga", "detailed", "Arabic"))
+
+    def test_the_labels_are_settled_once_and_kept(self):
+        # A book whose labels change halfway through reads as two
+        # different books, and batches are separate requests.
         prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
-        self.assertIn("every speaker label", prompt)
-        self.assertIn('"(thinking)" and "(off-panel)"', prompt)
-        self.assertIn('"Narration:", "SFX:", and "Text:" labels, are '
-                      "written in Arabic", prompt)
+        self.assertIn("LABELS:", prompt)
+        self.assertIn("reuse those exact four words", prompt)
 
     def test_only_structural_markers_stay_in_english(self):
         prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
@@ -2169,7 +2189,7 @@ class TestLanguageSetting(unittest.TestCase):
         # The notes carry between batches, so they must use the same
         # transliterated names as the script or names would drift.
         prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
-        self.assertIn("Write this list in Arabic too", prompt)
+        self.assertIn("Write the list in Arabic too", prompt)
         self.assertIn("same Arabic spelling you use in the script",
                       prompt)
 
@@ -5152,7 +5172,7 @@ class TestTailRules(unittest.TestCase):
         for comic_type in self.COMIC_TYPES:
             prompt = self._prompt(comic_type)
             self.assertIn("narration", prompt.lower())
-            self.assertIn("(thinking)", prompt)
+            self.assertIn("<THINKING>", prompt)
 
     def test_rules_are_specific_to_each_tradition(self):
         manga = prompts.TAIL_TEXT["manga"]

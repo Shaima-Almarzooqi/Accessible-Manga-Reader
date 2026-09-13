@@ -2,6 +2,14 @@
 
 Notable changes to Accessible Manga Reader are listed below, newest first.
 
+## 1.1.0
+
+### Fixed
+
+- Scripts use the selected output language throughout, including labels for
+  narration, sound effects, visible text, and thoughts. Label wording and
+  character name spellings remain consistent across the book.
+
 ## 1.0.0
 
 ### Added
