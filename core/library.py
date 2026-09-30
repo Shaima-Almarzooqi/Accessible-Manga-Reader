@@ -50,6 +50,29 @@ class Book:
     def meta_path(self):
         return os.path.join(self.workspace, "book.json")
 
+    @property
+    def finished_path(self):
+        return os.path.join(self.workspace, "finished")
+
+    @property
+    def finished(self):
+        """Whether the reader has marked this book as read.
+
+        Kept in a file of its own rather than in book.json, and read
+        from disk every time. The reader window and a running
+        processing job each hold a Book of their own for as long as
+        they are open, and every save writes the whole of book.json;
+        a copy loaded before the mark was made would put it back to
+        false the next time it saved. Nothing a copy writes can
+        touch a separate file, so the mark survives whatever else is
+        open.
+
+        Marked by the reader, never inferred. Reaching the last page
+        is not the same as being done with a book, and a reader who
+        re-opens a finished book does not expect the mark to clear.
+        """
+        return os.path.exists(self.finished_path)
+
     def save(self):
         data = {
             "title": self.title,
@@ -268,6 +291,29 @@ def move_book(book, direction, books=None):
     return books
 
 
+def set_finished(book, finished):
+    """Mark a book as read, or clear the mark. Returns the new state.
+
+    Nothing else changes: the reading position is left alone, so a
+    book marked by mistake and unmarked again is exactly where it
+    was, and a finished book still reopens where the reader stopped.
+    """
+    try:
+        if finished:
+            # Empty: its presence is the whole of the mark.
+            with open(book.finished_path, "w", encoding="utf-8"):
+                pass
+        else:
+            os.remove(book.finished_path)
+    except OSError:
+        # A workspace that has been removed or made read only.
+        # Nothing is thrown at the reader: the state read back
+        # below is the real one, so a mark that did not take is
+        # reported as not taken rather than as success.
+        pass
+    return book.finished
+
+
 def create_book(book_id, title, source_description, source_kind="book"):
     """Create (or reuse) a workspace for a new book."""
     workspace = os.path.join(config.books_dir(), book_id)
@@ -287,6 +333,13 @@ def create_book(book_id, title, source_description, source_kind="book"):
     # In a library nobody has arranged every position is still zero, so
     # this stays out of the way and titles decide as before.
     book.position = next_position()
+    # A workspace is reused when a delete could not remove all of
+    # it. Anything left of the old book goes, so a new import never
+    # arrives wearing the last one's mark.
+    try:
+        os.remove(book.finished_path)
+    except OSError:
+        pass
     book.save()
     return book
 

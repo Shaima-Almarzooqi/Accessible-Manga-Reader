@@ -4,11 +4,25 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 
 ## 1.1.0
 
+### Added
+
+- Books can be marked as finished reading with Ctrl+M.
+- New Claude and ChatGPT models are available. The default models have not
+  changed.
+
+### Changed
+
+- Audio export now uses Gemini 3.8 voice models. A saved older voice model is
+  moved to the new default automatically.
+
 ### Fixed
 
 - Scripts use the selected output language throughout, including labels for
   narration, sound effects, visible text, and thoughts. Label wording and
   character name spellings remain consistent across the book.
+- Placeholder names such as `<SFX>` no longer appear after the first batch in
+  place of words from the selected language. A partly processed book corrects
+  its saved labels on the next batch.
 
 ## 1.0.0
 

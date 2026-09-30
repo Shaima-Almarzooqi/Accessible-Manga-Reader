@@ -68,7 +68,7 @@ DEFAULT_SETTINGS = {
     "kokoro_voice_by_language": {},
     "windows_voice": "",
     "tts_voice": "Kore",
-    "tts_model": "gemini-3.1-flash-tts-preview",
+    "tts_model": "gemini-3.8-flash-tts",
     "image_max_dimension": 1568,
     "image_jpeg_quality": 85,
     # Update notifications: checked on a background thread at startup.
@@ -94,13 +94,24 @@ SUGGESTED_MODELS = {
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
     ],
+    # Sonnet 5.5 and Opus 5.5 are the current pair; Sonnet 5 and
+    # Opus 5 stay because Anthropic lists both as active into 2027,
+    # so a reader already using one is not pushed off it.
     "anthropic": [
+        "claude-sonnet-5-5",
         "claude-sonnet-5",
+        "claude-opus-5-5",
         "claude-opus-5",
         "claude-fable-5-1",
         "claude-haiku-4-5-20251001",
     ],
+    # The GPT-6 family reads images like the 5.6 models and is what
+    # OpenAI now lists; Luna is by far the cheapest of the three.
+    # The 5.6 entries stay: none of them are deprecated.
     "openai": [
+        "gpt-6-astra",
+        "gpt-6.1-sol",
+        "gpt-6-luna",
         "gpt-5.6",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -320,6 +331,14 @@ RETIRED_MODELS = {
         "gemini-2.5-flash": "gemini-3.5-flash",
         "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
         "gemini-3-flash-preview": "gemini-3.6-flash",
+    },
+    # A reader who saved one of the old voice models keeps a working
+    # export rather than a setting pointing at a model that has been
+    # marked legacy or closed to new projects.
+    "tts_model": {
+        "gemini-3.1-flash-tts-preview": "gemini-3.8-flash-tts",
+        "gemini-2.5-flash-preview-tts": "gemini-3.8-flash-tts",
+        "gemini-2.5-pro-preview-tts": "gemini-3.8-flash-tts",
     },
 }
 

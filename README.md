@@ -47,6 +47,8 @@ You can select more than one archive, PDF, or folder at a time. Each is imported
 
 Books are listed alphabetically until you reorder them. Use Ctrl+, to move a selected book up and Ctrl+. to move it down. These commands are also in the Book menu and the book's context menu. The app remembers the order. Once you reorder the library, newly imported books go to the bottom.
 
+Press Ctrl+M, or use the Book or context menu, to mark a selected book as finished reading. The mark is shown in the book's library line and can be cleared with the same command.
+
 Select the book and press Alt+P to process it. Before processing, you can enter book-specific instructions, such as character names and identifying features. This prompt can be disabled in Settings.
 
 Pages are processed in batches. The app saves each completed batch, so a cancelled or interrupted job can continue later. A partially processed book can be read while the remaining pages are processed.
@@ -73,6 +75,7 @@ In the library:
 - Alt+P or Ctrl+P — process or resume processing
 - Alt+S — open Settings
 - Ctrl+T — edit AI instructions for the selected book
+- Ctrl+M — mark or unmark the selected book as finished reading
 - F2 — rename the selected book
 - Ctrl+, / Ctrl+. — move the selected book up / down
 - Delete — remove the selected book
@@ -112,7 +115,7 @@ Changes to output language, verbosity, or instructions apply to newly processed 
 
 ## Export and audio
 
-Processed books can be exported as text, HTML, EPUB, Word, tagged PDF, or MP3. PDF export requires Microsoft Edge or Google Chrome. Audio export supports Gemini speech and offline Kokoro voices. Kokoro model files are downloaded on first use and stored in the app data folder.
+Processed books can be exported as text, HTML, EPUB, Word, tagged PDF, or MP3. PDF export requires Microsoft Edge or Google Chrome. Audio export supports Gemini 3.8 Flash TTS, Gemini 3.8 Flash-Lite TTS, and offline Kokoro voices. Kokoro model files are downloaded on first use and stored in the app data folder.
 
 When a command asks for a page range, the first page starts at the page you are on instead of page one. Audio does not announce page numbers by default. Select **Say the page number before each page** in the audio window to include them.
 

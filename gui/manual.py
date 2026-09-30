@@ -114,6 +114,10 @@ library, and continues if one item fails.</p>
 move a selected book up and Ctrl+. to move it down. These commands are also
 in the Book menu and the book's context menu. The app remembers the order.
 Once you reorder the library, newly imported books go to the bottom.</p>
+<p>Press Ctrl+M, or use Mark as finished reading in the Book or context menu,
+to mark the selected book as finished. The menu item shows whether the book
+is marked, and a marked book says "finished" in its library line. Use the
+same command to clear the mark.</p>
 
 <h2>Step 4: Process the book</h2>
 <ol>
@@ -215,9 +219,10 @@ formats are:</p>
 text, and Ctrl+Shift+E exports HTML.</p>
 
 <h3>Audio export</h3>
-<p>MP3 export supports Gemini speech and offline Kokoro voices. Gemini
-uses the configured Gemini API keys. Kokoro runs on the computer and
-requires a one-time model and voice download.</p>
+<p>MP3 export supports Gemini 3.8 Flash TTS, Gemini 3.8 Flash-Lite TTS,
+and offline Kokoro voices. Gemini uses the configured Gemini API keys.
+Kokoro runs on the computer and requires a one-time model and voice
+download.</p>
 <p>Audio does not announce page numbers by default. Select Say the page
 number before each page in the audio window to include them.</p>
 <p>The progress window reports the percentage read and an estimated time
@@ -290,6 +295,7 @@ downloaded voices.</p>
 <li>Alt+P or Ctrl+P: process or continue processing</li>
 <li>Alt+S: open Settings</li>
 <li>Ctrl+T: edit instructions for the selected book</li>
+<li>Ctrl+M: mark or unmark the selected book as finished reading</li>
 <li>F2: rename the selected book</li>
 <li>Ctrl+, / Ctrl+.: move the selected book up / down</li>
 <li>Delete: remove the selected book</li>

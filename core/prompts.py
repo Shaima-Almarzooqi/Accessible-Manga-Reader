@@ -144,8 +144,9 @@ TAIL_TEXT = {
         "- A tail pointing off the edge of the panel, or into empty "
         "space away from everyone drawn, means the speaker is off-panel: "
         "usually a character shown in a neighbouring panel. Use the "
-        "surrounding panels to name them, and fall back to \"Off-panel "
-        "voice:\" only when the story really does not show who it is.\n"
+        "surrounding panels to name them, and fall back to describing "
+        "the speaker as an off-panel voice only when the story really "
+        "does not show who it is.\n"
         "- A tail drawn as a chain of small circles or bubbles leading "
         "back to a character's head means thought, not speech: use the "
         "<THINKING> form. A cloud-shaped bubble, or a bubble made of "
@@ -506,13 +507,40 @@ Rules:
 - Do not add commentary, summaries, chapter recaps, or opinions. Only the script.
 - NEVER WRITE ABOUT YOURSELF OR YOUR OWN WORK. The script contains the comic and nothing else. Never mention what you noticed, forgot, missed, corrected, or found difficult; never apologise, never correct yourself in the output, never flag your own uncertainty as an aside, and never address the reader. Banned outright: "I forgot", "I missed", "oops", "wait", "correction", "apologies", "sorry", "let me", "actually", "on closer inspection", "I should have", "note that I", "as an AI", "I cannot tell". If you realise partway that an earlier line was wrong, silently write the page correctly -- do not narrate the fix. If a bubble's speaker or a piece of art is unclear, settle it by the rules above and carry on writing the script.
 - THE PANEL FORMAT IS THE ONLY STRUCTURE. Output the page as the panel lines defined above, in reading order, and nothing else. Never reorganise a page into general image-description categories: no "Composition", "Setting", "Characters", "Context", "Overall", "Summary", "Analysis", "Mood", "Art style", "Visual elements", or any other heading of your own invention. Never describe the page as a whole before or after the panels, and never group all the characters, all the dialogue, or all the background together across panels. Each panel is described where it falls in the reading order, with its own dialogue directly beneath it. The page map you build under MAPPING THE PAGE is working-out for your own use: it decides the order and the position words, and is never written out as a list, a layout summary, or a line of its own. A page broken into categories instead of panels is a failed script, however accurate its content.
-- NO HEADINGS, LABELS, OR MARKDOWN OF YOUR OWN. The only lines permitted are the page header, panel lines, speaker lines, and the four placeholder-labelled lines defined above. Do not add bold, italics, bullet points, numbered lists, horizontal rules, or any heading beyond the page header. Do not open with a sentence introducing the page and do not close with one wrapping it up: the first line of a page is its page header and the last is the final panel's last line.
+- NO HEADINGS, LABELS, OR MARKDOWN OF YOUR OWN. The only lines permitted are the page header, panel lines, speaker lines, and the four placeholder-labelled lines defined above. Do not add bold, italics, bullet points, numbered lists, horizontal rules, or any heading beyond the page header. Do not open with a sentence introducing the page and do not close with one wrapping it up: the first line of a page is its page header and the last is the final panel's last line. Character names are written plainly everywhere they appear, in the script and in the character notes alike: never wrapped in square brackets, angle brackets, asterisks or any other marking, whether in a speaker label, inside a line of dialogue, or in a panel description. A name in brackets is read out as punctuation by a screen reader.
 - If a page is a cover, title page, table of contents, or author note, still give it a PAGE header and briefly describe/transcribe it.
 
 CHARACTER CONSISTENCY
 You will receive CHARACTER NOTES describing characters identified so far. Use those exact names. If READER'S INSTRUCTIONS name or describe characters, those are canonical: match the characters you see to those descriptions and use those exact names from their very first appearance, even before the story itself reveals them. After the final page, output:
 === CHARACTER NOTES ===
-followed by a line reading LABELS: <THINKING>, <NARRATION>, <SFX>, <TEXT> giving the four {output_language} words you used, and then an updated compact list (one line per character: name, key visual features, role/relationships). If the notes you were given already carry a LABELS line, reuse those exact four words rather than choosing your own, so the labels do not change halfway through a book. Write the list in {output_language} too, using each character's name in the same {output_language} spelling you use in the script, so names stay identical from one batch to the next. Only the "=== CHARACTER NOTES ===" marker line itself stays in English. Add newly introduced characters, refine existing entries, and correct earlier uncertainty. Keep the whole block under 200 words. If a character's name has not been revealed yet, use a stable descriptive label in {output_language} (for example the {output_language} words for "the scarred man") and keep using it until the story names them."""
+followed by a line beginning LABELS: and then the four {output_language} words you actually used for thinking, narration, sound effect and text, in that order, separated by commas. Write the words themselves. <THINKING>, <NARRATION>, <SFX> and <TEXT> are not words and must never appear on that line or anywhere else in your output; a LABELS line carrying them instead of {output_language} words is a failed block. Then give an updated compact list (one line per character: name, key visual features, role/relationships). If the notes you were given already carry a LABELS line, reuse those exact four words rather than choosing your own, so the labels do not change halfway through a book -- unless one of them is an angle-bracket name rather than a real word, in which case ignore that line entirely and choose proper {output_language} words. Write the list in {output_language} too, using each character's name in the same {output_language} spelling you use in the script, so names stay identical from one batch to the next. Only the "=== CHARACTER NOTES ===" marker line itself stays in English. Add newly introduced characters, refine existing entries, and correct earlier uncertainty. Keep the whole block under 200 words. If a character's name has not been revealed yet, use a stable descriptive label in {output_language} (for example the {output_language} words for "the scarred man") and keep using it until the story names them."""
+
+
+# A LABELS line is meant to carry the words the model chose for
+# "thinking", "narration", "sound effect" and "text". An earlier
+# wording showed the placeholders as the template for that line,
+# so a model could write the angle-bracket names into it instead.
+# Fed back as the notes for the next batch, that line then told
+# the model those names WERE the labels, and it printed <SFX> and
+# <TEXT> into the script from that batch on -- which is why a book
+# would read correctly for its first batch and wrongly after it.
+PLACEHOLDER_LABEL_RE = re.compile(r"<\s*[A-Z_]+\s*>")
+
+
+def clean_character_notes(notes):
+    """Drop a LABELS line that carries placeholders, not words.
+
+    Notes already stored for a part-processed book keep the bad
+    line, so it is cleared on the way in and on the way out. The
+    rest of the notes is untouched: the character list is still
+    good, and only the labels have to be chosen again.
+    """
+    if not notes or "LABELS" not in notes:
+        return notes
+    kept = [line for line in notes.splitlines()
+            if not (line.strip().upper().startswith("LABELS:")
+                    and PLACEHOLDER_LABEL_RE.search(line))]
+    return "\n".join(kept).strip()
 
 
 def build_user_text(page_numbers, character_notes, book_title="",
@@ -536,6 +564,7 @@ def build_user_text(page_numbers, character_notes, book_title="",
         f"header, and never renumber from 1 -- even when consecutive "
         f"pages continue the same scene, each image is a separate page "
         f"and gets its own header.")
+    character_notes = clean_character_notes(character_notes)
     if character_notes.strip():
         parts.append("CHARACTER NOTES so far:\n" + character_notes.strip())
     else:
@@ -560,7 +589,7 @@ def parse_response(text):
     notes_match = NOTES_HEADER_RE.search(text)
     body = text
     if notes_match:
-        notes = text[notes_match.end():].strip()
+        notes = clean_character_notes(text[notes_match.end():].strip())
         body = text[:notes_match.start()]
 
     matches = list(PAGE_HEADER_RE.finditer(body))

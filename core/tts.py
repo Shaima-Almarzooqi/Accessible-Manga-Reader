@@ -80,13 +80,15 @@ ENGINE_KOKORO = "kokoro"
 DEFAULT_ENGINE = ENGINE_KOKORO
 
 # Voice models, offered when saving as audio so a reader can try
-# another if one is refusing or sounds wrong. Every one of them is a
-# preview release, which is why allowances for them are tight; there is
-# no settled voice model to fall back on.
+# another if one is refusing or sounds wrong. Both are settled
+# releases rather than previews, so their allowances are the ordinary
+# ones rather than a preview's. The models they replace are gone: the
+# 3.1 preview is marked legacy, and the 2.5 pair is now served only to
+# projects that already used it, so offering either would hand a new
+# reader a voice that never answers.
 TTS_MODELS = [
-    ("gemini-3.1-flash-tts-preview", "Preview"),
-    ("gemini-2.5-flash-preview-tts", "Preview"),
-    ("gemini-2.5-pro-preview-tts", "Preview"),
+    ("gemini-3.8-flash-tts", "Fuller voice"),
+    ("gemini-3.8-flash-lite-tts", "Built for long books"),
 ]
 DEFAULT_TTS_MODEL = TTS_MODELS[0][0]
 
@@ -146,7 +148,7 @@ def _wait(seconds, cancel_check=None):
             return False
         time.sleep(min(0.5, remaining))
 # One at a time. Free allowances run to only a handful of requests a
-# minute, and preview voice models less still, so asking for two at
+# minute, and voice models less still, so asking for two at
 # once simply earns two refusals instead of one -- and both then wake
 # together and collide again.
 DEFAULT_WORKERS = 1

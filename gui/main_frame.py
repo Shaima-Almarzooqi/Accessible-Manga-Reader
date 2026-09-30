@@ -209,6 +209,19 @@ class MainFrame(wx.Frame):
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord("."), move_down.GetId()),
         ]))
         book_menu.AppendSeparator()
+        # A check item rather than a plain one: a screen reader says
+        # "checked" or "unchecked" as the menu opens, so the current
+        # state is heard without having to read the library line.
+        self.finished_item = book_menu.AppendCheckItem(
+            wx.ID_ANY, "&Mark as finished reading\tCtrl+M",
+            "Mark this book as one you have finished")
+        self.Bind(wx.EVT_MENU, self.on_toggle_finished,
+                  self.finished_item)
+        # The tick has to match the selected book, and the selection
+        # changes without the menu knowing, so it is set as the menu
+        # opens rather than when it is built.
+        self.Bind(wx.EVT_MENU_OPEN, self.on_menu_open)
+        book_menu.AppendSeparator()
         self.Bind(wx.EVT_MENU, self.on_rename, book_menu.Append(
             wx.ID_ANY, "Re&name...\tF2"))
         self.Bind(wx.EVT_MENU, self.on_delete, book_menu.Append(
@@ -271,6 +284,10 @@ class MainFrame(wx.Frame):
             # stalled count with no explanation.
             if jobs.registry.is_processing(book):
                 status = "being processed now, " + status
+            # First, so a reader arrowing down the library hears it
+            # without waiting through the page counts.
+            if book.finished:
+                status = "finished, " + status
             items.append("%s (%s)" % (book.title or "Untitled", status))
         self.book_list.Set(items)
         if self.books:
@@ -723,6 +740,41 @@ class MainFrame(wx.Frame):
         if result == wx.ID_APPLY:
             self.on_reprocess(event)
 
+    def on_menu_open(self, event):
+        """Tick the finished item to match the selected book."""
+        item = getattr(self, "finished_item", None)
+        if item is None:
+            event.Skip()
+            return
+        selected = [self.books[i]
+                    for i in self.book_list.GetSelections()
+                    if i < len(self.books)]
+        # With nothing selected, or several, there is no single
+        # state to show, so the item is cleared and left enabled:
+        # choosing it then explains what to select.
+        item.Check(len(selected) == 1 and selected[0].finished)
+        event.Skip()
+
+    def on_toggle_finished(self, event):
+        book = self._selected_book()
+        if book is None:
+            return
+        wanted = not book.finished
+        became = library.set_finished(book, wanted)
+        # Refreshing rebuilds the list and selects this book again,
+        # which is what reads the changed line out: the word
+        # "finished" appearing or going is the confirmation, so
+        # pressing the key never passes without being heard.
+        self.refresh_books(select_book=book)
+        self.book_list.SetFocus()
+        if became != wanted:
+            # The line did not change, so there is nothing to hear
+            # and silence would read as success.
+            wx.MessageBox(
+                "The mark could not be saved. The book's folder may "
+                "have been moved, removed, or made read-only.",
+                config.APP_NAME, wx.OK | wx.ICON_WARNING, self)
+
     def on_move_up(self, event):
         self._move_selected(-1)
 
@@ -930,6 +982,12 @@ class MainFrame(wx.Frame):
                       menu.Append(wx.ID_ANY, "Move &up"))
             self.Bind(wx.EVT_MENU, self.on_move_down,
                       menu.Append(wx.ID_ANY, "Move do&wn"))
+            menu.AppendSeparator()
+            finished_item = menu.AppendCheckItem(
+                wx.ID_ANY, "&Mark as finished reading")
+            finished_item.Check(book.finished)
+            self.Bind(wx.EVT_MENU, self.on_toggle_finished,
+                      finished_item)
             menu.AppendSeparator()
             self.Bind(wx.EVT_MENU, self.on_rename,
                       menu.Append(wx.ID_ANY, "Re&name..."))

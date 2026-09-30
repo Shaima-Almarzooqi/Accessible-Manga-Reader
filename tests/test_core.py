@@ -1286,6 +1286,153 @@ class TestMovingBooks(unittest.TestCase):
         self.assertEqual(self._titles()[-2:], ["Damson", "Banana"])
 
 
+class TestFinishedReading(unittest.TestCase):
+    """Marking a book as read. The mark is the reader's, never inferred
+    from where they happen to have stopped."""
+
+    def setUp(self):
+        self.appdata = tempfile.mkdtemp()
+        self.previous = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = self.appdata
+        root = config.books_dir()
+        os.makedirs(root, exist_ok=True)
+        workspace = os.path.join(root, "a")
+        os.makedirs(os.path.join(workspace, "pages"), exist_ok=True)
+        book = library.Book(workspace)
+        book.title = "Cherry"
+        book.page_count = 10
+        book.save()
+        self.workspace = workspace
+
+    def tearDown(self):
+        if self.previous is None:
+            os.environ.pop("APPDATA", None)
+        else:
+            os.environ["APPDATA"] = self.previous
+        shutil.rmtree(self.appdata, ignore_errors=True)
+
+    def _reload(self):
+        return library.Book.load(self.workspace)
+
+    def test_a_new_book_is_not_finished(self):
+        self.assertFalse(self._reload().finished)
+
+    def test_marking_is_remembered(self):
+        library.set_finished(self._reload(), True)
+        self.assertTrue(self._reload().finished)
+
+    def test_the_mark_can_be_taken_back(self):
+        library.set_finished(self._reload(), True)
+        library.set_finished(self._reload(), False)
+        self.assertFalse(self._reload().finished)
+
+    def test_setting_it_reports_the_new_state(self):
+        self.assertTrue(library.set_finished(self._reload(), True))
+        self.assertFalse(library.set_finished(self._reload(), False))
+
+    def test_reaching_the_last_page_does_not_mark_it(self):
+        # Being on the last page is not the same as being done, and a
+        # reader who flicks to the end has not finished the book.
+        book = self._reload()
+        book.last_page = book.page_count
+        book.save()
+        self.assertFalse(self._reload().finished)
+
+    def test_marking_leaves_the_reading_position_alone(self):
+        # A book marked by mistake and unmarked again is exactly where
+        # it was, and a finished book still reopens where it stopped.
+        book = self._reload()
+        book.last_page = 4
+        book.last_position = 120
+        book.save()
+        library.set_finished(self._reload(), True)
+        library.set_finished(self._reload(), False)
+        again = self._reload()
+        self.assertEqual(again.last_page, 4)
+        self.assertEqual(again.last_position, 120)
+
+    def test_a_book_from_an_earlier_version_loads_unfinished(self):
+        # Nothing in the workspace marks it, so it is simply unmarked.
+        self.assertFalse(self._reload().finished)
+
+    def test_the_mark_is_not_kept_in_the_book_file(self):
+        # It lives in a file of its own precisely so that a whole-file
+        # save of book.json cannot carry a stale value over it.
+        library.set_finished(self._reload(), True)
+        with open(os.path.join(self.workspace, "book.json"),
+                  "r", encoding="utf-8") as f:
+            self.assertNotIn("finished", json.load(f))
+
+    def test_a_stale_copy_saving_does_not_clear_the_mark(self):
+        # The reader window and a running processing job each hold a
+        # Book for as long as they are open and save it periodically.
+        # A copy loaded before the mark was made must not undo it.
+        stale = self._reload()
+        library.set_finished(self._reload(), True)
+        stale.last_page = 3
+        stale.save()
+        self.assertTrue(self._reload().finished)
+
+    def test_a_stale_copy_saving_does_not_restore_a_cleared_mark(self):
+        # The same hazard the other way round.
+        library.set_finished(self._reload(), True)
+        stale = self._reload()
+        library.set_finished(self._reload(), False)
+        stale.save()
+        self.assertFalse(self._reload().finished)
+
+    def test_a_marked_book_reports_it_through_any_copy(self):
+        # Read from disk each time, so two live copies never disagree.
+        one, two = self._reload(), self._reload()
+        library.set_finished(one, True)
+        self.assertTrue(two.finished)
+
+    def test_clearing_a_mark_that_was_never_set_is_harmless(self):
+        self.assertFalse(library.set_finished(self._reload(), False))
+
+    def test_a_vanished_workspace_is_reported_not_raised(self):
+        # Pressing the key must never throw into the window. The state
+        # read back is the real one, so a mark that did not take comes
+        # back as not taken and the caller can say so.
+        book = self._reload()
+        shutil.rmtree(self.workspace)
+        self.assertFalse(library.set_finished(book, True))
+
+    def test_clearing_a_mark_in_a_vanished_workspace_is_quiet(self):
+        book = self._reload()
+        library.set_finished(book, True)
+        shutil.rmtree(self.workspace)
+        self.assertFalse(library.set_finished(book, False))
+
+    def test_a_reimport_does_not_inherit_an_old_mark(self):
+        # A delete that could not remove everything can leave the mark
+        # behind; a book imported into that folder is not finished.
+        library.set_finished(self._reload(), True)
+        os.remove(os.path.join(self.workspace, "book.json"))
+        fresh = library.create_book(
+            os.path.basename(self.workspace), "Something else", "src")
+        self.assertFalse(fresh.finished)
+
+    def test_reusing_a_workspace_keeps_an_existing_book_marked(self):
+        # Importing the same source again reuses its workspace and
+        # returns the book already there, mark and all.
+        library.set_finished(self._reload(), True)
+        again = library.create_book(
+            os.path.basename(self.workspace), "Cherry", "src")
+        self.assertTrue(again.finished)
+
+    def test_the_mark_does_not_disturb_the_order(self):
+        for folder, title in (("b", "Apple"), ("c", "Banana")):
+            workspace = os.path.join(config.books_dir(), folder)
+            os.makedirs(workspace, exist_ok=True)
+            book = library.Book(workspace)
+            book.title = title
+            book.save()
+        before = [b.title for b in library.list_books()]
+        library.set_finished(self._reload(), True)
+        self.assertEqual([b.title for b in library.list_books()], before)
+
+
 class TestRangeForScope(unittest.TestCase):
     """The page fields have to agree with the chosen scope.
 
@@ -2166,7 +2313,7 @@ class TestLanguageSetting(unittest.TestCase):
                 self.assertIn("<THINKING>", prompt)
                 self.assertIn("placeholders, not words to copy", prompt)
                 for literal in ("Narration:", "SFX:", "Text:",
-                                "(thinking)"):
+                                "(thinking)", "(off-panel)"):
                     self.assertNotIn(literal, prompt)
         self.assertIn("ordinary Arabic word", prompts.build_system_prompt(
             "manga", "detailed", "Arabic"))
@@ -2532,6 +2679,105 @@ class TestModelDefaultsAndLists(unittest.TestCase):
         self.assertEqual(len(set(models)), len(models))  # no duplicates
 
 
+
+
+class TestNewProviderModels(unittest.TestCase):
+    """Models added after 1.0.0. Adding one never moves a default: a
+    reader whose books were processed by a given model keeps it until
+    they choose otherwise."""
+
+    def test_the_current_anthropic_pair_is_offered(self):
+        models = config.SUGGESTED_MODELS["anthropic"]
+        self.assertIn("claude-sonnet-5-5", models)
+        self.assertIn("claude-opus-5-5", models)
+
+    def test_the_older_anthropic_pair_stays(self):
+        # Anthropic lists both as active into 2027, so there is no
+        # reason to take a working model away from anyone.
+        models = config.SUGGESTED_MODELS["anthropic"]
+        self.assertIn("claude-sonnet-5", models)
+        self.assertIn("claude-opus-5", models)
+
+    def test_the_anthropic_default_is_unchanged(self):
+        self.assertEqual(config.DEFAULT_SETTINGS["anthropic_model"],
+                         "claude-sonnet-5")
+
+    def test_the_gpt_6_family_is_offered(self):
+        models = config.SUGGESTED_MODELS["openai"]
+        for name in ("gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"):
+            self.assertIn(name, models)
+
+    def test_the_5_6_models_stay(self):
+        # None of them are deprecated, so they keep working.
+        models = config.SUGGESTED_MODELS["openai"]
+        for name in ("gpt-5.6", "gpt-5.6-terra", "gpt-5.6-luna"):
+            self.assertIn(name, models)
+
+    def test_the_openai_default_is_unchanged(self):
+        self.assertEqual(config.DEFAULT_SETTINGS["openai_model"], "gpt-5.6")
+
+    def test_the_gemini_default_is_unchanged(self):
+        self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
+                         "gemini-3.6-flash")
+
+    def test_no_list_repeats_a_model(self):
+        for service, models in config.SUGGESTED_MODELS.items():
+            self.assertEqual(len(set(models)), len(models), service)
+
+
+class TestVoiceModelsAreSettledReleases(unittest.TestCase):
+    """The voice models were all previews, which is why their
+    allowances were so tight. Both offered now are settled releases."""
+
+    def _tts(self):
+        from core import tts
+        return tts
+
+    def test_only_the_settled_pair_is_offered(self):
+        names = [name for name, _ in self._tts().TTS_MODELS]
+        self.assertEqual(names,
+                         ["gemini-3.8-flash-tts",
+                          "gemini-3.8-flash-lite-tts"])
+
+    def test_no_preview_voice_model_is_offered(self):
+        for name, _ in self._tts().TTS_MODELS:
+            self.assertNotIn("preview", name)
+
+    def test_the_default_is_the_first_offered(self):
+        self.assertEqual(self._tts().DEFAULT_TTS_MODEL,
+                         self._tts().TTS_MODELS[0][0])
+
+    def test_the_default_setting_matches(self):
+        self.assertEqual(config.DEFAULT_SETTINGS["tts_model"],
+                         self._tts().DEFAULT_TTS_MODEL)
+
+    def test_a_saved_legacy_voice_model_is_moved_on(self):
+        # Otherwise the setting points at a model marked legacy, or at
+        # one served only to projects that already used it, and the
+        # export fails for a reason the reader cannot act on.
+        for old in ("gemini-3.1-flash-tts-preview",
+                    "gemini-2.5-flash-preview-tts",
+                    "gemini-2.5-pro-preview-tts"):
+            moved = config._migrate({"tts_model": old})["tts_model"]
+            self.assertEqual(moved, "gemini-3.8-flash-tts", old)
+
+    def test_a_chosen_voice_model_is_left_alone(self):
+        kept = config._migrate(
+            {"tts_model": "gemini-3.8-flash-lite-tts"})["tts_model"]
+        self.assertEqual(kept, "gemini-3.8-flash-lite-tts")
+
+    def test_every_retired_model_points_at_one_we_offer(self):
+        # Covers every service at once, so a future retirement cannot
+        # be added with a replacement that is not on the list.
+        offered = {
+            "gemini_model": config.SUGGESTED_MODELS["gemini"],
+            "tts_model": [name for name, _ in self._tts().TTS_MODELS],
+        }
+        for setting, replacements in config.RETIRED_MODELS.items():
+            self.assertIn(setting, offered, setting)
+            for old, new in replacements.items():
+                self.assertIn(new, offered[setting], new)
+                self.assertNotIn(old, offered[setting], old)
 
 
 class TestInteractiveRetryPolicy(unittest.TestCase):
@@ -5204,6 +5450,73 @@ class TestTailRules(unittest.TestCase):
             prompt = prompts.build_system_prompt(
                 "manga", verbosity, "English")
             self.assertIn("Proximity is not attribution", prompt)
+
+
+class TestLabelsLineDoesNotPoisonLaterBatches(unittest.TestCase):
+    """A book read correctly for its first batch and wrongly after it.
+
+    The notes carry a LABELS line naming the words chosen for the four
+    labels. The instruction for writing that line used to show the
+    placeholders as its template, so a model could copy them into it.
+    Handed back as the notes for the next batch, that line then said
+    those names WERE the labels, and the script from that batch on
+    carried <SFX> and <TEXT> where the reader's own words belonged.
+    """
+
+    POISONED = ("LABELS: <THINKING>, <NARRATION>, <SFX>, <TEXT>\n"
+                "Conan Edogawa: boy with glasses\n"
+                "Ran Mouri: long dark hair")
+    GOOD = ("LABELS: \u062a\u0641\u0643\u064a\u0631, \u0633\u0631\u062f, "
+            "\u0645\u0624\u062b\u0631 \u0635\u0648\u062a\u064a, \u0646\u0635\n"
+            "Conan Edogawa: boy with glasses")
+
+    def test_a_poisoned_labels_line_is_dropped(self):
+        cleaned = prompts.clean_character_notes(self.POISONED)
+        self.assertNotIn("LABELS", cleaned)
+        self.assertNotIn("<SFX>", cleaned)
+
+    def test_the_character_list_survives_the_cleaning(self):
+        # Only the labels have to be chosen again; the names are good.
+        cleaned = prompts.clean_character_notes(self.POISONED)
+        self.assertIn("Conan Edogawa: boy with glasses", cleaned)
+        self.assertIn("Ran Mouri: long dark hair", cleaned)
+
+    def test_a_real_labels_line_is_kept(self):
+        # The whole point of the line is that labels stay put across
+        # batches, so a good one must not be thrown away with the bad.
+        self.assertEqual(prompts.clean_character_notes(self.GOOD),
+                         self.GOOD)
+
+    def test_notes_without_a_labels_line_are_untouched(self):
+        notes = "Conan Edogawa: boy with glasses"
+        self.assertEqual(prompts.clean_character_notes(notes), notes)
+
+    def test_nothing_poisoned_is_stored_from_a_response(self):
+        text = ("=== PAGE 11 ===\nPanel 1 (center): a room.\n"
+                "=== CHARACTER NOTES ===\n" + self.POISONED)
+        scripts, notes = prompts.parse_response(text)
+        self.assertIn(11, scripts)
+        self.assertNotIn("<SFX>", notes)
+
+    def test_notes_already_saved_are_cleaned_on_the_way_out(self):
+        # A book part-processed before the fix still has the bad line
+        # in its saved notes, and must not carry it into a new batch.
+        text = prompts.build_user_text([12], self.POISONED, "Conan")
+        self.assertNotIn("<SFX>", text)
+        self.assertNotIn("<TEXT>", text)
+        self.assertIn("Conan Edogawa", text)
+
+    def test_the_instruction_no_longer_shows_a_copyable_template(self):
+        # The placeholders must not sit directly after "LABELS:",
+        # which is what made copying them look correct.
+        for language in ("English", "Arabic"):
+            prompt = prompts.build_system_prompt(
+                "manga", "detailed", language)
+            self.assertNotIn("LABELS: <THINKING>", prompt)
+
+    def test_names_may_not_be_wrapped_in_markup(self):
+        prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
+        self.assertIn("never wrapped in square brackets", prompt)
 
 
 class TestUnknownIsNotEncouraged(unittest.TestCase):
