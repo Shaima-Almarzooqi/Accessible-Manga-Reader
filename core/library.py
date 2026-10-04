@@ -291,6 +291,36 @@ def move_book(book, direction, books=None):
     return books
 
 
+def status_text(book, processing=False):
+    """The part in brackets after a book's title in the library.
+
+    This is what a screen reader reads out when the reader arrows
+    onto a book, so it is built here and covered by tests rather
+    than assembled in the window where nothing checks it.
+    """
+    if book.page_count == 0:
+        status = "no pages"
+    elif book.is_complete():
+        # A finished book is not told it is ready to read: the
+        # reader has read it. The count stays, since it still says
+        # how long the book is.
+        status = ("%d pages" % book.page_count if book.finished
+                  else "ready to read, %d pages" % book.page_count)
+    else:
+        status = "%d of %d pages processed" % (
+            book.processed_count(), book.page_count)
+    # Processing runs in its own window, so the list has to say
+    # which book is busy; otherwise this reads as a stalled count
+    # with no explanation.
+    if processing:
+        status = "being processed now, " + status
+    # First, so a reader arrowing down the library hears it
+    # without waiting through the page counts.
+    if book.finished:
+        status = "finished, " + status
+    return status
+
+
 def set_finished(book, finished):
     """Mark a book as read, or clear the mark. Returns the new state.
 

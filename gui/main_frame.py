@@ -272,22 +272,10 @@ class MainFrame(wx.Frame):
         self.books = library.list_books()
         items = []
         for book in self.books:
-            done = book.processed_count()
-            if book.page_count == 0:
-                status = "no pages"
-            elif book.is_complete():
-                status = "ready to read, %d pages" % book.page_count
-            else:
-                status = "%d of %d pages processed" % (done, book.page_count)
-            # Processing runs in its own window now, so the list has to
-            # say which book is busy; otherwise this line reads as a
-            # stalled count with no explanation.
-            if jobs.registry.is_processing(book):
-                status = "being processed now, " + status
-            # First, so a reader arrowing down the library hears it
-            # without waiting through the page counts.
-            if book.finished:
-                status = "finished, " + status
+            # Built in core rather than here: this line is what a
+            # screen reader reads out, so it is covered by tests.
+            status = library.status_text(
+                book, jobs.registry.is_processing(book))
             items.append("%s (%s)" % (book.title or "Untitled", status))
         self.book_list.Set(items)
         if self.books:

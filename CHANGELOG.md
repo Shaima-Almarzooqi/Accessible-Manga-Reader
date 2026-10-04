@@ -6,7 +6,8 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 
 ### Added
 
-- Books can be marked as finished reading with Ctrl+M.
+- Books can be marked as finished reading with Ctrl+M. A marked book shows
+  "finished" and its page count in the library.
 - New Claude and ChatGPT models are available. The default models have not
   changed.
 

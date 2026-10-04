@@ -1433,6 +1433,95 @@ class TestFinishedReading(unittest.TestCase):
         self.assertEqual([b.title for b in library.list_books()], before)
 
 
+class TestLibraryStatusText(unittest.TestCase):
+    """What a screen reader reads out for each book in the library.
+
+    This line is the whole of what a reader hears when arrowing down
+    the list, so each wording is pinned rather than left to the window.
+    """
+
+    def setUp(self):
+        self.appdata = tempfile.mkdtemp()
+        self.previous = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = self.appdata
+        self.workspace = os.path.join(config.books_dir(), "a")
+        os.makedirs(self.workspace, exist_ok=True)
+
+    def tearDown(self):
+        if self.previous is None:
+            os.environ.pop("APPDATA", None)
+        else:
+            os.environ["APPDATA"] = self.previous
+        shutil.rmtree(self.appdata, ignore_errors=True)
+
+    def _book(self, pages=3, done=None, finished=False):
+        book = library.Book(self.workspace)
+        book.title = "Cherry"
+        book.page_count = pages
+        done = pages if done is None else done
+        book.scripts = {n: "text" for n in range(1, done + 1)}
+        if finished:
+            library.set_finished(book, True)
+        return book
+
+    def test_a_processed_book_is_ready_to_read(self):
+        self.assertEqual(library.status_text(self._book()),
+                         "ready to read, 3 pages")
+
+    def test_a_finished_book_is_not_told_it_is_ready_to_read(self):
+        # It has been read. Saying "ready to read" after the reader has
+        # marked it done is noise in front of everything else.
+        self.assertEqual(library.status_text(self._book(finished=True)),
+                         "finished, 3 pages")
+
+    def test_a_finished_book_still_gives_its_length(self):
+        status = library.status_text(self._book(pages=208, finished=True))
+        self.assertEqual(status, "finished, 208 pages")
+        self.assertNotIn("ready to read", status)
+
+    def test_the_mark_is_heard_first(self):
+        # Before the counts, so arrowing down the library does not mean
+        # listening past a page count to learn the book was finished.
+        self.assertTrue(library.status_text(
+            self._book(finished=True)).startswith("finished, "))
+
+    def test_a_part_processed_book_reports_its_progress(self):
+        self.assertEqual(library.status_text(self._book(pages=17, done=12)),
+                         "12 of 17 pages processed")
+
+    def test_a_finished_part_processed_book_keeps_its_progress(self):
+        # The unconverted pages are worth saying: the mark means the
+        # reader is done, not that every page was converted. This has no
+        # "ready to read" in it to drop.
+        self.assertEqual(
+            library.status_text(self._book(pages=17, done=12,
+                                           finished=True)),
+            "finished, 12 of 17 pages processed")
+
+    def test_a_book_with_no_pages_says_so(self):
+        self.assertEqual(library.status_text(self._book(pages=0, done=0)),
+                         "no pages")
+
+    def test_a_running_job_is_announced(self):
+        status = library.status_text(self._book(pages=17, done=2),
+                                     processing=True)
+        self.assertEqual(status, "being processed now, 2 of 17 pages processed")
+
+    def test_a_finished_book_being_reprocessed_reports_both(self):
+        status = library.status_text(self._book(finished=True),
+                                     processing=True)
+        self.assertEqual(status, "finished, being processed now, 3 pages")
+
+    def test_nothing_is_announced_twice(self):
+        for finished in (False, True):
+            for processing in (False, True):
+                status = library.status_text(
+                    self._book(finished=finished), processing=processing)
+                self.assertEqual(status.count("finished,"),
+                                 1 if finished else 0, status)
+                self.assertEqual(status.count("pages"), 1, status)
+
+
 class TestRangeForScope(unittest.TestCase):
     """The page fields have to agree with the chosen scope.
 

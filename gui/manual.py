@@ -104,11 +104,11 @@ file and are sent only to the selected provider.</p>
 folder</li>
 </ul>
 <p>Imported image files are ordered by filename.</p>
-<p>You can select more than one archive, PDF, or folder at a time. Each is
+<p>You can select one or more archives, PDFs, or folders at a time. Each is
 imported as a separate book, which is useful when a series has one chapter
-per file or folder. A single selection works as before. For multiple imports,
-the app reports the result once at the end, skips books already in the
-library, and continues if one item fails.</p>
+per file or folder. For multiple imports, the app reports the result once at
+the end, skips books already in the library, and continues if one item
+fails.</p>
 
 <p>Books are listed alphabetically until you reorder them. Use Ctrl+, to
 move a selected book up and Ctrl+. to move it down. These commands are also
@@ -116,8 +116,10 @@ in the Book menu and the book's context menu. The app remembers the order.
 Once you reorder the library, newly imported books go to the bottom.</p>
 <p>Press Ctrl+M, or use Mark as finished reading in the Book or context menu,
 to mark the selected book as finished. The menu item shows whether the book
-is marked, and a marked book says "finished" in its library line. Use the
-same command to clear the mark.</p>
+is marked. A finished book's library line says "finished" and gives its page
+count instead of listing it as ready to read. If some pages are unprocessed,
+the line gives the processing progress. Use the same command to clear the
+mark.</p>
 
 <h2>Step 4: Process the book</h2>
 <ol>

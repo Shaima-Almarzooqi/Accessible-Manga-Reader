@@ -43,7 +43,7 @@ Use the File menu to import:
 - **Image files** (Ctrl+I): selected page images, ordered by filename.
 - **Folder of images** (Ctrl+Shift+I): all supported images in a folder.
 
-You can select more than one archive, PDF, or folder at a time. Each is imported as a separate book, which is useful when a series has one chapter per file or folder. A single selection works as before. For multiple imports, the app reports the result once at the end, skips books already in the library, and continues if one item fails.
+You can select one or more archives, PDFs, or folders at a time. Each is imported as a separate book, which is useful when a series has one chapter per file or folder. For multiple imports, the app reports the result once at the end, skips books already in the library, and continues if one item fails.
 
 Books are listed alphabetically until you reorder them. Use Ctrl+, to move a selected book up and Ctrl+. to move it down. These commands are also in the Book menu and the book's context menu. The app remembers the order. Once you reorder the library, newly imported books go to the bottom.
 
