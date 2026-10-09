@@ -5745,7 +5745,30 @@ class TestOriginalLanguageReadsProperly(unittest.TestCase):
         prompt = self._prompt(config.ORIGINAL_LANGUAGE)
         self.assertIn(
             "in the language this script is being written in, "
-            "which is the comic's own language", prompt)
+            "which is the language the comic's dialogue is "
+            "printed in", prompt)
+
+    def test_the_language_is_judged_by_the_dialogue(self):
+        """Every mention has to carry the dialogue test.
+
+        Said as just "the comic's own language", it was read as the
+        language of the signage drawn in the artwork. On an English
+        scanlation of a Japanese comic that produced Japanese panel
+        descriptions and Japanese speaker names around dialogue that
+        was correctly left in English -- a script its reader cannot
+        read. ORIGINAL_RULE always said "the language its dialogue is
+        printed in"; the shorter phrase lost that.
+        """
+        prompt = self._prompt(config.ORIGINAL_LANGUAGE)
+        self.assertNotIn("the comic's own language", prompt)
+        self.assertIn("the language the comic's dialogue is "
+                      "printed in", prompt)
+
+    def test_a_named_language_is_unaffected(self):
+        # The description is only for the mode with no name to use.
+        prompt = self._prompt("English")
+        self.assertNotIn("the language the comic's dialogue", prompt)
+        self.assertIn("which is English", prompt)
 
     def test_the_instruction_names_the_failure_itself(self):
         # Naming the exact mistake, because the bare name without the

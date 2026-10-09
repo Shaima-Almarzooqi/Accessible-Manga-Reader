@@ -451,9 +451,14 @@ def build_system_prompt(comic_type, verbosity, output_language,
     verbosity_rules = VERBOSITY_TEXT.get(verbosity, VERBOSITY_TEXT["detailed"])
     if output_language == ORIGINAL_LANGUAGE:
         language_rule = ORIGINAL_RULE
-        # Everywhere else the prompt names the language; with nothing to
-        # name, it refers to the comic's own instead.
-        output_language = "the comic's own language"
+        # Everywhere else the prompt names the language; with nothing
+        # to name, it has to describe one instead. The description
+        # carries the test from ORIGINAL_RULE -- the language of the
+        # DIALOGUE -- because "the comic's own language" alone was
+        # read as the language of the signage in the artwork: on an
+        # English scanlation of a Japanese comic that produced
+        # Japanese descriptions around English dialogue.
+        output_language = "the language the comic's dialogue is printed in"
     else:
         language_rule = TRANSLATED_RULE.format(
             output_language=output_language)
