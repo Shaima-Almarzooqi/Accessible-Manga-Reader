@@ -235,10 +235,49 @@ class GeminiClient(_RetryMixin):
         )
     ]
 
+    # Gemini 3 models reason before they answer, and the tokens they
+    # spend doing it come out of the SAME allowance as the script.
+    # Measured against real pages, reasoning took 3,000 to 5,700
+    # tokens of an 8,000 allowance; at larger batch sizes that
+    # leaves too little for the script and the reply arrives empty.
+    # Capping it keeps the allowance for what the reader actually
+    # gets. Every model offered accepts the setting, and the ones
+    # that do not reason are unaffected by it.
+    THINKING_BUDGET = 1024
+
+    # Room above the script allowance, because a model may treat
+    # the cap as a suggestion: one tested model spent 2,063 tokens
+    # against a cap of 512. The headroom keeps that overspend out
+    # of the script rather than letting it cut the script short.
+    THINKING_HEADROOM = 4096
+
     def __init__(self, api_key, model, max_tokens=8000):
         self.api_key = api_key
         self.model = model
         self.max_tokens = max_tokens
+        # Cleared if a model ever rejects the setting, so the retry
+        # goes out without it instead of failing the batch.
+        self.send_thinking_config = True
+
+    def _generation_config(self):
+        """The ceiling, plus a cap on how much of it reasoning
+        may take.
+
+        maxOutputTokens covers reasoning and script together, so
+        the ceiling sent is the script allowance plus the room
+        reasoning is allowed. The reader's own max_tokens setting
+        then means what it looks like it means: how long the
+        script may be, rather than a figure reasoning can quietly
+        spend first.
+        """
+        if not self.send_thinking_config:
+            return {"maxOutputTokens": self.max_tokens}
+        return {
+            "maxOutputTokens":
+                self.max_tokens + self.THINKING_HEADROOM,
+            "thinkingConfig":
+                {"thinkingBudget": self.THINKING_BUDGET},
+        }
 
     def _build_payload(self, system_prompt, content):
         parts = []
@@ -253,7 +292,7 @@ class GeminiClient(_RetryMixin):
         return {
             "system_instruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"role": "user", "parts": parts}],
-            "generationConfig": {"maxOutputTokens": self.max_tokens},
+            "generationConfig": self._generation_config(),
             "safetySettings": self.SAFETY_SETTINGS,
         }
 
@@ -277,6 +316,21 @@ class GeminiClient(_RetryMixin):
                 "filtering. Try again, or switch model in Settings.")
         parts = candidate.get("content", {}).get("parts", [])
         text = "".join(part.get("text", "") for part in parts)
+        if candidate.get("finishReason") == "MAX_TOKENS":
+            # The allowance ran out. Asking again changes nothing,
+            # so this is not retryable: it needs fewer pages per
+            # request or a larger allowance in Settings.
+            if not text.strip():
+                raise ApiError(
+                    "Gemini used up this batch's token allowance "
+                    "before writing any of the script. Lower "
+                    "'Pages per request' in Settings, or raise "
+                    "'Max tokens'.")
+            raise ApiError(
+                "Gemini ran out of its token allowance partway "
+                "through this batch, so the script is incomplete. "
+                "Lower 'Pages per request' in Settings, or raise "
+                "'Max tokens'.")
         if not text.strip():
             raise ApiError("Gemini returned an empty response.",
                            retryable=True)
@@ -336,9 +390,18 @@ class GeminiClient(_RetryMixin):
                     "Gemini model '%s' was not found. Check the model name "
                     "in Settings." % self.model)
             if response.status_code == 400:
+                detail = readable_error(response)
+                if (self.send_thinking_config
+                        and "thinking" in detail.lower()):
+                    # This model does not take the reasoning cap.
+                    # Drop it and ask again rather than failing
+                    # the batch over a setting we added.
+                    self.send_thinking_config = False
+                    payload = self._build_payload(
+                        system_prompt, content)
+                    continue
                 raise ApiError(
-                    "Gemini rejected the request: %s"
-                    % readable_error(response))
+                    "Gemini rejected the request: %s" % detail)
             if response.status_code == 429:
                 try:
                     body = response.json()

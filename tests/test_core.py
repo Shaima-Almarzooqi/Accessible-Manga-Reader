@@ -373,8 +373,17 @@ class TestProviderClients(unittest.TestCase):
             self.assertEqual(parts[1]["inline_data"]["mime_type"],
                              "image/jpeg")
             self.assertTrue(parts[1]["inline_data"]["data"])
+            # The ceiling covers reasoning and script together, so
+            # it is the script allowance plus the room reasoning is
+            # allowed -- not the bare setting, which reasoning would
+            # otherwise eat into.
+            generation = payload["generationConfig"]
             self.assertEqual(
-                payload["generationConfig"]["maxOutputTokens"], 1234)
+                generation["maxOutputTokens"],
+                1234 + client.THINKING_HEADROOM)
+            self.assertEqual(
+                generation["thinkingConfig"]["thinkingBudget"],
+                client.THINKING_BUDGET)
             self.assertEqual(len(payload["safetySettings"]), 4)
         finally:
             os.unlink(image_path)
@@ -421,6 +430,105 @@ class TestProviderClients(unittest.TestCase):
         self.assertIsInstance(client, api_client.RotatingClient)
         self.assertIs(client.client_class, api_client.GeminiClient)
         self.assertEqual(client.model, "gemini-3.6-flash")
+
+
+class TestGeminiThinkingBudget(unittest.TestCase):
+    """Gemini 3 models reason before answering, and those tokens come
+    out of the same allowance as the script.
+
+    Measured against real pages at the app's own 8000 allowance:
+    reasoning took 3129 tokens on one page and 5721 on eight, leaving
+    too little for the script. Capping reasoning fixed the models that
+    were returning nothing.
+    """
+
+    def _client(self, max_tokens=8000):
+        from core import api_client
+        return api_client.GeminiClient("key", "gemini-3.8-flash",
+                                       max_tokens=max_tokens)
+
+    def test_reasoning_is_capped(self):
+        config_sent = self._client()._generation_config()
+        self.assertEqual(config_sent["thinkingConfig"]["thinkingBudget"],
+                         self._client().THINKING_BUDGET)
+
+    def test_the_ceiling_leaves_the_whole_allowance_for_the_script(self):
+        # The ceiling covers reasoning and script together, so sending
+        # the bare setting would let reasoning eat the script's share.
+        client = self._client(8000)
+        self.assertEqual(client._generation_config()["maxOutputTokens"],
+                         8000 + client.THINKING_HEADROOM)
+
+    def test_there_is_room_for_a_model_that_overspends(self):
+        # One tested model spent 2063 tokens against a cap of 512, so
+        # the headroom has to absorb more than the cap itself.
+        client = self._client()
+        self.assertGreater(client.THINKING_HEADROOM,
+                           client.THINKING_BUDGET)
+
+    def test_a_model_that_refuses_the_cap_is_still_usable(self):
+        # Every model offered accepted it when tested, but refusing it
+        # must cost the reader a retry, not the batch.
+        client = self._client()
+        client.send_thinking_config = False
+        config_sent = client._generation_config()
+        self.assertNotIn("thinkingConfig", config_sent)
+        self.assertEqual(config_sent["maxOutputTokens"], 8000)
+
+
+class TestGeminiRunningOutOfTokens(unittest.TestCase):
+    """Running out of allowance used to be reported as an empty
+    response and retried, which could never succeed: the same request
+    runs out at the same place every time."""
+
+    def _extract(self, finish, text):
+        from core import api_client
+        parts = [{"text": text}] if text else []
+        return api_client.GeminiClient.extract_text(
+            {"candidates": [{"finishReason": finish,
+                             "content": {"parts": parts}}]})
+
+    def test_running_out_before_writing_anything_says_so(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            self._extract("MAX_TOKENS", "")
+        self.assertIn("allowance", str(caught.exception))
+
+    def test_running_out_partway_says_the_script_is_incomplete(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            self._extract("MAX_TOKENS", "=== PAGE 1 ===\nPanel 1: hi.")
+        self.assertIn("incomplete", str(caught.exception))
+
+    def test_it_is_not_retried(self):
+        # Asking again changes nothing, so retrying only makes the
+        # reader wait longer for the same failure.
+        from core import api_client
+        for text in ("", "=== PAGE 1 ===\nPanel 1: hi."):
+            with self.assertRaises(api_client.ApiError) as caught:
+                self._extract("MAX_TOKENS", text)
+            self.assertFalse(
+                getattr(caught.exception, "retryable", False), text)
+
+    def test_it_points_at_the_two_settings_that_help(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            self._extract("MAX_TOKENS", "")
+        message = str(caught.exception)
+        self.assertIn("Pages per request", message)
+        self.assertIn("Max tokens", message)
+
+    def test_an_ordinary_empty_response_is_still_retried(self):
+        # A 200 carrying nothing, with no reason given, is a hiccup
+        # worth asking about again.
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            self._extract("STOP", "")
+        self.assertTrue(getattr(caught.exception, "retryable", False))
+
+    def test_a_finished_script_is_returned_unchanged(self):
+        self.assertEqual(self._extract("STOP", "=== PAGE 1 ==="),
+                         "=== PAGE 1 ===")
 
 
 class TestSettingsMigration(unittest.TestCase):
