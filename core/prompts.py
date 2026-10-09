@@ -494,15 +494,15 @@ where <position> is the panel's physical location on the page, chosen from exact
 <SFX>: <sound> -- <what it conveys, e.g. "a door slamming">
 <TEXT>: <words visible in the art> -- <where they appear>
 
-<THINKING>, <NARRATION>, <SFX> and <TEXT> are placeholders, not words to copy. Replace each with the ordinary {output_language} word for "thinking", "narration", "sound effect" and "text". Before you write anything, settle on those four words and on the {output_language} spelling of each character's name, then use exactly those, unchanged, on every line of every page. A script that labels some lines in {output_language} and others in English has failed, and so has one that spells a character's name two different ways. Only three things are ever written in English: the "=== PAGE n ===" line, the "Panel n (position):" prefix including the position word, and the "=== CHARACTER NOTES ===" line. Those three are read by the app; everything else on every other line belongs to the reader and is in {output_language}.
+<THINKING>, <NARRATION>, <SFX> and <TEXT> are placeholders, not words to copy. Replace each with the ordinary word for "thinking", "narration", "sound effect" and "text" in the language this script is being written in, which is {output_language}. Writing THINKING, NARRATION, SFX or TEXT, with or without the angle brackets, is not replacing them: those are the names of the slots, never labels. Before you write anything, settle on those four words and on how each character's name is spelled in that language, then use exactly those, unchanged, on every line of every page. A script that labels some lines in {output_language} and others in English has failed, and so has one that spells a character's name two different ways. Only three things are ever written in English: the "=== PAGE n ===" line, the "Panel n (position):" prefix including the position word, and the "=== CHARACTER NOTES ===" line. Those three are read by the app; everything else on every other line belongs to the reader and is in {output_language}.
 
 Rules:
 - Dialogue lines come AFTER the panel description line for their panel, in the order the bubbles are read, each attached to the character who speaks it.
-- Attribute every line of dialogue to a character. Use bubble tail position, who is shown speaking, and the CHARACTER NOTES to identify speakers. If genuinely uncertain, use the {output_language} equivalent of "Off-panel voice:" or "Unknown:" rather than guessing a name.
+- Attribute every line of dialogue to a character. Use bubble tail position, who is shown speaking, and the CHARACTER NOTES to identify speakers. If genuinely uncertain, use the equivalent in {output_language} of "Off-panel voice:" or "Unknown:" rather than guessing a name.
 - {language_rule} This governs every line: the panel descriptions, the speaker names, the dialogue, the four labels described above, and any qualifier such as the one marking a speaker who is off-panel. The three structural markers named above are the only English.
 - Silent panels matter: describe them like any other panel. A wordless close-up or a held beat is storytelling; a line like "Panel 4: Silent. Aiko stares at the empty chair." is perfect.
 - Words visible in the art (signs, phone screens, letters) go on a <TEXT> line with a short location note tying them to the object they appear on.
-- COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, put the {output_language} equivalent of "(illegible)" on a <TEXT> line at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.
+- COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, put the equivalent in {output_language} of "(illegible)" on a <TEXT> line at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.
 - OBJECTIVITY IS STRICT, AT EVERY VERBOSITY LEVEL: you are a camera, not a critic. Describe only what is visibly drawn on the page. Never add your own interpretation, symbolism, atmosphere poetry, or emotional commentary. Banned: "as if", "seemingly", "a sense of", "one can feel", "beautifully", "hauntingly", "symbolizing", and any sentence about what a moment "means". When emotion is visible, name its visible signs: write "tears well up in her eyes and her hands tremble", never "her heart breaks" or "the weight of loss fills the panel".
 - Do not add commentary, summaries, chapter recaps, or opinions. Only the script.
 - NEVER WRITE ABOUT YOURSELF OR YOUR OWN WORK. The script contains the comic and nothing else. Never mention what you noticed, forgot, missed, corrected, or found difficult; never apologise, never correct yourself in the output, never flag your own uncertainty as an aside, and never address the reader. Banned outright: "I forgot", "I missed", "oops", "wait", "correction", "apologies", "sorry", "let me", "actually", "on closer inspection", "I should have", "note that I", "as an AI", "I cannot tell". If you realise partway that an earlier line was wrong, silently write the page correctly -- do not narrate the fix. If a bubble's speaker or a piece of art is unclear, settle it by the rules above and carry on writing the script.
@@ -513,7 +513,7 @@ Rules:
 CHARACTER CONSISTENCY
 You will receive CHARACTER NOTES describing characters identified so far. Use those exact names. If READER'S INSTRUCTIONS name or describe characters, those are canonical: match the characters you see to those descriptions and use those exact names from their very first appearance, even before the story itself reveals them. After the final page, output:
 === CHARACTER NOTES ===
-followed by a line beginning LABELS: and then the four {output_language} words you actually used for thinking, narration, sound effect and text, in that order, separated by commas. Write the words themselves. <THINKING>, <NARRATION>, <SFX> and <TEXT> are not words and must never appear on that line or anywhere else in your output; a LABELS line carrying them instead of {output_language} words is a failed block. Then give an updated compact list (one line per character: name, key visual features, role/relationships). If the notes you were given already carry a LABELS line, reuse those exact four words rather than choosing your own, so the labels do not change halfway through a book -- unless one of them is an angle-bracket name rather than a real word, in which case ignore that line entirely and choose proper {output_language} words. Write the list in {output_language} too, using each character's name in the same {output_language} spelling you use in the script, so names stay identical from one batch to the next. Only the "=== CHARACTER NOTES ===" marker line itself stays in English. Add newly introduced characters, refine existing entries, and correct earlier uncertainty. Keep the whole block under 200 words. If a character's name has not been revealed yet, use a stable descriptive label in {output_language} (for example the {output_language} words for "the scarred man") and keep using it until the story names them."""
+followed by a line beginning LABELS: and then the four words in {output_language} you actually used for thinking, narration, sound effect and text, in that order, separated by commas. Write the words themselves. <THINKING>, <NARRATION>, <SFX> and <TEXT> are not words and must never appear on that line or anywhere else in your output; a LABELS line carrying them instead of words in {output_language} is a failed block. Then give an updated compact list (one line per character: name, key visual features, role/relationships). If the notes you were given already carry a LABELS line, reuse those exact four words rather than choosing your own, so the labels do not change halfway through a book -- unless one of them is an angle-bracket name rather than a real word, in which case ignore that line entirely and choose proper words in {output_language}. Write the list in {output_language} too, using each character's name in the same spelling you use in the script, so names stay identical from one batch to the next. Only the "=== CHARACTER NOTES ===" marker line itself stays in English. Add newly introduced characters, refine existing entries, and correct earlier uncertainty. Keep the whole block under 200 words. If a character's name has not been revealed yet, use a stable descriptive label in {output_language} (for example the words in {output_language} for "the scarred man") and keep using it until the story names them."""
 
 
 # A LABELS line is meant to carry the words the model chose for
@@ -525,6 +525,13 @@ followed by a line beginning LABELS: and then the four {output_language} words y
 # <TEXT> into the script from that batch on -- which is why a book
 # would read correctly for its first batch and wrongly after it.
 PLACEHOLDER_LABEL_RE = re.compile(r"<\s*[A-Z_]+\s*>")
+
+# The names themselves, for a model that drops the angle brackets
+# but still writes the placeholder instead of a word. Guarding only
+# the bracketed spelling let "LABELS: THINKING, NARRATION, SFX,
+# TEXT" through, which poisoned every later batch just the same.
+PLACEHOLDER_NAMES = ("THINKING", "NARRATION", "SFX", "TEXT",
+                     "OFF_PANEL")
 
 
 def clean_character_notes(notes):
@@ -538,9 +545,32 @@ def clean_character_notes(notes):
     if not notes or "LABELS" not in notes:
         return notes
     kept = [line for line in notes.splitlines()
-            if not (line.strip().upper().startswith("LABELS:")
-                    and PLACEHOLDER_LABEL_RE.search(line))]
+            if not _is_placeholder_labels_line(line)]
     return "\n".join(kept).strip()
+
+
+def _is_placeholder_labels_line(line):
+    """A LABELS line that names placeholders rather than words.
+
+    Either spelling counts: with the angle brackets, or the bare
+    name left standing where the reader's own word belongs.
+    """
+    stripped = line.strip()
+    if not stripped.upper().startswith("LABELS:"):
+        return False
+    if PLACEHOLDER_LABEL_RE.search(stripped):
+        return True
+    # Every entry has to be a placeholder name before the line is
+    # treated as an echo of the template. One of them matching
+    # proves nothing: "Text" is the German word, and in English the
+    # real labels are "thinking" and "narration" themselves. The
+    # giveaway is the whole line being the template, "SFX" included
+    # where a reader would have "sound effect".
+    entries = [part.strip().strip("<>").upper()
+               for part in stripped.split(":", 1)[1].split(",")
+               if part.strip()]
+    return (len(entries) >= 2
+            and all(entry in PLACEHOLDER_NAMES for entry in entries))
 
 
 def build_user_text(page_numbers, character_notes, book_title="",

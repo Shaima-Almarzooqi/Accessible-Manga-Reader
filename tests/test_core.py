@@ -2512,8 +2512,12 @@ class TestLanguageSetting(unittest.TestCase):
                 for literal in ("Narration:", "SFX:", "Text:",
                                 "(thinking)", "(off-panel)"):
                     self.assertNotIn(literal, prompt)
-        self.assertIn("ordinary Arabic word", prompts.build_system_prompt(
-            "manga", "detailed", "Arabic"))
+        # The instruction has to name the language the labels are
+        # to be written in, whichever language that is.
+        self.assertIn(
+            "in the language this script is being written in, "
+            "which is Arabic",
+            prompts.build_system_prompt("manga", "detailed", "Arabic"))
 
     def test_the_labels_are_settled_once_and_kept(self):
         # A book whose labels change halfway through reads as two
@@ -2534,13 +2538,17 @@ class TestLanguageSetting(unittest.TestCase):
         # transliterated names as the script or names would drift.
         prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
         self.assertIn("Write the list in Arabic too", prompt)
-        self.assertIn("same Arabic spelling you use in the script",
+        # The language is named earlier in the same sentence, so
+        # the spelling clause no longer repeats it: naming it here
+        # read as "the same the comic's own language spelling"
+        # once the language was a phrase rather than a name.
+        self.assertIn("the same spelling you use in the script",
                       prompt)
 
     def test_fallback_labels_follow_the_language(self):
         prompt = prompts.build_system_prompt("manga", "detailed", "Arabic")
-        self.assertIn('the Arabic equivalent of "Off-panel voice:" or '
-                      '"Unknown:"', prompt)
+        self.assertIn('the equivalent in Arabic of "Off-panel voice:" '
+                      'or "Unknown:"', prompt)
 
     def test_names_are_transliterated_into_the_target_alphabet(self):
         # Character names now follow the target language's alphabet, and
@@ -5716,6 +5724,96 @@ class TestLabelsLineDoesNotPoisonLaterBatches(unittest.TestCase):
         self.assertIn("never wrapped in square brackets", prompt)
 
 
+class TestOriginalLanguageReadsProperly(unittest.TestCase):
+    """With "Original (same as the comic)" chosen there is no language
+    name to put in the prompt, so the phrase "the comic's own language"
+    goes in instead. Dropped into a slot expecting a name, that produced
+    "the ordinary the comic's own language word for ...", which a model
+    cannot act on -- and the ones that could not fell back to printing
+    the placeholder itself.
+    """
+
+    def _prompt(self, language):
+        return prompts.build_system_prompt("manga", "extensive", language)
+
+    def test_no_doubled_article_anywhere(self):
+        prompt = self._prompt(config.ORIGINAL_LANGUAGE)
+        for stutter in ("the the ", "the ordinary the ", "a the "):
+            self.assertNotIn(stutter, prompt, stutter)
+
+    def test_the_placeholder_instruction_is_readable(self):
+        prompt = self._prompt(config.ORIGINAL_LANGUAGE)
+        self.assertIn(
+            "in the language this script is being written in, "
+            "which is the comic's own language", prompt)
+
+    def test_the_instruction_names_the_failure_itself(self):
+        # Naming the exact mistake, because the bare name without the
+        # brackets was what actually came back.
+        for language in ("English", "Arabic", config.ORIGINAL_LANGUAGE):
+            prompt = self._prompt(language)
+            self.assertIn(
+                "Writing THINKING, NARRATION, SFX or TEXT, with or "
+                "without the angle brackets, is not replacing them",
+                prompt)
+
+
+class TestLabelsLineWithoutBrackets(unittest.TestCase):
+    """A LABELS line naming the placeholders but with the brackets
+    stripped -- "LABELS: THINKING, NARRATION, SFX, TEXT" -- was carried
+    into the next batch as though those were the chosen words, so the
+    script came back labelled with them. Guarding only the bracketed
+    spelling missed it.
+    """
+
+    def _clean(self, labels):
+        return prompts.clean_character_notes(
+            labels + "\nConan Edogawa: boy with glasses")
+
+    def test_bare_placeholder_names_are_dropped(self):
+        cleaned = self._clean("LABELS: THINKING, NARRATION, SFX, TEXT")
+        self.assertNotIn("LABELS", cleaned)
+        self.assertIn("Conan Edogawa: boy with glasses", cleaned)
+
+    def test_the_bracketed_spelling_is_still_dropped(self):
+        self.assertNotIn("LABELS", self._clean(
+            "LABELS: <THINKING>, <NARRATION>, <SFX>, <TEXT>"))
+
+    def test_case_does_not_matter(self):
+        self.assertNotIn("LABELS", self._clean(
+            "labels: thinking, narration, sfx, text"))
+
+    def test_real_words_are_kept(self):
+        # The line exists to hold labels steady across batches, so a
+        # good one must survive. "Text" is the German word, and in
+        # English the real labels are these words themselves -- only
+        # the whole line being the template gives it away.
+        for good in (
+                "LABELS: \u062a\u0641\u0643\u064a\u0631, \u0633\u0631\u062f, "
+                "\u0645\u0624\u062b\u0631 \u0635\u0648\u062a\u064a, \u0646\u0635",
+                "LABELS: thinking, narration, sound effect, text",
+                "LABELS: Gedanken, Erzaehlung, Geraeusch, Text",
+                "LABELS: \u601d\u8003, \u30ca\u30ec\u30fc\u30b7\u30e7\u30f3, "
+                "\u52b9\u679c\u97f3, \u30c6\u30ad\u30b9\u30c8",
+        ):
+            self.assertIn("LABELS", self._clean(good), good)
+
+    def test_a_poisoned_line_never_reaches_the_next_batch(self):
+        text = prompts.build_user_text(
+            [11], "LABELS: THINKING, NARRATION, SFX, TEXT\nConan: boy",
+            "Conan")
+        self.assertNotIn("LABELS", text)
+        self.assertIn("Conan: boy", text)
+
+    def test_nothing_poisoned_is_stored_from_a_response(self):
+        response = ("=== PAGE 1 ===\nPanel 1 (center): a room.\n"
+                    "=== CHARACTER NOTES ===\n"
+                    "LABELS: THINKING, NARRATION, SFX, TEXT\nConan: boy")
+        scripts, notes = prompts.parse_response(response)
+        self.assertIn(1, scripts)
+        self.assertNotIn("LABELS", notes)
+
+
 class TestUnknownIsNotEncouraged(unittest.TestCase):
     """Regression guard. An earlier draft of the tail rules also told
     the model that answering "Unknown" was an expected, non-failing
@@ -5741,13 +5839,18 @@ class TestUnknownIsNotEncouraged(unittest.TestCase):
     def test_original_attribution_rule_is_untouched(self):
         prompt = prompts.build_system_prompt(
             "manga", "detailed", "English")
-        # The 0.15.0 rule, now with the fallback labels allowed in the
-        # output language rather than pinned to English.
+        # The 0.15.0 rule, with the fallback labels allowed in the
+        # output language rather than pinned to English, and the
+        # language moved after "equivalent": written the other way
+        # round it became "the the comic's own language equivalent"
+        # whenever the reader chose the comic's own language.
+        # What this guards is unchanged -- uncertainty is licensed
+        # here and nowhere else, exactly once.
         self.assertIn(
             "Attribute every line of dialogue to a character. Use bubble "
             "tail position, who is shown speaking, and the CHARACTER "
             "NOTES to identify speakers. If genuinely uncertain, use "
-            "the English equivalent of \"Off-panel voice:\" or "
+            "the equivalent in English of \"Off-panel voice:\" or "
             "\"Unknown:\" rather than guessing a name.", prompt)
 
     def test_tail_rules_never_frame_uncertainty_as_desirable(self):
