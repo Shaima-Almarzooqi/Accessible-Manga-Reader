@@ -476,6 +476,46 @@ class TestGeminiThinkingBudget(unittest.TestCase):
         self.assertEqual(config_sent["maxOutputTokens"], 8000)
 
 
+class TestTheLiteModelsAreNotMadeToReason(unittest.TestCase):
+    """Sending the cap to a model that does not reason does not leave
+    it as it was -- it switches reasoning on.
+
+    Timed on the same five pages: 3.5 Flash-Lite went from no
+    reasoning tokens at all and 6.3 seconds to 3,412 reasoning tokens
+    and 13.7, and 3.1 Flash-Lite from 4.9 seconds to 8.0. Neither ever
+    had the problem the cap solves, so neither is sent it.
+    """
+
+    def _config(self, model):
+        from core import api_client
+        return api_client.GeminiClient("key", model, 8000)
+
+    def test_the_lite_models_are_sent_the_plain_ceiling(self):
+        for model in ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite"):
+            sent = self._config(model)._generation_config()
+            self.assertNotIn("thinkingConfig", sent)
+            self.assertEqual(8000, sent["maxOutputTokens"])
+
+    def test_the_reasoning_models_still_get_the_cap(self):
+        for model in ("gemini-3.8-flash", "gemini-3.7-flash",
+                      "gemini-3.6-flash", "gemini-3.5-flash"):
+            sent = self._config(model)._generation_config()
+            self.assertIn("thinkingConfig", sent)
+
+    def test_every_offered_model_is_classified(self):
+        # A model added to the list later is treated as reasoning
+        # until measured, which is the safe way round: the cap costs
+        # a reasoning model nothing it needed.
+        for model in config.SUGGESTED_MODELS["gemini"]:
+            client = self._config(model)
+            self.assertEqual("lite" in model,
+                             not client.reasons_before_answering())
+
+    def test_the_decision_is_made_on_the_name_in_any_case(self):
+        self.assertFalse(
+            self._config("GEMINI-3.5-FLASH-LITE").reasons_before_answering())
+
+
 class TestGeminiRunningOutOfTokens(unittest.TestCase):
     """Running out of allowance used to be reported as an empty
     response and retried, which could never succeed: the same request
@@ -5770,15 +5810,22 @@ class TestOriginalLanguageReadsProperly(unittest.TestCase):
         self.assertNotIn("the language the comic's dialogue", prompt)
         self.assertIn("which is English", prompt)
 
-    def test_the_instruction_names_the_failure_itself(self):
-        # Naming the exact mistake, because the bare name without the
-        # brackets was what actually came back.
+    def test_the_slot_names_are_not_spelled_out_as_a_warning(self):
+        # Warning against the mistake meant naming the four slots
+        # again, twice over, and the scripts came back carrying
+        # them. The note introduces them once and stops there. A
+        # LABELS line that names them instead of words is dropped
+        # in code, where the model never sees it.
         for language in ("English", "Arabic", config.ORIGINAL_LANGUAGE):
             prompt = self._prompt(language)
-            self.assertIn(
-                "Writing THINKING, NARRATION, SFX or TEXT, with or "
-                "without the angle brackets, is not replacing them",
-                prompt)
+            self.assertNotIn("is not replacing them", prompt)
+            self.assertNotIn("are not words and must never appear",
+                             prompt)
+            self.assertNotIn("LABELS: <THINKING>", prompt)
+            self.assertEqual(
+                1,
+                prompt.count("<THINKING>, <NARRATION>, <SFX> and "
+                             "<TEXT>"))
 
 
 class TestLabelsLineWithoutBrackets(unittest.TestCase):
@@ -5931,6 +5978,133 @@ class TestAskInheritsTailRules(unittest.TestCase):
             {"comic_type": "manga", "output_language": "Arabic"})
         self.assertIn("Answer in Arabic", prompt)
         self.assertIn("Markdown", prompt)
+
+
+class TestLabelsAreCarriedIntoTheScript(unittest.TestCase):
+    """The model settles on four words, writes them into its LABELS
+    line, and then labels the script lines from the template anyway:
+    "<TEXT>: ..." where the reader needs "Text: ...". Measured against
+    the real service, 3.6 left five of them on five pages and 3.7 left
+    eighteen bare ones, both having reported perfectly good words. The
+    words it chose are put where the slot names were left standing.
+    """
+
+    NOTES = ("LABELS: Thought, Narration, Sound Effect, Text\n"
+             "Conan Edogawa: boy with glasses")
+
+    def _labels(self):
+        return prompts.labels_from_notes(self.NOTES)
+
+    def test_the_four_words_are_read_off_the_labels_line(self):
+        self.assertEqual(
+            {"THINKING": "Thought", "NARRATION": "Narration",
+             "SFX": "Sound Effect", "TEXT": "Text"},
+            self._labels())
+
+    def test_english_words_are_not_mistaken_for_the_template(self):
+        # In English the chosen words ARE "thinking" and "narration".
+        self.assertEqual(
+            {"THINKING": "thinking", "NARRATION": "narration",
+             "SFX": "sound effect", "TEXT": "text"},
+            prompts.labels_from_notes(
+                "LABELS: thinking, narration, sound effect, text"))
+
+    def test_the_template_echoed_back_gives_nothing(self):
+        for line in ("LABELS: <THINKING>, <NARRATION>, <SFX>, <TEXT>",
+                     "LABELS: THINKING, NARRATION, SFX, TEXT"):
+            self.assertEqual({}, prompts.labels_from_notes(line))
+
+    def test_notes_without_a_labels_line_give_nothing(self):
+        self.assertEqual({}, prompts.labels_from_notes("Conan: a boy"))
+        self.assertEqual({}, prompts.labels_from_notes(""))
+
+    def test_a_short_labels_line_is_not_trusted(self):
+        self.assertEqual({}, prompts.labels_from_notes("LABELS: a, b"))
+
+    def test_a_bracketed_label_becomes_the_word(self):
+        self.assertEqual(
+            'Text: "KenScans" -- top banner',
+            prompts.apply_labels('<TEXT>: "KenScans" -- top banner',
+                                 self._labels()))
+
+    def test_a_bare_shouted_label_becomes_the_word(self):
+        self.assertEqual(
+            "Sound Effect: zaaa -- wind in the trees",
+            prompts.apply_labels("SFX: zaaa -- wind in the trees",
+                                 self._labels()))
+
+    def test_the_thinking_slot_inside_a_speaker_is_replaced(self):
+        self.assertEqual(
+            "Conan Edogawa (Thought): I knew it",
+            prompts.apply_labels("Conan Edogawa (<THINKING>): I knew it",
+                                 self._labels()))
+
+    def test_a_label_already_written_properly_is_left_alone(self):
+        for line in ('Text: "KenScans" -- top banner',
+                     "text: a model that did as it was told"):
+            self.assertEqual(line, prompts.apply_labels(line,
+                                                        self._labels()))
+
+    def test_ordinary_lines_are_untouched(self):
+        for line in ('Woman: "I AM THE VICTIM HERE"',
+                     "Panel 2 (middle): Indoors, a young man stands",
+                     "=== PAGE 4 ==="):
+            self.assertEqual(line, prompts.apply_labels(line,
+                                                        self._labels()))
+
+    def test_nothing_is_changed_without_words_to_use(self):
+        self.assertEqual("<TEXT>: untouched",
+                         prompts.apply_labels("<TEXT>: untouched", {}))
+
+    def test_a_parsed_response_comes_back_labelled(self):
+        response = (
+            "=== PAGE 1 ===\n"
+            "Panel 1 (top): A banner over the title.\n"
+            '<TEXT>: "KenScans" -- top banner\n'
+            "Conan (<THINKING>): so that is how it was done\n"
+            "SFX: zaaa -- wind in the trees\n"
+            "=== CHARACTER NOTES ===\n" + self.NOTES)
+        scripts, notes = prompts.parse_response(response)
+        page = scripts[1]
+        self.assertIn('Text: "KenScans" -- top banner', page)
+        self.assertIn("Conan (Thought): so that is how it was done", page)
+        self.assertIn("Sound Effect: zaaa -- wind in the trees", page)
+        for leftover in ("<TEXT>", "<THINKING>", "SFX:"):
+            self.assertNotIn(leftover, page)
+        self.assertIn("LABELS: Thought", notes)
+
+    def test_the_previous_notes_cover_a_batch_that_reports_none(self):
+        # Notes are optional in a reply; the labels must not change
+        # halfway through a book because one batch omitted them.
+        response = ("=== PAGE 7 ===\n"
+                    'Panel 1 (top): A sign on the wall.\n'
+                    '<TEXT>: "CLOSED" -- on the door')
+        scripts, _ = prompts.parse_response(
+            response, previous_notes=self.NOTES)
+        self.assertIn('Text: "CLOSED" -- on the door', scripts[7])
+
+    def test_without_any_notes_a_plain_label_is_used(self):
+        # A reply with no notes gives nothing to substitute, and the
+        # first batch of a book has no earlier notes either. The slot
+        # name still has to come out of the script.
+        response = ("=== PAGE 7 ===\n"
+                    '<TEXT>: "CLOSED" -- on the door\n'
+                    "Conan (<THINKING>): the door is locked\n"
+                    "SFX: click -- the lock turning")
+        scripts, _ = prompts.parse_response(response)
+        page = scripts[7]
+        self.assertIn('Text: "CLOSED" -- on the door', page)
+        self.assertIn("Conan (Thought): the door is locked", page)
+        self.assertIn("Sound effect: click -- the lock turning", page)
+        self.assertNotIn("<", page)
+
+    def test_the_models_own_words_beat_the_plain_label(self):
+        response = ("=== PAGE 7 ===\n"
+                    '<TEXT>: "CLOSED" -- on the door')
+        scripts, _ = prompts.parse_response(
+            response, previous_notes=self.NOTES)
+        self.assertIn('Text: "CLOSED" -- on the door', scripts[7])
+        self.assertNotIn("Sound effect", scripts[7])
 
 
 if __name__ == "__main__":

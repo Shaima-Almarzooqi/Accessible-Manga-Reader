@@ -251,6 +251,21 @@ class GeminiClient(_RetryMixin):
     # of the script rather than letting it cut the script short.
     THINKING_HEADROOM = 4096
 
+    # The lite models do not reason on their own, and sending them
+    # the cap does not leave them as they were: it switches
+    # reasoning on. Timed on the same five pages, 3.5 Flash-Lite
+    # went from no reasoning at all and 6.3 seconds to 3,412
+    # reasoning tokens and 13.7, and 3.1 Flash-Lite from 4.9
+    # seconds to 8.0. They never had the problem the cap solves --
+    # nothing of their allowance was being spent before the script
+    # -- so they are left alone.
+    NON_REASONING = ("flash-lite",)
+
+    def reasons_before_answering(self):
+        """False for a model that does not reason unless asked."""
+        name = (self.model or "").lower()
+        return not any(mark in name for mark in self.NON_REASONING)
+
     def __init__(self, api_key, model, max_tokens=8000):
         self.api_key = api_key
         self.model = model
@@ -261,7 +276,7 @@ class GeminiClient(_RetryMixin):
 
     def _generation_config(self):
         """The ceiling, plus a cap on how much of it reasoning
-        may take.
+        may take -- for the models that reason.
 
         maxOutputTokens covers reasoning and script together, so
         the ceiling sent is the script allowance plus the room
@@ -270,7 +285,8 @@ class GeminiClient(_RetryMixin):
         script may be, rather than a figure reasoning can quietly
         spend first.
         """
-        if not self.send_thinking_config:
+        if (not self.send_thinking_config
+                or not self.reasons_before_answering()):
             return {"maxOutputTokens": self.max_tokens}
         return {
             "maxOutputTokens":

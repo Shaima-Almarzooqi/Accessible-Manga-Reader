@@ -21,9 +21,9 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - Scripts use the selected output language throughout, including labels for
   narration, sound effects, visible text, and thoughts. Label wording and
   character name spellings remain consistent across the book.
-- Placeholder names such as `<SFX>` no longer appear after the first batch in
-  place of words from the selected language. A partly processed book corrects
-  its saved labels on the next batch.
+- Placeholder names such as `<SFX>` no longer appear in place of words from
+  the selected language. A partly processed book corrects its saved labels on
+  the next batch.
 - Processing no longer stops with an empty-response error on some Gemini
   models or at larger page counts. Max tokens applies to the script alone
   rather than being shared with the model's own reasoning, and reaching the

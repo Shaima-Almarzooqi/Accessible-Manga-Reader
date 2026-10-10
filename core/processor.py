@@ -154,7 +154,8 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
         content = api_client.build_content([number], paths, text)
         response = client.request_scripts(
             system_prompt, content, cancel_check=cancel_check)
-        got, _ = prompts.parse_response(response)
+        got, _ = prompts.parse_response(
+            response, previous_notes=book.character_notes)
         return align_to_batch(got, [number]).get(number)
 
     for batch_index, batch in enumerate(batches):
@@ -177,7 +178,8 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
         try:
             response_text = client.request_scripts(
                 system_prompt, content, cancel_check=cancel_check)
-            scripts, notes = prompts.parse_response(response_text)
+            scripts, notes = prompts.parse_response(
+                response_text, previous_notes=book.character_notes)
             scripts = align_to_batch(scripts, batch)
         except api_client.ApiError as error:
             if "Cancelled" in str(error):

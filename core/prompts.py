@@ -499,7 +499,7 @@ where <position> is the panel's physical location on the page, chosen from exact
 <SFX>: <sound> -- <what it conveys, e.g. "a door slamming">
 <TEXT>: <words visible in the art> -- <where they appear>
 
-<THINKING>, <NARRATION>, <SFX> and <TEXT> are placeholders, not words to copy. Replace each with the ordinary word for "thinking", "narration", "sound effect" and "text" in the language this script is being written in, which is {output_language}. Writing THINKING, NARRATION, SFX or TEXT, with or without the angle brackets, is not replacing them: those are the names of the slots, never labels. Before you write anything, settle on those four words and on how each character's name is spelled in that language, then use exactly those, unchanged, on every line of every page. A script that labels some lines in {output_language} and others in English has failed, and so has one that spells a character's name two different ways. Only three things are ever written in English: the "=== PAGE n ===" line, the "Panel n (position):" prefix including the position word, and the "=== CHARACTER NOTES ===" line. Those three are read by the app; everything else on every other line belongs to the reader and is in {output_language}.
+<THINKING>, <NARRATION>, <SFX> and <TEXT> are placeholders, not words to copy. Replace each with the ordinary word for "thinking", "narration", "sound effect" and "text" in the language this script is being written in, which is {output_language}. Before you write anything, settle on those four words and on how each character's name is spelled in that language, then use exactly those, unchanged, on every line of every page. A script that labels some lines in {output_language} and others in English has failed, and so has one that spells a character's name two different ways. Only three things are ever written in English: the "=== PAGE n ===" line, the "Panel n (position):" prefix including the position word, and the "=== CHARACTER NOTES ===" line. Those three are read by the app; everything else on every other line belongs to the reader and is in {output_language}.
 
 Rules:
 - Dialogue lines come AFTER the panel description line for their panel, in the order the bubbles are read, each attached to the character who speaks it.
@@ -518,7 +518,7 @@ Rules:
 CHARACTER CONSISTENCY
 You will receive CHARACTER NOTES describing characters identified so far. Use those exact names. If READER'S INSTRUCTIONS name or describe characters, those are canonical: match the characters you see to those descriptions and use those exact names from their very first appearance, even before the story itself reveals them. After the final page, output:
 === CHARACTER NOTES ===
-followed by a line beginning LABELS: and then the four words in {output_language} you actually used for thinking, narration, sound effect and text, in that order, separated by commas. Write the words themselves. <THINKING>, <NARRATION>, <SFX> and <TEXT> are not words and must never appear on that line or anywhere else in your output; a LABELS line carrying them instead of words in {output_language} is a failed block. Then give an updated compact list (one line per character: name, key visual features, role/relationships). If the notes you were given already carry a LABELS line, reuse those exact four words rather than choosing your own, so the labels do not change halfway through a book -- unless one of them is an angle-bracket name rather than a real word, in which case ignore that line entirely and choose proper words in {output_language}. Write the list in {output_language} too, using each character's name in the same spelling you use in the script, so names stay identical from one batch to the next. Only the "=== CHARACTER NOTES ===" marker line itself stays in English. Add newly introduced characters, refine existing entries, and correct earlier uncertainty. Keep the whole block under 200 words. If a character's name has not been revealed yet, use a stable descriptive label in {output_language} (for example the words in {output_language} for "the scarred man") and keep using it until the story names them."""
+followed by a line beginning LABELS: and then the four words in {output_language} you actually used for thinking, narration, sound effect and text, in that order, separated by commas. Then give an updated compact list (one line per character: name, key visual features, role/relationships). If the notes you were given already carry a LABELS line, reuse those exact four words rather than choosing your own, so the labels do not change halfway through a book. Write the list in {output_language} too, using each character's name in the same spelling you use in the script, so names stay identical from one batch to the next. Only the "=== CHARACTER NOTES ===" marker line itself stays in English. Add newly introduced characters, refine existing entries, and correct earlier uncertainty. Keep the whole block under 200 words. If a character's name has not been revealed yet, use a stable descriptive label in {output_language} (for example the words in {output_language} for "the scarred man") and keep using it until the story names them."""
 
 
 # A LABELS line is meant to carry the words the model chose for
@@ -578,6 +578,98 @@ def _is_placeholder_labels_line(line):
             and all(entry in PLACEHOLDER_NAMES for entry in entries))
 
 
+# The four slots a LABELS line names, in the order it names them.
+LABEL_SLOTS = ("THINKING", "NARRATION", "SFX", "TEXT")
+
+LABELS_LINE_RE = re.compile(r"^[ \t]*LABELS[ \t]*:(.*)$",
+                            re.MULTILINE | re.IGNORECASE)
+
+# A slot name left standing at the head of a script line, either as
+# the template spells it -- "<TEXT>: ..." -- or bare: "TEXT: ...".
+# Models settle on the four words, write them into the LABELS line,
+# and then label the lines themselves from the template anyway.
+BRACKETED_LABEL_RE = re.compile(
+    r"^([ \t]*)<[ \t]*(%s)[ \t]*>[ \t]*:" % "|".join(LABEL_SLOTS),
+    re.MULTILINE | re.IGNORECASE)
+
+# Bare, the name is only safe to replace in capitals: "Text" is a
+# real word and an English script's own label for that slot, while
+# "TEXT:" is the template shouting. Replacing it with the word the
+# model itself chose is a no-op where the two already agree.
+BARE_LABEL_RE = re.compile(
+    r"^([ \t]*)(%s)[ \t]*:" % "|".join(LABEL_SLOTS), re.MULTILINE)
+
+# The thinking slot also appears inside a speaker's brackets, as
+# "Conan (<THINKING>):".
+SPEAKER_LABEL_RE = re.compile(
+    r"\([ \t]*<?[ \t]*(%s)[ \t]*>?[ \t]*\)([ \t]*:)"
+    % "|".join(LABEL_SLOTS), re.IGNORECASE)
+
+
+def labels_from_notes(notes):
+    """The four words the model chose, keyed by slot.
+
+    Empty when the notes carry no LABELS line, when it does not give
+    four words, or when it is the template echoed back rather than
+    words -- the same test the notes sanitiser uses, so the two
+    cannot disagree about what counts as a real word.
+    """
+    if not notes:
+        return {}
+    match = LABELS_LINE_RE.search(notes)
+    if not match or _is_placeholder_labels_line(match.group(0)):
+        return {}
+    words = [word.strip().strip("<>").strip()
+             for word in match.group(1).split(",")]
+    words = [word for word in words if word]
+    if len(words) != len(LABEL_SLOTS):
+        return {}
+    return dict(zip(LABEL_SLOTS, words))
+
+
+# When a reply carries no notes at all -- it happens, and it happens
+# on the first batch of a book, where there are no earlier notes to
+# fall back on either -- there are no chosen words to use. The slot
+# name still has to come out of the script: "<TEXT>:" reads as
+# punctuation and a slot name, where the reader needs a label. These
+# are English, so a book in another language whose model skipped its
+# notes gets an English label on those lines rather than its own; the
+# LABELS line is normally there, and a readable English word beats
+# the template either way.
+FALLBACK_LABELS = {"THINKING": "Thought", "NARRATION": "Narration",
+                   "SFX": "Sound effect", "TEXT": "Text"}
+
+
+def apply_labels(script, labels):
+    """Put the chosen words where the slot names were left standing.
+
+    The model decides the four words and reports them; this only
+    carries that decision into the lines it labelled from the
+    template instead. With no words to use, the script is returned
+    as it came.
+    """
+    if not script or not labels:
+        return script
+
+    def word_for(match):
+        return labels.get(match.group(2).upper())
+
+    def replace_line(match):
+        word = word_for(match)
+        if word is None:
+            return match.group(0)
+        return "%s%s:" % (match.group(1), word)
+
+    def replace_speaker(match):
+        word = labels.get(match.group(1).upper())
+        if word is None:
+            return match.group(0)
+        return "(%s)%s" % (word, match.group(2))
+
+    script = BRACKETED_LABEL_RE.sub(replace_line, script)
+    script = BARE_LABEL_RE.sub(replace_line, script)
+    return SPEAKER_LABEL_RE.sub(replace_speaker, script)
+
 def build_user_text(page_numbers, character_notes, book_title="",
                     user_instructions=""):
     """The text portion of the user message accompanying the page images."""
@@ -610,12 +702,17 @@ def build_user_text(page_numbers, character_notes, book_title="",
     return "\n\n".join(parts)
 
 
-def parse_response(text):
+def parse_response(text, previous_notes=""):
     """Parse a model response into (scripts, character_notes).
 
     scripts is a dict mapping page number (int) to that page's script text
     (without the header line). character_notes is the updated notes block,
     or "" if the model omitted it.
+
+    Slot names the model left standing in the script are replaced with
+    the words its own LABELS line gives. previous_notes supplies those
+    words for a batch that reports none, so the labels stay the same
+    from one batch to the next.
 
     Raises ValueError if no page headers are found at all, so the caller
     can retry the batch.
@@ -631,12 +728,16 @@ def parse_response(text):
     if not matches:
         raise ValueError("Model response contained no page headers")
 
+    labels = (labels_from_notes(notes)
+              or labels_from_notes(previous_notes)
+              or FALLBACK_LABELS)
+
     scripts = {}
     for i, match in enumerate(matches):
         page_number = int(match.group(1))
         start = match.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
-        scripts[page_number] = body[start:end].strip()
+        scripts[page_number] = apply_labels(body[start:end].strip(), labels)
     return scripts, notes
 
 
