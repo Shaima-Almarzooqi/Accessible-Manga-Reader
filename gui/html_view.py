@@ -11,6 +11,7 @@ returns False and the caller falls back to the default browser.
 
 import wx
 
+from . import appicon
 from . import keys as keyhelp
 
 try:
@@ -78,6 +79,7 @@ class HtmlViewFrame(wx.Frame):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.view.SetPage(html, "")
         self.view.SetFocus()
+        appicon.apply_to(self)
 
     def _on_char_hook(self, event):
         if event.GetKeyCode() == wx.WXK_ESCAPE:

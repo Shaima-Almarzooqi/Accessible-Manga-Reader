@@ -32,6 +32,18 @@ def make_test_image(width=200, height=300, color=(120, 60, 200)):
     return Image.new("RGB", (width, height), color)
 
 
+class TestApplicationIcon(unittest.TestCase):
+    def test_icon_has_every_windows_size(self):
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "assets", "AccessibleMangaReader.ico")
+        self.assertTrue(os.path.isfile(path))
+        expected = {(size, size) for size in (16, 24, 32, 48, 64, 128, 256)}
+        with Image.open(path) as icon:
+            self.assertEqual(icon.format, "ICO")
+            self.assertTrue(expected.issubset(icon.ico.sizes()))
+
+
 class TestNaturalSort(unittest.TestCase):
     def test_numeric_ordering(self):
         names = ["page10.jpg", "page2.jpg", "page1.jpg"]

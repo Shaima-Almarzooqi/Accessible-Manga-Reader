@@ -29,6 +29,7 @@ import wx
 
 from core import jobs, processor, prompts
 
+from . import appicon
 from . import keys as keyhelp
 
 
@@ -145,6 +146,7 @@ class ProcessingWindow(wx.Frame):
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+        appicon.apply_to(self)
 
     # ----- worker thread --------------------------------------------------
 

@@ -36,6 +36,7 @@ import wx
 
 from core import config, extract, html_export, jobs, library, prompts
 
+from . import appicon
 from .ask_dialog import AskDialog
 from .html_view import show_html_view
 from .processing_dialog import start_processing
@@ -108,6 +109,7 @@ class ReaderFrame(wx.Frame):
 
         self._render(initial=True)
         self.text.SetFocus()
+        appicon.apply_to(self)
 
     # ----- menu ---------------------------------------------------------
 

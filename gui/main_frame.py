@@ -12,6 +12,7 @@ import webbrowser
 import wx
 
 from core import config, extract, install, jobs, library, updates
+from . import appicon
 from .html_view import show_html_view
 from .processing_dialog import start_processing
 from . import export_menu
@@ -132,6 +133,7 @@ class MainFrame(wx.Frame):
                              daemon=True).start()
 
         self.Bind(wx.EVT_CLOSE, self.on_main_close)
+        appicon.apply_to(self)
 
     def on_main_close(self, event):
         """Quitting while a book is being processed would abandon the
@@ -1082,6 +1084,7 @@ class UpdateDownloadWindow(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self._say("Downloading %s." % asset.name)
         threading.Thread(target=self._run, daemon=True).start()
+        appicon.apply_to(self)
 
     # ----- worker ---------------------------------------------------------
 
