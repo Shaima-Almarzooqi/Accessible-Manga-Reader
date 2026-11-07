@@ -21,7 +21,7 @@ DEFAULT_SETTINGS = {
     # Default confirmed working on current free-tier projects; older
     # gemini-2.5-* models are no longer served to all projects. Use the
     # "Refresh model list" button in Settings to fetch what YOUR key can use.
-    "gemini_model": "gemini-3.6-flash",
+    "gemini_model": "gemini-3.8-flash",
     "anthropic_api_keys": [],
     "anthropic_model": "claude-sonnet-5",
     "openai_api_keys": [],
@@ -82,15 +82,18 @@ DEFAULT_SETTINGS = {
 # the Refresh button in Settings (which queries the service's own
 # list-models endpoint and is always the source of truth).
 SUGGESTED_MODELS = {
-    # 2.5 Flash and 2.5 Flash-Lite are gone from this list: Google has
-    # them shutting down in October 2026, and 2.5 Flash was already
-    # reported unavailable months before its stated date, so leaving
-    # them here would only offer readers a model that stops answering.
+    # 3.7 Flash and 3.5 Flash are gone from this list: Google
+    # deprecated both in October 2026 and routes their requests to
+    # 3.8 Flash and 3.6 Flash, so listing them would offer the same
+    # two models a second time under older names. 2.5 Flash and 2.5
+    # Flash-Lite went earlier, when Google shut them down.
+    #
+    # 3.1 Flash-Lite stays for now: Google lists it shutting down on
+    # 7 May 2027, which is far enough off that removing it would only
+    # take away a working choice.
     "gemini": [
         "gemini-3.8-flash",
-        "gemini-3.7-flash",
         "gemini-3.6-flash",
-        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
     ],
@@ -328,9 +331,14 @@ def parse_api_keys(text):
 # move happens quietly when settings are loaded.
 RETIRED_MODELS = {
     "gemini_model": {
-        "gemini-2.5-flash": "gemini-3.5-flash",
+        "gemini-2.5-flash": "gemini-3.6-flash",
         "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
         "gemini-3-flash-preview": "gemini-3.6-flash",
+        # Deprecated in October 2026. Google already routes both
+        # to the models below, so moving the setting only makes it
+        # name the model actually answering.
+        "gemini-3.7-flash": "gemini-3.8-flash",
+        "gemini-3.5-flash": "gemini-3.6-flash",
     },
     # A reader who saved one of the old voice models keeps a working
     # export rather than a setting pointing at a model that has been

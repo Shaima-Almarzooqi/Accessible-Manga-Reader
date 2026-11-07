@@ -10,16 +10,21 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
   windows.
 - Books can be marked as finished reading with Ctrl+M. A marked book shows
   "finished" and its page count in the library.
-- New Claude and ChatGPT models are available. The default models have not
+- New Claude and ChatGPT models are available. Their defaults have not
   changed.
 
 ### Changed
 
 - Audio export now uses Gemini 3.8 voice models. A saved older voice model is
   moved to the new default automatically.
+- Gemini processing uses 3.8 Flash by default. A saved model is kept.
+- Gemini 3.7 Flash and 3.5 Flash are no longer listed. Google routes both
+  to 3.8 Flash and 3.6 Flash, and a saved choice is moved to match.
 
 ### Fixed
 
+- Refresh model list orders models by version number, so a version such
+  as 3.10 appears above 3.9.
 - Scripts use the selected output language throughout, including labels for
   narration, sound effects, visible text, and thoughts. Label wording and
   character name spellings remain consistent across the book.

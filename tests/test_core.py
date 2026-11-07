@@ -441,7 +441,7 @@ class TestProviderClients(unittest.TestCase):
         client = api_client.create_client(settings)
         self.assertIsInstance(client, api_client.RotatingClient)
         self.assertIs(client.client_class, api_client.GeminiClient)
-        self.assertEqual(client.model, "gemini-3.6-flash")
+        self.assertEqual(client.model, "gemini-3.8-flash")
 
 
 class TestGeminiThinkingBudget(unittest.TestCase):
@@ -846,7 +846,7 @@ class TestBookKindAndPositions(unittest.TestCase):
         self.assertEqual(config.DEFAULT_SETTINGS["reader_view"], "book")
         self.assertIn("openai", config.SUGGESTED_MODELS)
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.6-flash")
+                         "gemini-3.8-flash")
 
 
 
@@ -2111,7 +2111,7 @@ class TestRetiredModels(unittest.TestCase):
     def test_a_shutdown_model_is_replaced(self):
         self.assertEqual(
             self._load_with("gemini-2.5-flash")["gemini_model"],
-            "gemini-3.5-flash")
+            "gemini-3.6-flash")
 
     def test_the_lite_model_moves_to_a_lite_model(self):
         # Somebody chose a cheap, fast model on purpose; the
@@ -2905,16 +2905,16 @@ class TestComicTypeSettings(unittest.TestCase):
 
 class TestModelDefaultsAndLists(unittest.TestCase):
     def test_gemini_default_is_stable_flash(self):
-        # The newest model is offered first, but the DEFAULT is not
-        # automatically the newest. The gains published for 3.7 and 3.8
-        # Flash are in coding and agent work, and say nothing about
-        # describing a comic page, which is the only thing this app
-        # asks of a model. So 3.6 keeps reading books until they are
-        # compared on real pages.
+        # The default was held at 3.6 until the newer models had been
+        # compared on real pages rather than on published benchmarks.
+        # They have been: on the same five pages 3.8 Flash answered in
+        # 12.7 seconds against 3.6 Flash at 21.2, and both returned a
+        # script with no placeholder labels left in it. 3.6 stays on
+        # the list for anyone who prefers it.
         self.assertEqual(config.SUGGESTED_MODELS["gemini"][0],
                          "gemini-3.8-flash")
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.6-flash")
+                         "gemini-3.8-flash")
         self.assertIn(config.DEFAULT_SETTINGS["gemini_model"],
                       config.SUGGESTED_MODELS["gemini"])
 
@@ -2973,9 +2973,9 @@ class TestNewProviderModels(unittest.TestCase):
     def test_the_openai_default_is_unchanged(self):
         self.assertEqual(config.DEFAULT_SETTINGS["openai_model"], "gpt-5.6")
 
-    def test_the_gemini_default_is_unchanged(self):
+    def test_the_gemini_default_is_the_newest_stable_flash(self):
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.6-flash")
+                         "gemini-3.8-flash")
 
     def test_no_list_repeats_a_model(self):
         for service, models in config.SUGGESTED_MODELS.items():
@@ -6117,6 +6117,83 @@ class TestLabelsAreCarriedIntoTheScript(unittest.TestCase):
             response, previous_notes=self.NOTES)
         self.assertIn('Text: "CLOSED" -- on the door', scripts[7])
         self.assertNotIn("Sound effect", scripts[7])
+
+
+class TestDeprecatedGeminiModelsAreGone(unittest.TestCase):
+    """Google deprecated 3.7 Flash and 3.5 Flash in October 2026 and
+    routes their requests to 3.8 Flash and 3.6 Flash. Offering them
+    would list the same two models twice under older names, and a
+    reader picking 3.7 would be told they were using a model they
+    were not.
+    """
+
+    def _loaded(self, model):
+        saved = {"gemini_model": model}
+        config._migrate(saved)
+        return saved["gemini_model"]
+
+    def test_neither_is_offered(self):
+        for model in ("gemini-3.7-flash", "gemini-3.5-flash"):
+            self.assertNotIn(model, config.SUGGESTED_MODELS["gemini"])
+
+    def test_a_saved_choice_moves_where_google_routes_it(self):
+        self.assertEqual("gemini-3.8-flash",
+                         self._loaded("gemini-3.7-flash"))
+        self.assertEqual("gemini-3.6-flash",
+                         self._loaded("gemini-3.5-flash"))
+
+    def test_the_lite_pair_is_untouched(self):
+        for model in ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite"):
+            self.assertIn(model, config.SUGGESTED_MODELS["gemini"])
+            self.assertEqual(model, self._loaded(model))
+
+    def test_every_replacement_is_a_model_still_offered(self):
+        # 2.5 Flash used to be moved to 3.5 Flash, which this change
+        # removes. A replacement that is no longer on the list leaves
+        # the reader pointed at something they cannot select again.
+        for setting, moves in config.RETIRED_MODELS.items():
+            if setting != "gemini_model":
+                continue
+            for gone, replacement in moves.items():
+                self.assertIn(replacement,
+                              config.SUGGESTED_MODELS["gemini"], gone)
+
+
+class TestModelListsSortByVersionNumber(unittest.TestCase):
+    """A plain string sort puts 3.9 above 3.10, because "9" sorts after
+    "1". The list is shown newest first and Refresh falls back to its
+    first entry when a saved model has gone, so the wrong order can
+    quietly select an older model.
+    """
+
+    def test_ten_sorts_above_nine(self):
+        from core import api_client
+        names = ["gemini-3.9-flash", "gemini-3.10-flash",
+                 "gemini-3.8-flash"]
+        self.assertEqual(
+            ["gemini-3.10-flash", "gemini-3.9-flash", "gemini-3.8-flash"],
+            sorted(names, key=api_client._version_key, reverse=True))
+
+    def test_the_gemini_parser_orders_by_number(self):
+        from core import api_client
+        data = {"models": [
+            {"name": "models/" + name,
+             "supportedGenerationMethods": ["generateContent"]}
+            for name in ("gemini-3.9-flash", "gemini-3.10-flash")]}
+        self.assertEqual(["gemini-3.10-flash", "gemini-3.9-flash"],
+                         api_client.parse_gemini_model_list(data))
+
+    def test_the_openai_parser_orders_by_number(self):
+        from core import api_client
+        data = {"data": [{"id": "gpt-5.9"}, {"id": "gpt-5.10"}]}
+        self.assertEqual(["gpt-5.10", "gpt-5.9"],
+                         api_client.parse_openai_model_list(data))
+
+    def test_a_name_without_digits_still_sorts(self):
+        from core import api_client
+        names = ["gemini-pro", "gemini-3.8-flash", "gemini-flash-latest"]
+        self.assertEqual(len(names),
+                         len(sorted(names, key=api_client._version_key)))
 
 
 if __name__ == "__main__":

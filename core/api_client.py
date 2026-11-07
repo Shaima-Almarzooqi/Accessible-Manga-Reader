@@ -873,6 +873,21 @@ _GEMINI_EXCLUDE = ("embedding", "tts", "image-generation", "audio",
                    "moderation")
 
 
+def _version_key(name):
+    """Sort key that compares version numbers as numbers.
+
+    A plain string sort puts "gemini-3.9-flash" above
+    "gemini-3.10-flash", because "9" sorts after "1". Splitting
+    the digit runs out and comparing those as integers orders a
+    list the way a reader expects, newest first.
+
+    Splitting on digits alternates text and number, so two keys
+    always compare text against text and number against number.
+    """
+    return [int(part) if part.isdigit() else part
+            for part in re.split(r"(\d+)", name)]
+
+
 def parse_gemini_model_list(data):
     models = []
     for entry in data.get("models", []):
@@ -886,7 +901,7 @@ def parse_gemini_model_list(data):
             continue
         if name.startswith("gemini"):
             models.append(name)
-    return sorted(set(models), reverse=True)
+    return sorted(set(models), key=_version_key, reverse=True)
 
 
 _OPENAI_EXCLUDE = ("embedding", "whisper", "tts", "dall-e", "audio",
@@ -903,7 +918,7 @@ def parse_openai_model_list(data):
             continue
         if lowered.startswith(("gpt", "o1", "o3", "o4", "chatgpt")):
             models.append(model_id)
-    return sorted(set(models), reverse=True)
+    return sorted(set(models), key=_version_key, reverse=True)
 
 
 def parse_openai_compatible_model_list(data, vision_only=False):
@@ -936,7 +951,7 @@ def parse_openai_compatible_model_list(data, vision_only=False):
 def parse_anthropic_model_list(data):
     models = [entry.get("id", "") for entry in data.get("data", [])
               if entry.get("id")]
-    return sorted(set(models), reverse=True)
+    return sorted(set(models), key=_version_key, reverse=True)
 
 
 def fetch_models(service, api_key, base_url=""):
