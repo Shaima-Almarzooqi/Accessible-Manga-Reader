@@ -133,6 +133,34 @@ SUGGESTED_MODELS = {
     "custom": [],
 }
 
+# Marked in the Settings model box so a reader who does not follow
+# model releases has somewhere obvious to start. Only the label
+# carries the word: what gets saved is always the plain model id.
+RECOMMENDED_MODELS = {
+    "gemini": "gemini-3.8-flash",
+}
+
+RECOMMENDED_SUFFIX = " (recommended)"
+
+
+def model_label(service, model):
+    """How a model is shown in the Settings model box."""
+    if model and RECOMMENDED_MODELS.get(service) == model:
+        return model + RECOMMENDED_SUFFIX
+    return model
+
+
+def model_from_label(text):
+    """The model id behind a label, for saving.
+
+    The box is editable, so whatever is in it may be a label we
+    wrote, a plain id, or a model the reader typed themselves.
+    """
+    text = (text or "").strip()
+    if text.endswith(RECOMMENDED_SUFFIX):
+        return text[:-len(RECOMMENDED_SUFFIX)].strip()
+    return text
+
 # Offered in the Settings language box, which stays editable: any
 # language the AI service knows can be typed in instead.
 # Chosen instead of a language name when the reader wants the comic

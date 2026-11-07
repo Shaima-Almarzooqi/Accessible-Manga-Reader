@@ -8,6 +8,7 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 
 - The app has its own icon in Explorer, the taskbar, shortcuts and its
   windows.
+- The Settings model list marks the recommended Gemini model.
 - Books can be marked as finished reading with Ctrl+M. A marked book shows
   "finished" and its page count in the library.
 - New Claude and ChatGPT models are available. Their defaults have not
@@ -23,6 +24,8 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 
 ### Fixed
 
+- Removing a book from the library keeps your place in the list, instead
+  of moving to the first book.
 - Refresh model list orders models by version number, so a version such
   as 3.10 appears above 3.9.
 - Scripts use the selected output language throughout, including labels for

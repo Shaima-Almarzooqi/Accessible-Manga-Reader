@@ -6196,5 +6196,100 @@ class TestModelListsSortByVersionNumber(unittest.TestCase):
                          len(sorted(names, key=api_client._version_key)))
 
 
+class TestRecommendedModelLabel(unittest.TestCase):
+    """One model in the Gemini box is marked, so a reader who does not
+    follow model releases has somewhere obvious to start. The mark is
+    on the label only: the box is editable and what gets saved has to
+    stay a plain model id.
+    """
+
+    def test_only_the_recommended_model_is_marked(self):
+        self.assertEqual("gemini-3.8-flash (recommended)",
+                         config.model_label("gemini", "gemini-3.8-flash"))
+        self.assertEqual("gemini-3.6-flash",
+                         config.model_label("gemini", "gemini-3.6-flash"))
+
+    def test_other_services_are_not_marked(self):
+        for service in ("openai", "anthropic", "openrouter", "custom"):
+            for model in config.SUGGESTED_MODELS[service]:
+                self.assertEqual(model, config.model_label(service, model))
+
+    def test_the_label_turns_back_into_the_id(self):
+        for service, model in config.RECOMMENDED_MODELS.items():
+            label = config.model_label(service, model)
+            self.assertEqual(model, config.model_from_label(label))
+
+    def test_a_plain_id_survives_untouched(self):
+        self.assertEqual("gemini-3.6-flash",
+                         config.model_from_label("  gemini-3.6-flash  "))
+
+    def test_a_model_the_reader_typed_is_left_alone(self):
+        self.assertEqual("my-own-model",
+                         config.model_from_label("my-own-model"))
+        self.assertEqual("", config.model_from_label(""))
+
+    def test_the_recommendation_is_a_model_that_exists(self):
+        for service, model in config.RECOMMENDED_MODELS.items():
+            self.assertIn(model, config.SUGGESTED_MODELS[service])
+
+    def test_the_recommendation_matches_the_default(self):
+        # Two places saying different things would be worse than
+        # saying nothing.
+        self.assertEqual(config.RECOMMENDED_MODELS["gemini"],
+                         config.DEFAULT_SETTINGS["gemini_model"])
+
+
+class TestDeletingKeepsYourPlace(unittest.TestCase):
+    """Removing a book rebuilt the list and left the selection on the
+    first book, so a reader deleting from the middle of a long library
+    was thrown back to the top every time.
+    """
+
+    def setUp(self):
+        source = open(os.path.join("gui", "main_frame.py"),
+                      encoding="utf-8-sig").read()
+        start = source.index("    def _book_above_selection(self):")
+        end = source.index("    def _selected_books(self):")
+        namespace = {}
+        exec("class Stub:\n" + source[start:end], namespace)
+        self.above = namespace["Stub"]._book_above_selection
+        self.source = source
+
+    def _frame(self, books, selected):
+        holder = type("Holder", (), {})()
+        holder.books = list(books)
+        holder.book_list = type(
+            "List", (), {"GetSelections": lambda self: list(selected)})()
+        return holder
+
+    def test_the_book_above_the_deleted_one(self):
+        frame = self._frame(["a", "b", "c", "d"], [2])
+        self.assertEqual("b", self.above(frame))
+
+    def test_deleting_the_last_lands_on_the_new_last(self):
+        frame = self._frame(["a", "b", "c", "d"], [3])
+        self.assertEqual("c", self.above(frame))
+
+    def test_deleting_the_first_falls_back_to_the_top(self):
+        frame = self._frame(["a", "b", "c"], [0])
+        self.assertIsNone(self.above(frame))
+
+    def test_several_removed_lands_above_the_first_of_them(self):
+        frame = self._frame(["a", "b", "c", "d"], [1, 3])
+        self.assertEqual("a", self.above(frame))
+
+    def test_nothing_selected_is_not_an_error(self):
+        self.assertIsNone(self.above(self._frame(["a"], [])))
+
+    def test_both_delete_paths_restore_the_place_and_the_focus(self):
+        # Guards the wiring the logic above cannot reach without wx.
+        handler = self.source[self.source.index("def on_delete("):
+                              self.source.index("def on_settings(")]
+        self.assertEqual(2, handler.count("_book_above_selection()"))
+        self.assertEqual(2, handler.count("refresh_books(select_book=above)"))
+        self.assertEqual(2, handler.count("self.book_list.SetFocus()"))
+        self.assertNotIn("self.refresh_books()", handler)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

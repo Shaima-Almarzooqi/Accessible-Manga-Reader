@@ -289,6 +289,22 @@ class MainFrame(wx.Frame):
                         break
             self.book_list.SetSelection(index)
 
+    def _book_above_selection(self):
+        """The book just above the first selected one, or None.
+
+        Removing a book rebuilds the list, and without this the
+        selection lands on the first book -- which sends a reader
+        back to the top of a long library every time they delete
+        something. The book above the first one being removed is
+        never itself being removed, so it is always there to land
+        on. None means the first book was removed, and the top of
+        the list is then the right place after all.
+        """
+        chosen = sorted(self.book_list.GetSelections())
+        if not chosen or chosen[0] == 0:
+            return None
+        return self.books[chosen[0] - 1]
+
     def _selected_books(self):
         return [self.books[i] for i in self.book_list.GetSelections()
                 if i < len(self.books)]
@@ -819,9 +835,11 @@ class MainFrame(wx.Frame):
                 "affected." % len(selected),
                 "Remove from library", wx.YES_NO | wx.ICON_WARNING, self)
             if answer == wx.YES:
+                above = self._book_above_selection()
                 for book in selected:
                     library.delete_book(book)
-                self.refresh_books()
+                self.refresh_books(select_book=above)
+                self.book_list.SetFocus()
             return
         book = selected[0]
         kind_text = {
@@ -838,8 +856,10 @@ class MainFrame(wx.Frame):
             kind_text % book.title,
             "Remove from library", wx.YES_NO | wx.ICON_WARNING, self)
         if answer == wx.YES:
+            above = self._book_above_selection()
             library.delete_book(book)
-            self.refresh_books()
+            self.refresh_books(select_book=above)
+            self.book_list.SetFocus()
 
     def on_settings(self, event):
         dialog = SettingsDialog(self, self.settings)

@@ -252,7 +252,7 @@ class SettingsDialog(wx.Dialog):
     def _stash_service_fields(self):
         state = self.service_state[self.current_service]
         state["api_keys"] = config.parse_api_keys(self.api_keys.GetValue())
-        model = self.model.GetValue().strip()
+        model = config.model_from_label(self.model.GetValue())
         if model:
             state["model"] = model
         if self._needs_base_url():
@@ -260,8 +260,11 @@ class SettingsDialog(wx.Dialog):
 
     def _load_service_fields(self):
         state = self.service_state[self.current_service]
-        self.model.Set(state["models"])
-        self.model.SetValue(state["model"])
+        service = self.current_service
+        self.model.Set([config.model_label(service, name)
+                        for name in state["models"]])
+        self.model.SetValue(config.model_label(service,
+                                               state["model"]))
         self.api_keys.SetValue("\n".join(state["api_keys"]))
         self.base_url.SetValue(state.get("base_url", ""))
         # The URL and its presets only apply to a custom endpoint; the
