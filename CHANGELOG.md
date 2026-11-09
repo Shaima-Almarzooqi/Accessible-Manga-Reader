@@ -9,8 +9,9 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - The app has its own icon in Explorer, the taskbar, shortcuts and its
   windows.
 - The Settings model list marks Gemini 3.6 Flash as recommended.
-- Settings shows how many API keys are saved for each service. Test these
-  keys reports which keys the service accepts.
+- Settings has a How many keys are saved button that reports the number of
+  API keys held for each service. Test these keys reports which keys the
+  service accepts.
 - Books can be marked as finished reading with Ctrl+M. A marked book shows
   "finished" and its page count in the library.
 - New Claude and ChatGPT models are available.
@@ -27,6 +28,8 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - Claude Sonnet 5 is no longer listed. A saved choice moves to Haiku 5.5.
 - Claude Haiku 4.5 is no longer listed. A saved choice moves to
   Haiku 5.5.
+- The service list shows service names without repeating what each service
+  offers.
 - Scripts transcribe page text as printed, preserve its capitalisation, and
   put each speech bubble on its own line.
 

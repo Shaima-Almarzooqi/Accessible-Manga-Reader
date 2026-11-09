@@ -237,9 +237,9 @@ it.</p>
 <p>Select the provider, model, API keys, pages per request, and delay
 between requests. Use Refresh model list to retrieve models available to
 the current account.</p>
-<p>The Keys saved line shows how many API keys are stored for each service.
-Select Test these keys to check every key for the selected service and see
-which ones the service accepts.</p>
+<p>Select How many keys are saved to report the number of API keys held for
+each service. Select Test these keys to check every key for the selected
+service and see which ones the service accepts.</p>
 
 <h3>Verbosity</h3>
 <ul>

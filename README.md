@@ -103,7 +103,7 @@ In the reader:
 
 The **AI engine** tab contains the provider, model, API keys, pages per request, and delay between requests. Up to 10 keys can be entered, one per line. The app rotates to the next key when the current key reaches a limit.
 
-The **Keys saved** line shows how many API keys are stored for each service. Select **Test these keys** to check every key for the selected service and see which ones the service accepts.
+Select **How many keys are saved** to report the number of API keys held for each service. Select **Test these keys** to check every key for the selected service and see which ones the service accepts.
 
 The **General** tab contains:
 

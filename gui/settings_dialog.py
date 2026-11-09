@@ -101,12 +101,10 @@ class SettingsDialog(wx.Dialog):
             % config.MAX_API_KEYS,
             lambda p: wx.TextCtrl(p, style=wx.TE_MULTILINE,
                                   size=(-1, 90)))
-        self.api_keys.Bind(wx.EVT_TEXT, self.on_keys_typed)
 
-        self.key_counts = add_labeled(
-            ai_panel, ai_sizer, "Keys &saved:",
-            lambda p: wx.TextCtrl(p, value="",
-                                  style=wx.TE_READONLY))
+        self.key_counts = wx.Button(ai_panel, label="How many &keys are saved")
+        self.key_counts.Bind(wx.EVT_BUTTON, self.on_key_counts)
+        ai_sizer.Add(self.key_counts, 0, wx.LEFT | wx.BOTTOM, 6)
 
         self.test_button = wx.Button(
             ai_panel, label="&Test these keys")
@@ -278,7 +276,6 @@ class SettingsDialog(wx.Dialog):
                                                state["model"]))
         self.api_keys.SetValue("\n".join(state["api_keys"]))
         self.base_url.SetValue(state.get("base_url", ""))
-        self._update_key_counts()
         # The URL and its presets only apply to a custom endpoint; the
         # other services have fixed addresses.
         needs_url = self._needs_base_url()
@@ -297,21 +294,23 @@ class SettingsDialog(wx.Dialog):
         self.current_service = self._selected_service_key()
         self._load_service_fields()
 
-    def _update_key_counts(self):
-        """One line showing how many keys each service has saved."""
-        self.service_state[self.current_service]["api_keys"] = (
-            config.parse_api_keys(self.api_keys.GetValue()))
+    def _counts_text(self):
+        """How many keys each service has saved, longest form."""
         parts = []
         for key, label in config.SERVICE_LABELS:
             count = len(self.service_state[key]["api_keys"])
             if count:
-                # "Gemini by Google (free tier available)" -> "Gemini"
                 parts.append("%s %d" % (label.split()[0], count))
-        self.key_counts.SetValue(", ".join(parts) if parts else "none")
+        return ", ".join(parts) if parts else "none"
 
-    def on_keys_typed(self, event):
-        self._update_key_counts()
-        event.Skip()
+    def on_key_counts(self, event):
+        """Say how many keys each service has, counting what is in the
+        box right now rather than what was last saved."""
+        self.service_state[self.current_service]["api_keys"] = (
+            config.parse_api_keys(self.api_keys.GetValue()))
+        wx.MessageBox("Keys saved: %s" % self._counts_text(),
+                      "Keys saved", wx.OK | wx.ICON_INFORMATION, self)
+        self.key_counts.SetFocus()
 
     def on_test_keys(self, event):
         """Try every key for this service against its model list."""
