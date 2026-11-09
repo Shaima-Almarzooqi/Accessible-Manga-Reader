@@ -401,6 +401,7 @@ class SettingsDialog(wx.Dialog):
                 self.api_keys.SetFocus()
                 return
         if (self._needs_base_url()
+                and self.service_state[self.current_service]["api_keys"]
                 and not self.service_state[self.current_service]["base_url"]):
             wx.MessageBox(
                 "This service needs an endpoint URL. Choose a preset or "
