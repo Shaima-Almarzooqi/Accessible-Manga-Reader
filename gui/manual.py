@@ -245,8 +245,8 @@ characters. Use Add a key, Edit the selected key, and Remove the selected
 key to manage the list. A new key is added at the end, and the app does not
 limit how many keys a service can hold.</p>
 <p>Select How many keys are saved to report the number of API keys held for
-each service. Select Test these keys to check every key for the selected
-service and see which ones the service accepts.</p>
+each service. Select Test these keys to check whether the service accepts
+each key. This does not check how much quota a key has left.</p>
 
 <h3>Verbosity</h3>
 <ul>

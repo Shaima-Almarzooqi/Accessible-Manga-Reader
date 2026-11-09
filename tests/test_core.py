@@ -1680,8 +1680,11 @@ class TestCheckingTheKeys(unittest.TestCase):
                            c=["m1", "m2"])
         text = api_client.describe_key_check(
             api_client.check_keys("gemini", ["a", "b", "c"], fetch=fetch))
-        self.assertIn("2 of 3 keys working", text)
-        self.assertIn("Key 2: not working", text)
+        self.assertIn("2 of 3 keys accepted", text)
+        self.assertIn("Key 2: not accepted", text)
+        # Listing models costs no quota, so this cannot speak for quota
+        # and must not be read as doing so.
+        self.assertIn("does not check how much quota", text)
 
     def test_no_keys_says_so(self):
         from core import api_client

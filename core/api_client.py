@@ -1038,18 +1038,26 @@ def check_keys(service, api_keys, base_url="", fetch=None):
 
 
 def describe_key_check(results):
-    """The check results as lines a screen reader can read out."""
+    """The check results as lines a screen reader can read out.
+
+    The wording says "accepted" rather than "working" because that is
+    all this can establish. Listing models uses no generation quota, so
+    a key with nothing left for the day is accepted here exactly as a
+    fresh one is; saying it was working invited the reading that it had
+    quota.
+    """
     if not results:
         return "No API keys are saved for this service."
     lines = []
     for result in results:
         lines.append("Key %d: %s. %s"
                      % (result["position"],
-                        "working" if result["working"] else "not working",
+                        "accepted" if result["working"] else "not accepted",
                         result["detail"]))
-    working = sum(1 for r in results if r["working"])
-    lines.insert(0, "%d of %d keys working."
-                 % (working, len(results)))
+    accepted = sum(1 for r in results if r["working"])
+    lines.insert(0, "%d of %d keys accepted. This does not check how "
+                    "much quota a key has left."
+                 % (accepted, len(results)))
     return "\n".join(lines)
 
 
