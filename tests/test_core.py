@@ -441,7 +441,7 @@ class TestProviderClients(unittest.TestCase):
         client = api_client.create_client(settings)
         self.assertIsInstance(client, api_client.RotatingClient)
         self.assertIs(client.client_class, api_client.GeminiClient)
-        self.assertEqual(client.model, "gemini-3.8-flash")
+        self.assertEqual(client.model, "gemini-3.6-flash")
 
 
 class TestGeminiThinkingBudget(unittest.TestCase):
@@ -562,13 +562,19 @@ class TestGeminiRunningOutOfTokens(unittest.TestCase):
             self.assertFalse(
                 getattr(caught.exception, "retryable", False), text)
 
-    def test_it_points_at_the_two_settings_that_help(self):
+    def test_it_points_at_the_setting_that_helps(self):
+        # Only Pages per request. There is no Max tokens control in
+        # Settings, and the stored value is a floor that processor.py
+        # already raises to fit the batch, so naming it sent readers
+        # looking for something that is not there and would not have
+        # helped if it were.
         from core import api_client
-        with self.assertRaises(api_client.ApiError) as caught:
-            self._extract("MAX_TOKENS", "")
-        message = str(caught.exception)
-        self.assertIn("Pages per request", message)
-        self.assertIn("Max tokens", message)
+        for text in ("", "=== PAGE 1 ===\nPanel 1: hi."):
+            with self.assertRaises(api_client.ApiError) as caught:
+                self._extract("MAX_TOKENS", text)
+            message = str(caught.exception)
+            self.assertIn("Pages per request", message)
+            self.assertNotIn("Max tokens", message)
 
     def test_an_ordinary_empty_response_is_still_retried(self):
         # A 200 carrying nothing, with no reason given, is a hiccup
@@ -581,6 +587,79 @@ class TestGeminiRunningOutOfTokens(unittest.TestCase):
     def test_a_finished_script_is_returned_unchanged(self):
         self.assertEqual(self._extract("STOP", "=== PAGE 1 ==="),
                          "=== PAGE 1 ===")
+
+
+class TestClaudeAndChatGPTRunningOutOfTokens(unittest.TestCase):
+    """Gemini reported a cut-off reply; these two did not.
+
+    A truncated script still parses, so the pages that arrived were
+    saved and the rest vanished without a message -- and because
+    those pages are recorded as done, resuming the book skipped
+    them. A blind reader cannot see a chapter that simply stops.
+    """
+
+    def _claude(self, stop_reason, text):
+        from core import api_client
+        blocks = [{"type": "text", "text": text}] if text else []
+        return api_client.AnthropicClient.extract_text(
+            {"stop_reason": stop_reason, "content": blocks})
+
+    def _openai(self, finish_reason, text):
+        from core import api_client
+        return api_client.OpenAIClient.extract_text(
+            {"choices": [{"finish_reason": finish_reason,
+                          "message": {"content": text}}]})
+
+    def test_claude_running_out_partway_is_reported(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            self._claude("max_tokens", "=== PAGE 1 ===\nPanel 1: hi.")
+        self.assertIn("incomplete", str(caught.exception))
+        self.assertIn("Pages per request", str(caught.exception))
+
+    def test_claude_running_out_before_writing_is_reported(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            self._claude("max_tokens", "")
+        self.assertIn("allowance", str(caught.exception))
+
+    def test_chatgpt_running_out_partway_is_reported(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            self._openai("length", "=== PAGE 1 ===\nPanel 1: hi.")
+        self.assertIn("incomplete", str(caught.exception))
+        self.assertIn("Pages per request", str(caught.exception))
+
+    def test_chatgpt_running_out_before_writing_is_reported(self):
+        from core import api_client
+        with self.assertRaises(api_client.ApiError) as caught:
+            self._openai("length", "")
+        self.assertIn("allowance", str(caught.exception))
+
+    def test_neither_is_retried(self):
+        # The same request runs out at the same place, so a retry
+        # only makes the reader wait for the same failure.
+        from core import api_client
+        for call, reason in ((self._claude, "max_tokens"),
+                             (self._openai, "length")):
+            for text in ("", "=== PAGE 1 ===\nPanel 1: hi."):
+                with self.assertRaises(api_client.ApiError) as caught:
+                    call(reason, text)
+                self.assertFalse(
+                    getattr(caught.exception, "retryable", False))
+
+    def test_a_finished_script_is_returned_unchanged(self):
+        script = "=== PAGE 1 ===\nPanel 1 (top): A boy runs."
+        self.assertEqual(script, self._claude("end_turn", script))
+        self.assertEqual(script, self._openai("stop", script))
+
+    def test_an_empty_reply_with_no_reason_still_says_empty(self):
+        from core import api_client
+        for call, reason in ((self._claude, "end_turn"),
+                             (self._openai, "stop")):
+            with self.assertRaises(api_client.ApiError) as caught:
+                call(reason, "")
+            self.assertIn("empty", str(caught.exception))
 
 
 class TestSettingsMigration(unittest.TestCase):
@@ -846,7 +925,7 @@ class TestBookKindAndPositions(unittest.TestCase):
         self.assertEqual(config.DEFAULT_SETTINGS["reader_view"], "book")
         self.assertIn("openai", config.SUGGESTED_MODELS)
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.8-flash")
+                         "gemini-3.6-flash")
 
 
 
@@ -1283,7 +1362,12 @@ class TestKeyRotation(unittest.TestCase):
             client.request_scripts("sys", [])
         message = str(caught.exception)
         self.assertIn("All 3 API keys", message)
-        self.assertIn("same project or account share one quota", message)
+        self.assertIn("same project share one quota", message)
+        # Google documents rate limits as applied per project,
+        # not per account, so a second project in the same
+        # account adds capacity and the message must not send
+        # anyone off making a second Google account.
+        self.assertNotIn("or account", message)
 
     def test_non_key_errors_do_not_rotate(self):
         from core import api_client
@@ -1348,6 +1432,199 @@ class TestCurrentPageForRanges(unittest.TestCase):
     def test_nonsense_does_not_break_it(self):
         self.book.last_page = "somewhere"
         self.assertEqual(library.current_page_of(self.book), 1)
+
+
+class TestEveryProviderFlagsKeyFailures(unittest.TestCase):
+    """Rotation only happens when a client marks a failure as
+    key-specific. The wrapper is shared, so if one provider forgets
+    the flag, that provider silently never rotates however many keys
+    the reader has saved.
+
+    These drive each real client with fake HTTP replies, so every
+    provider is held to the same contract without touching a key or
+    a quota.
+    """
+
+    def setUp(self):
+        self.real_requests = sys.modules.get("requests")
+
+    def tearDown(self):
+        if self.real_requests is None:
+            sys.modules.pop("requests", None)
+        else:
+            sys.modules["requests"] = self.real_requests
+
+    def _answer(self, status, body=None, headers=None):
+        """Make every POST return one canned reply."""
+        class FakeResponse:
+            status_code = status
+            text = json.dumps(body or {})
+            def json(self):
+                return body or {}
+        FakeResponse.headers = headers or {}
+        fake = types.ModuleType("requests")
+        fake.post = lambda *a, **kw: FakeResponse()
+        sys.modules["requests"] = fake
+
+    def _clients(self):
+        from core import api_client
+        return [("Gemini", api_client.GeminiClient),
+                ("Claude", api_client.AnthropicClient),
+                ("ChatGPT", api_client.OpenAIClient)]
+
+    def _call(self, client_class, status, headers=None):
+        from core import api_client
+        self._answer(status, {"error": {"message": "no"}}, headers)
+        client = client_class("key", "model")
+        api_client.set_retry_limits(client, 1, 0)
+        try:
+            client.request_scripts("sys", [])
+        except api_client.ApiError as error:
+            return error
+        self.fail("expected an error for HTTP %d" % status)
+
+    def test_a_rejected_key_is_key_specific_everywhere(self):
+        # 401 means this key is wrong. Another key may well work.
+        for name, client_class in self._clients():
+            error = self._call(client_class, 401)
+            self.assertTrue(getattr(error, "key_exhausted", False), name)
+
+    def test_being_out_of_quota_is_key_specific_everywhere(self):
+        # 429 after the retries are spent: this key has nothing left.
+        for name, client_class in self._clients():
+            error = self._call(client_class, 429)
+            self.assertTrue(getattr(error, "key_exhausted", False), name)
+
+    def test_a_bad_request_never_rotates(self):
+        # 400 is the request's fault, not the key's. Rotating would
+        # burn every key on the same broken request.
+        for name, client_class in self._clients():
+            error = self._call(client_class, 400)
+            self.assertFalse(getattr(error, "key_exhausted", False), name)
+
+    def test_an_unknown_model_never_rotates(self):
+        for name, client_class in self._clients():
+            error = self._call(client_class, 404)
+            self.assertFalse(getattr(error, "key_exhausted", False), name)
+
+    def test_a_key_without_access_is_key_specific_everywhere(self):
+        # 403 is this key lacking access to the model or project.
+        # Another key may have it, so the run should not stop.
+        for name, client_class in self._clients():
+            error = self._call(client_class, 403)
+            self.assertTrue(getattr(error, "key_exhausted", False), name)
+
+    def _count_requests(self, client_class, status, rotate):
+        """How many times a client asks before giving the key back."""
+        from core import api_client
+        calls = []
+        class FakeResponse:
+            status_code = status
+            headers = {}
+            text = json.dumps({"error": {"message": "slow down"}})
+            def json(self):
+                return {"error": {"message": "slow down"}}
+        fake = types.ModuleType("requests")
+        def post(*args, **kwargs):
+            calls.append(1)
+            return FakeResponse()
+        fake.post = post
+        sys.modules["requests"] = fake
+        client = client_class("key", "model")
+        api_client.set_retry_limits(client, 5, 0)
+        client.rotate_on_rate_limit = rotate
+        with self.assertRaises(api_client.ApiError):
+            client.request_scripts("sys", [])
+        return len(calls)
+
+    def test_a_rate_limited_key_is_handed_back_at_once(self):
+        # The wrapper asks for this on its first pass: another key may
+        # be free right now, and waiting out the backoff first leaves
+        # every other key idle for minutes.
+        for name, client_class in self._clients():
+            self.assertEqual(
+                1, self._count_requests(client_class, 429, rotate=True),
+                name)
+
+    def test_with_nowhere_to_go_it_still_waits_and_retries(self):
+        # On the last pass there is no other key, so the ordinary
+        # wait-and-retry behaviour has to survive the change above.
+        for name, client_class in self._clients():
+            self.assertEqual(
+                5, self._count_requests(client_class, 429, rotate=False),
+                name)
+
+
+class TestCheckingTheKeys(unittest.TestCase):
+    """Settings can try each saved key and say which ones answer.
+
+    It asks the service for its model list, which costs nothing and
+    uses no generation quota -- so this finds a key that is wrong,
+    revoked or has no access, and deliberately does not try to tell
+    you whether a working key still has quota left for processing.
+    """
+
+    def _fake(self, **answers):
+        from core import api_client
+
+        def fetch(service, api_key, base_url=""):
+            outcome = answers[api_key]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+        return fetch
+
+    def test_each_key_is_reported_by_position(self):
+        from core import api_client
+        fetch = self._fake(a=["m1", "m2"],
+                           b=api_client.ApiError("rejected the API key"))
+        results = api_client.check_keys("gemini", ["a", "b"], fetch=fetch)
+        self.assertEqual([1, 2], [r["position"] for r in results])
+        self.assertEqual([True, False], [r["working"] for r in results])
+        self.assertIn("2 models", results[0]["detail"])
+
+    def test_the_key_itself_is_never_reported(self):
+        # A reader reads this out loud, and may be screen sharing.
+        from core import api_client
+        secret = "sk-do-not-leak-me"
+        fetch = self._fake(**{secret: ["m1"]})
+        results = api_client.check_keys("openai", [secret], fetch=fetch)
+        self.assertNotIn(secret, str(results))
+        self.assertNotIn(secret,
+                         api_client.describe_key_check(results))
+
+    def test_a_blank_line_is_not_a_key(self):
+        from core import api_client
+        results = api_client.check_keys("gemini", ["   "],
+                                        fetch=self._fake())
+        self.assertFalse(results[0]["working"])
+        self.assertEqual("empty", results[0]["detail"])
+
+    def test_a_network_failure_is_reported_not_raised(self):
+        # One unreachable service must not stop the other keys being
+        # tried, and must not take the dialog down.
+        from core import api_client
+        fetch = self._fake(a=OSError("connection refused"), b=["m1"])
+        results = api_client.check_keys("gemini", ["a", "b"], fetch=fetch)
+        self.assertFalse(results[0]["working"])
+        self.assertIn("connection refused", results[0]["detail"])
+        self.assertTrue(results[1]["working"])
+
+    def test_the_summary_counts_the_working_ones(self):
+        from core import api_client
+        fetch = self._fake(a=["m1"], b=api_client.ApiError("no"),
+                           c=["m1", "m2"])
+        text = api_client.describe_key_check(
+            api_client.check_keys("gemini", ["a", "b", "c"], fetch=fetch))
+        self.assertIn("2 of 3 keys working", text)
+        self.assertIn("Key 2: not working", text)
+
+    def test_no_keys_says_so(self):
+        from core import api_client
+        self.assertIn("No API keys",
+                      api_client.describe_key_check(
+                          api_client.check_keys("gemini", [],
+                                                fetch=self._fake())))
 
 
 class TestMovingBooks(unittest.TestCase):
@@ -1474,7 +1751,9 @@ class TestFinishedReading(unittest.TestCase):
     def _reload(self):
         return library.Book.load(self.workspace)
 
-    def test_a_new_book_is_not_finished(self):
+    def test_a_book_with_no_mark_is_not_finished(self):
+        # Covers a new book and one made before the feature existed:
+        # neither has the marker file, so they load the same way.
         self.assertFalse(self._reload().finished)
 
     def test_marking_is_remembered(self):
@@ -1510,10 +1789,6 @@ class TestFinishedReading(unittest.TestCase):
         again = self._reload()
         self.assertEqual(again.last_page, 4)
         self.assertEqual(again.last_position, 120)
-
-    def test_a_book_from_an_earlier_version_loads_unfinished(self):
-        # Nothing in the workspace marks it, so it is simply unmarked.
-        self.assertFalse(self._reload().finished)
 
     def test_the_mark_is_not_kept_in_the_book_file(self):
         # It lives in a file of its own precisely so that a whole-file
@@ -2712,6 +2987,170 @@ class TestStricterPromptRules(unittest.TestCase):
             self.assertIn("(illegible)", prompt)
 
 
+class TestCopyingTheTextRatherThanRewordingIt(unittest.TestCase):
+    """Read against real pages, models reworded the lettering,
+    flattened its capitals into sentence case, merged two bubbles
+    into one line, counted bubble-only background as panels, and
+    wrote the descriptions in a language the comic was not printed
+    in. Each of those has a rule of its own now."""
+
+    def _prompt(self, language="English"):
+        return prompts.build_system_prompt("manga", "detailed", language)
+
+    def test_the_text_is_copied_not_reworded(self):
+        prompt = self._prompt()
+        self.assertIn("TRANSCRIBING THE TEXT", prompt)
+        self.assertIn("Copy all text exactly as it is printed", prompt)
+        self.assertIn("the same capital letters", prompt)
+        self.assertIn("Do not correct spelling or grammar", prompt)
+
+    def test_one_bubble_is_one_line(self):
+        prompt = self._prompt()
+        self.assertIn("Write exactly one line per bubble", prompt)
+        self.assertIn("write two lines", prompt)
+
+    def test_a_chain_of_bubbles_is_still_several_lines(self):
+        # The tail rules call a joined chain "one speaker
+        # continuing", which was read as one line: a model merged
+        # two bubbles of a real page into a single line.
+        prompt = self._prompt()
+        self.assertIn("they are still separate bubbles", prompt)
+        self.assertIn("write one line for each of them", prompt)
+
+    def test_text_with_no_bubble_still_gets_a_line(self):
+        # Pages carry bold text printed straight onto the
+        # background, and the tail rules treat it as monologue or
+        # narration. Counting lines by bubbles alone would drop it.
+        prompt = self._prompt()
+        self.assertIn("with no bubble around it gets a line of its "
+                      "own", prompt)
+
+    def test_the_text_rule_does_not_reorder_the_output(self):
+        # OUTPUT FORMAT puts the panel description first and the
+        # dialogue beneath it. Nothing here may suggest otherwise.
+        prompt = self._prompt()
+        self.assertIn("Take the words from what is printed on the "
+                      "page", prompt)
+        self.assertIn("Dialogue lines come AFTER the panel "
+                      "description line", prompt)
+
+    def test_the_rules_hold_when_translating_too(self):
+        # Translating changes the choice of words and nothing else:
+        # the capitals and the one-line-per-bubble count still hold.
+        for language in ("English", "Arabic", config.ORIGINAL_LANGUAGE):
+            prompt = self._prompt(language)
+            self.assertIn("Translate an all-capitals line into all "
+                          "capital letters", prompt, language)
+            self.assertIn("Still write one line per bubble", prompt,
+                          language)
+
+    def test_a_bubble_on_the_background_is_not_a_panel(self):
+        prompt = self._prompt()
+        self.assertIn("A panel is one drawn picture", prompt)
+        self.assertIn("holds no drawn picture of its own is not a "
+                      "panel", prompt)
+        self.assertIn("Do not count a bubble", prompt)
+
+    def test_an_unframed_panel_still_counts(self):
+        # A vertical scroll separates panels by a gap in the
+        # background rather than a frame, and a panel elsewhere can
+        # be drawn borderless on purpose. Both are still panels.
+        for comic_type in ("manga", "manhwa", "webtoon", "western"):
+            prompt = prompts.build_system_prompt(
+                comic_type, "detailed", "English")
+            self.assertIn("A panel may also have no frame at all",
+                          prompt, comic_type)
+            self.assertIn("Count those as panels too", prompt,
+                          comic_type)
+
+    def test_the_language_is_read_off_the_bubbles(self):
+        # Two models wrote their descriptions in a language with no
+        # presence on the page at all.
+        prompt = self._prompt(config.ORIGINAL_LANGUAGE)
+        self.assertIn("inside the speech "
+                      "bubbles", prompt)
+        self.assertIn("Do not decide it from the setting", prompt)
+        self.assertIn("printed in English is an "
+                      "English comic", prompt)
+
+    def test_a_watermark_is_transcribed_like_any_other_text(self):
+        prompt = self._prompt()
+        self.assertIn("the publisher's or scanlation group's watermark "
+                      "or logo", prompt)
+        self.assertIn("for a watermark say that it is a watermark",
+                      prompt)
+
+    def test_unbubbled_lettering_is_not_scene_text(self):
+        # A character's inner voice printed over the art is literally
+        # visible in the art, so it was landing on a text line and
+        # reaching the reader as though it were a sign on a wall.
+        for comic_type in ("manga", "manhwa", "webtoon", "western"):
+            prompt = prompts.build_system_prompt(
+                comic_type, "detailed", "English")
+            self.assertIn("with no bubble, no box, and no object it "
+                          "belongs to", prompt, comic_type)
+            self.assertIn("is a character's voice or narration instead",
+                          prompt, comic_type)
+
+    def test_the_watermark_is_not_caught_by_that(self):
+        # A watermark is also printed straight onto the page, so the
+        # two rules would contradict each other unless the allowed
+        # list names it.
+        prompt = self._prompt()
+        allowed = prompt.find("A <TEXT> line is for words that belong")
+        excluded = prompt.find("Lettering printed straight onto the page")
+        self.assertNotEqual(-1, allowed)
+        self.assertLess(allowed, excluded)
+        self.assertIn("watermark", prompt[allowed:excluded])
+
+    def test_a_plain_bubble_is_speech_not_thought(self):
+        # One model marked thirteen of seventeen lines on a page of
+        # plain oval bubbles as inner thought, which turns a
+        # conversation into one character's monologue.
+        for comic_type in ("manga", "manhwa", "webtoon", "western"):
+            prompt = prompts.build_system_prompt(
+                comic_type, "detailed", "English")
+            self.assertIn("Mark a line as thought only when its bubble "
+                          "is cloud-shaped", prompt, comic_type)
+            self.assertIn("is speech, with or without a tail", prompt,
+                          comic_type)
+            self.assertIn("Most lines on a page are speech", prompt,
+                          comic_type)
+
+    def test_the_circle_trail_must_be_looked_for(self):
+        # A blanket "write it as speech when unsure" made one model
+        # drop real thought lines whose bubbles are marked by a faint
+        # trail of circles rather than a cloud outline. The absence of
+        # a trail has to be established, not assumed.
+        for comic_type in ("manga", "manhwa", "webtoon", "western"):
+            prompt = prompts.build_system_prompt(
+                comic_type, "detailed", "English")
+            self.assertIn("Look for that trail of circles", prompt,
+                          comic_type)
+            self.assertIn("no cloud outline and no trail of circles",
+                          prompt, comic_type)
+
+    def test_text_outside_a_bubble_is_still_monologue(self):
+        # The new rule settles what a BUBBLE is. The vertical
+        # formats also rule on text with no bubble at all, and that
+        # must not be swept up by it.
+        for comic_type in ("manhwa", "webtoon"):
+            prompt = prompts.build_system_prompt(
+                comic_type, "detailed", "English")
+            self.assertIn("is usually internal monologue", prompt,
+                          comic_type)
+
+    def test_the_label_placeholders_are_left_alone(self):
+        # The substitution these drive is what keeps <SFX> and
+        # <TEXT> out of a reader's script; the new rules must not
+        # disturb the contract it depends on.
+        prompt = self._prompt()
+        self.assertIn("are placeholders, not words to copy", prompt)
+        for slot in prompts.LABEL_SLOTS:
+            self.assertIn("<%s>" % slot, prompt)
+        self.assertIn("LABELS:", prompt)
+
+
 class TestPanelLabelStripping(unittest.TestCase):
     SCRIPT = ("Panel 1 (top right): A boy runs down the street.\n"
               'Aiko: "Wait for me!"\n'
@@ -2905,16 +3344,16 @@ class TestComicTypeSettings(unittest.TestCase):
 
 class TestModelDefaultsAndLists(unittest.TestCase):
     def test_gemini_default_is_stable_flash(self):
-        # The default was held at 3.6 until the newer models had been
-        # compared on real pages rather than on published benchmarks.
-        # They have been: on the same five pages 3.8 Flash answered in
-        # 12.7 seconds against 3.6 Flash at 21.2, and both returned a
-        # script with no placeholder labels left in it. 3.6 stays on
-        # the list for anyone who prefers it.
+        # Read against real pages, 3.6 Flash found more of the
+        # dialogue than any other Gemini model and never reported an
+        # inner thought on a page that has none. Over the same runs
+        # 3.8 Flash answered one request in five, the rest timing out
+        # or returning high-demand errors, so it stays on the list
+        # but not as the default.
         self.assertEqual(config.SUGGESTED_MODELS["gemini"][0],
-                         "gemini-3.8-flash")
+                         "gemini-3.6-flash")
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.8-flash")
+                         "gemini-3.6-flash")
         self.assertIn(config.DEFAULT_SETTINGS["gemini_model"],
                       config.SUGGESTED_MODELS["gemini"])
 
@@ -2939,25 +3378,28 @@ class TestModelDefaultsAndLists(unittest.TestCase):
 
 
 class TestNewProviderModels(unittest.TestCase):
-    """Models added after 1.0.0. Adding one never moves a default: a
-    reader whose books were processed by a given model keeps it until
-    they choose otherwise."""
+    """Models added after 1.0.0. Adding one never moves a default by
+    itself, and when a default does move it reaches new installs
+    only: a reader whose books were processed by a given model keeps
+    it, because their saved choice is what the app reads."""
 
     def test_the_current_anthropic_pair_is_offered(self):
         models = config.SUGGESTED_MODELS["anthropic"]
         self.assertIn("claude-sonnet-5-5", models)
         self.assertIn("claude-opus-5-5", models)
 
-    def test_the_older_anthropic_pair_stays(self):
-        # Anthropic lists both as active into 2027, so there is no
+    def test_the_older_opus_stays(self):
+        # Anthropic lists it as active into 2027, so there is no
         # reason to take a working model away from anyone.
         models = config.SUGGESTED_MODELS["anthropic"]
-        self.assertIn("claude-sonnet-5", models)
         self.assertIn("claude-opus-5", models)
 
-    def test_the_anthropic_default_is_unchanged(self):
+    def test_the_anthropic_default_reads_lettering_closest(self):
+        # Haiku 5.5 found more of the dialogue on real pages than
+        # either Sonnet, kept the lettering's own capitals, and
+        # costs a fraction as much.
         self.assertEqual(config.DEFAULT_SETTINGS["anthropic_model"],
-                         "claude-sonnet-5")
+                         "claude-haiku-5-5")
 
     def test_the_gpt_6_family_is_offered(self):
         models = config.SUGGESTED_MODELS["openai"]
@@ -2970,12 +3412,20 @@ class TestNewProviderModels(unittest.TestCase):
         for name in ("gpt-5.6", "gpt-5.6-terra", "gpt-5.6-luna"):
             self.assertIn(name, models)
 
-    def test_the_openai_default_is_unchanged(self):
-        self.assertEqual(config.DEFAULT_SETTINGS["openai_model"], "gpt-5.6")
+    def test_the_openai_default_reads_images_for_less(self):
+        # "gpt-5.6" routes to GPT-5.6 Sol, a reasoning model at
+        # $4/$20 -- the dearest non-flagship on the list, and a
+        # strange thing to describe comic pages with. 6.1 Terra is
+        # the only model either provider calls built for reading
+        # images, at a quarter the price.
+        self.assertEqual(config.DEFAULT_SETTINGS["openai_model"],
+                         "gpt-6.1-terra")
 
-    def test_the_gemini_default_is_the_newest_stable_flash(self):
+    def test_the_gemini_default_is_the_one_that_read_best(self):
         self.assertEqual(config.DEFAULT_SETTINGS["gemini_model"],
-                         "gemini-3.8-flash")
+                         "gemini-3.6-flash")
+        self.assertIn("gemini-3.8-flash",
+                      config.SUGGESTED_MODELS["gemini"])
 
     def test_no_list_repeats_a_model(self):
         for service, models in config.SUGGESTED_MODELS.items():
@@ -3029,6 +3479,7 @@ class TestVoiceModelsAreSettledReleases(unittest.TestCase):
         offered = {
             "gemini_model": config.SUGGESTED_MODELS["gemini"],
             "tts_model": [name for name, _ in self._tts().TTS_MODELS],
+            "anthropic_model": config.SUGGESTED_MODELS["anthropic"],
         }
         for setting, replacements in config.RETIRED_MODELS.items():
             self.assertIn(setting, offered, setting)
@@ -6204,10 +6655,10 @@ class TestRecommendedModelLabel(unittest.TestCase):
     """
 
     def test_only_the_recommended_model_is_marked(self):
-        self.assertEqual("gemini-3.8-flash (recommended)",
-                         config.model_label("gemini", "gemini-3.8-flash"))
-        self.assertEqual("gemini-3.6-flash",
+        self.assertEqual("gemini-3.6-flash (recommended)",
                          config.model_label("gemini", "gemini-3.6-flash"))
+        self.assertEqual("gemini-3.8-flash",
+                         config.model_label("gemini", "gemini-3.8-flash"))
 
     def test_other_services_are_not_marked(self):
         for service in ("openai", "anthropic", "openrouter", "custom"):
@@ -6234,9 +6685,12 @@ class TestRecommendedModelLabel(unittest.TestCase):
 
     def test_the_recommendation_matches_the_default(self):
         # Two places saying different things would be worse than
-        # saying nothing.
-        self.assertEqual(config.RECOMMENDED_MODELS["gemini"],
-                         config.DEFAULT_SETTINGS["gemini_model"])
+        # saying nothing: the Settings box would recommend one model
+        # and arrive set to another.
+        for service, model in config.RECOMMENDED_MODELS.items():
+            self.assertEqual(model,
+                             config.DEFAULT_SETTINGS[service + "_model"],
+                             service)
 
 
 class TestDeletingKeepsYourPlace(unittest.TestCase):
@@ -6289,6 +6743,68 @@ class TestDeletingKeepsYourPlace(unittest.TestCase):
         self.assertEqual(2, handler.count("refresh_books(select_book=above)"))
         self.assertEqual(2, handler.count("self.book_list.SetFocus()"))
         self.assertNotIn("self.refresh_books()", handler)
+
+
+class TestNovemberModelRefresh(unittest.TestCase):
+    """The November 2026 pass over Claude and OpenAI.
+
+    Nothing either provider lists was deprecated, so this is about one
+    model on each side that arrived after the October refresh, and two
+    defaults that were costing more than they needed to.
+    """
+
+    def _loaded(self, setting, model):
+        saved = {setting: model}
+        config._migrate(saved)
+        return saved[setting]
+
+    def test_the_new_cheap_claude_is_offered(self):
+        # Released 7 October 2026 at a twentieth of Sonnet's input
+        # price, and it reads images just the same.
+        self.assertIn("claude-haiku-5-5",
+                      config.SUGGESTED_MODELS["anthropic"])
+
+    def test_the_old_haiku_is_gone_and_moves_on(self):
+        # Anthropic's "not sooner than" floor for Haiku 4.5 passed in
+        # October 2026, so it can be put on a 60-day clock at any time.
+        self.assertNotIn("claude-haiku-4-5-20251001",
+                         config.SUGGESTED_MODELS["anthropic"])
+        self.assertEqual(
+            "claude-haiku-5-5",
+            self._loaded("anthropic_model", "claude-haiku-4-5-20251001"))
+
+    def test_the_vision_openai_model_is_offered_first(self):
+        models = config.SUGGESTED_MODELS["openai"]
+        self.assertIn("gpt-6.1-terra", models)
+        self.assertEqual("gpt-6.1-terra", models[0])
+
+    def test_the_older_defaults_are_still_selectable(self):
+        # Moving a default must not take the old one away: a reader
+        # part-way through a book keeps the model that started it.
+        self.assertIn("claude-sonnet-5-5",
+                      config.SUGGESTED_MODELS["anthropic"])
+        self.assertIn("gpt-5.6", config.SUGGESTED_MODELS["openai"])
+
+    def test_a_saved_choice_survives_the_new_defaults(self):
+        for setting, saved in (("anthropic_model", "claude-sonnet-5-5"),
+                               ("openai_model", "gpt-5.6"),
+                               ("gemini_model", "gemini-3.6-flash")):
+            self.assertEqual(saved, self._loaded(setting, saved))
+
+    def test_the_mistranscribing_claude_is_gone_and_moves_on(self):
+        # On real pages it wrote the script in a language the comic
+        # was not printed in and left the prompt's own label
+        # placeholders in the text.
+        self.assertNotIn("claude-sonnet-5",
+                         config.SUGGESTED_MODELS["anthropic"])
+        self.assertEqual(
+            "claude-haiku-5-5",
+            self._loaded("anthropic_model", "claude-sonnet-5"))
+
+    def test_every_default_is_a_model_on_its_own_list(self):
+        for service in ("gemini", "anthropic", "openai", "openrouter"):
+            self.assertIn(config.DEFAULT_SETTINGS[service + "_model"],
+                          config.SUGGESTED_MODELS[service], service)
 
 
 if __name__ == "__main__":

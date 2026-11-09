@@ -8,24 +8,38 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 
 - The app has its own icon in Explorer, the taskbar, shortcuts and its
   windows.
-- The Settings model list marks the recommended Gemini model.
+- The Settings model list marks Gemini 3.6 Flash as recommended.
+- Settings shows how many API keys are saved for each service. Test these
+  keys reports which keys the service accepts.
 - Books can be marked as finished reading with Ctrl+M. A marked book shows
   "finished" and its page count in the library.
-- New Claude and ChatGPT models are available. Their defaults have not
-  changed.
+- New Claude and ChatGPT models are available.
 
 ### Changed
 
 - Audio export now uses Gemini 3.8 voice models. A saved older voice model is
   moved to the new default automatically.
-- Gemini processing uses 3.8 Flash by default. A saved model is kept.
+- Gemini processing uses 3.6 Flash by default. A saved model is kept.
 - Gemini 3.7 Flash and 3.5 Flash are no longer listed. Google routes both
   to 3.8 Flash and 3.6 Flash, and a saved choice is moved to match.
+- Claude processing uses Haiku 5.5 by default, and ChatGPT processing
+  uses GPT-6.1 Terra. A saved model is kept.
+- Claude Sonnet 5 is no longer listed. A saved choice moves to Haiku 5.5.
+- Claude Haiku 4.5 is no longer listed. A saved choice moves to
+  Haiku 5.5.
+- Scripts transcribe page text as printed, preserve its capitalisation, and
+  put each speech bubble on its own line.
 
 ### Fixed
 
 - Removing a book from the library keeps your place in the list, instead
   of moving to the first book.
+- A Claude or ChatGPT batch that reaches its token allowance is reported
+  instead of saving an incomplete script.
+- A rate-limited API key is returned immediately, so every service tries the
+  next key without waiting.
+- Settings describes API key quotas as shared per project. Keys from separate
+  projects add capacity even when they belong to the same account.
 - Refresh model list orders models by version number, so a version such
   as 3.10 appears above 3.9.
 - Scripts use the selected output language throughout, including labels for

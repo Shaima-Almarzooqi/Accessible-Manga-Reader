@@ -96,11 +96,20 @@ class SettingsDialog(wx.Dialog):
             ai_panel, ai_sizer,
             "API &keys for this service, one per line (up to %d). When a "
             "key runs out of quota the next one is used automatically. "
-            "Keys from the same project or account share one quota, so "
-            "only keys from different projects or accounts add capacity:"
+            "Keys from the same project share one quota, so only keys "
+            "from separate projects add capacity:"
             % config.MAX_API_KEYS,
             lambda p: wx.TextCtrl(p, style=wx.TE_MULTILINE,
                                   size=(-1, 90)))
+        self.api_keys.Bind(wx.EVT_TEXT, self.on_keys_typed)
+
+        self.key_counts = wx.StaticText(ai_panel, label="")
+        ai_sizer.Add(self.key_counts, 0, wx.LEFT | wx.BOTTOM, 6)
+
+        self.test_button = wx.Button(
+            ai_panel, label="&Test these keys")
+        self.test_button.Bind(wx.EVT_BUTTON, self.on_test_keys)
+        ai_sizer.Add(self.test_button, 0, wx.LEFT | wx.BOTTOM, 6)
 
         self.pages_per_request = add_labeled(
             ai_panel, ai_sizer, "&Pages per request:",
@@ -267,6 +276,7 @@ class SettingsDialog(wx.Dialog):
                                                state["model"]))
         self.api_keys.SetValue("\n".join(state["api_keys"]))
         self.base_url.SetValue(state.get("base_url", ""))
+        self._update_key_counts()
         # The URL and its presets only apply to a custom endpoint; the
         # other services have fixed addresses.
         needs_url = self._needs_base_url()
@@ -284,6 +294,37 @@ class SettingsDialog(wx.Dialog):
         self._stash_service_fields()
         self.current_service = self._selected_service_key()
         self._load_service_fields()
+
+    def _update_key_counts(self):
+        """One line showing how many keys each service has saved."""
+        self.service_state[self.current_service]["api_keys"] = (
+            config.parse_api_keys(self.api_keys.GetValue()))
+        parts = []
+        for key, label in config.SERVICE_LABELS:
+            count = len(self.service_state[key]["api_keys"])
+            if count:
+                # "Gemini by Google (free tier available)" -> "Gemini"
+                parts.append("%s %d" % (label.split()[0], count))
+        self.key_counts.SetLabel(
+            "Keys saved: " + (", ".join(parts) if parts else "none"))
+
+    def on_keys_typed(self, event):
+        self._update_key_counts()
+        event.Skip()
+
+    def on_test_keys(self, event):
+        """Try every key for this service against its model list."""
+        self._stash_service_fields()
+        service = self.current_service
+        state = self.service_state[service]
+        busy = wx.BusyCursor()
+        results = api_client.check_keys(
+            service, state["api_keys"],
+            base_url=state.get("base_url", ""))
+        del busy
+        wx.MessageBox(api_client.describe_key_check(results),
+                      "Test these keys", wx.OK | wx.ICON_INFORMATION, self)
+        self.api_keys.SetFocus()
 
     def on_refresh_models(self, event):
         self._stash_service_fields()

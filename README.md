@@ -103,6 +103,8 @@ In the reader:
 
 The **AI engine** tab contains the provider, model, API keys, pages per request, and delay between requests. Up to 10 keys can be entered, one per line. The app rotates to the next key when the current key reaches a limit.
 
+The **Keys saved** line shows how many API keys are stored for each service. Select **Test these keys** to check every key for the selected service and see which ones the service accepts.
+
 The **General** tab contains:
 
 - **Output language.** Select a language or enter one. All script content uses that language, including descriptions, dialogue, character names, and the labels for narration, sound effects, visible text, and thoughts. Label wording and character name spellings remain consistent throughout a book. Select **Original (same as the comic)** to transcribe the comic without translation.

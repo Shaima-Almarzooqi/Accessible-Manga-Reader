@@ -21,11 +21,11 @@ DEFAULT_SETTINGS = {
     # Default confirmed working on current free-tier projects; older
     # gemini-2.5-* models are no longer served to all projects. Use the
     # "Refresh model list" button in Settings to fetch what YOUR key can use.
-    "gemini_model": "gemini-3.8-flash",
+    "gemini_model": "gemini-3.6-flash",
     "anthropic_api_keys": [],
-    "anthropic_model": "claude-sonnet-5",
+    "anthropic_model": "claude-haiku-5-5",
     "openai_api_keys": [],
-    "openai_model": "gpt-5.6",
+    "openai_model": "gpt-6.1-terra",
     "openrouter_api_keys": [],
     "openrouter_model": "google/gemma-4-31b-it:free",
     # Any OpenAI-compatible endpoint: Groq, Mistral, a local Ollama or
@@ -91,27 +91,49 @@ SUGGESTED_MODELS = {
     # 3.1 Flash-Lite stays for now: Google lists it shutting down on
     # 7 May 2027, which is far enough off that removing it would only
     # take away a working choice.
+    #
+    # 3.6 Flash leads and is the default, ahead of the newer 3.8.
+    # Read against real pages it found the most dialogue of any
+    # Gemini model and never invented an inner thought, while 3.8
+    # answered one request in five: the rest came back as timeouts
+    # or as Google reporting high demand.
     "gemini": [
-        "gemini-3.8-flash",
         "gemini-3.6-flash",
+        "gemini-3.8-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
     ],
-    # Sonnet 5.5 and Opus 5.5 are the current pair; Sonnet 5 and
-    # Opus 5 stay because Anthropic lists both as active into 2027,
-    # so a reader already using one is not pushed off it.
+    # Haiku 5.5 is the default. Measured against real pages it
+    # transcribes the lettering more faithfully than the Sonnet
+    # models -- more of the dialogue, and in the capitals the
+    # lettering itself uses -- for a fraction of the price. It also
+    # takes the cheap slot from Haiku 4.5, the one entry Anthropic
+    # has stopped floor-protecting: its "not sooner than" date
+    # passed in October 2026.
+    #
+    # Sonnet 5.5 and Opus 5.5 are the current pair. Opus 5 stays
+    # because Anthropic lists it as active into 2027, so a reader
+    # already using it is not pushed off it.
+    #
+    # Sonnet 5 is not listed: on real pages it wrote the script in
+    # a language the comic was not printed in and left the prompt's
+    # own label placeholders in the text.
     "anthropic": [
         "claude-sonnet-5-5",
-        "claude-sonnet-5",
         "claude-opus-5-5",
         "claude-opus-5",
         "claude-fable-5-1",
-        "claude-haiku-4-5-20251001",
+        "claude-haiku-5-5",
     ],
     # The GPT-6 family reads images like the 5.6 models and is what
     # OpenAI now lists; Luna is by far the cheapest of the three.
     # The 5.6 entries stay: none of them are deprecated.
+    #
+    # 6.1 Terra leads because it is the only model either provider
+    # describes as built for reading images, and it is a quarter
+    # the price of the 5.6 model it replaces as the default.
     "openai": [
+        "gpt-6.1-terra",
         "gpt-6-astra",
         "gpt-6.1-sol",
         "gpt-6-luna",
@@ -137,7 +159,7 @@ SUGGESTED_MODELS = {
 # model releases has somewhere obvious to start. Only the label
 # carries the word: what gets saved is always the plain model id.
 RECOMMENDED_MODELS = {
-    "gemini": "gemini-3.8-flash",
+    "gemini": "gemini-3.6-flash",
 }
 
 RECOMMENDED_SUFFIX = " (recommended)"
@@ -367,6 +389,10 @@ RETIRED_MODELS = {
         # name the model actually answering.
         "gemini-3.7-flash": "gemini-3.8-flash",
         "gemini-3.5-flash": "gemini-3.6-flash",
+    },
+    "anthropic_model": {
+        "claude-haiku-4-5-20251001": "claude-haiku-5-5",
+        "claude-sonnet-5": "claude-haiku-5-5",
     },
     # A reader who saved one of the old voice models keeps a working
     # export rather than a setting pointing at a model that has been

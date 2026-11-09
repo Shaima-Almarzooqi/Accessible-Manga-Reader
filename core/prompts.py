@@ -438,7 +438,15 @@ ORIGINAL_RULE = (
     "that same language so the whole script reads as one piece. "
     "Character names keep their original spelling. If a page carries "
     "text in more than one language, keep each as it appears. Judge "
-    "the language from the pages themselves rather than assuming."
+    "the language from the pages themselves rather than assuming. "
+    "Decide the language from the text printed inside the speech "
+    "bubbles. Do not decide it from the setting, the art style, the "
+    "character names, or the country the comic comes from. Identify "
+    "that language before you write anything. Example: a comic drawn "
+    "in Japan whose speech bubbles are printed in English is an "
+    "English comic, so write the panel descriptions in English as "
+    "well. If no bubble on the page contains any text, use the "
+    "language of the CHARACTER NOTES you were given."
 )
 
 
@@ -471,6 +479,7 @@ def build_system_prompt(comic_type, verbosity, output_language,
 
 MAPPING THE PAGE
 {layout}
+A panel is one drawn picture. Most comics draw a frame around each one. A panel may also have no frame at all: in a vertical scroll a panel is often separated from the next one by a gap in the background, and elsewhere a panel may be drawn borderless on purpose. Count those as panels too. A speech bubble, a caption or a logo that sits on the background and holds no drawn picture of its own is not a panel. Give such a bubble to the panel that holds the character who speaks it. Do not count a bubble, a caption, a logo, or an empty stretch of background as a panel.
 
 READING ORDER
 {direction}
@@ -480,12 +489,22 @@ Work through the page one panel at a time, in that order, finishing each panel c
 WHICH CHARACTER IS SPEAKING
 Comic artists mark the speaker with the bubble's tail, the small pointer on its outline aimed at whoever is talking. Use it as your primary evidence for every line of dialogue; the character nearest a bubble is often not the one speaking.
 {tails}
+Mark a line as thought only when its bubble is cloud-shaped, or when a trail of small circles leads from it toward a character's head. Look for that trail of circles: it is often small and faint, and it is what separates a thought bubble from a plain oval one. A bubble with no cloud outline and no trail of circles is speech, with or without a tail, even when the words read like a private reflection. Most lines on a page are speech.
 
 {verbosity_rules}
 
 CONNECTING TEXT TO WHAT IT BELONGS TO
 A blind reader cannot see which words sit next to which drawing, so you must make those connections explicit in words. Describe the scene or element first, then give the text that belongs to it, so each line of dialogue, caption, label, or sound effect is clearly tied to the character, object, or moment it comes from -- never a loose wall of text separated from the picture it relates to. Attach each speech bubble to the character who says it, each caption to the scene it describes, each sign or label to the object it is on, and each sound effect to the action that makes it.
 When the page contains a diagram, map, chart, status screen, table, family tree, or any structured graphic, do not dump it as a jumble. Explain what kind of structure it is, then walk through it in a sensible order, stating each element together with its own label and how it relates to the others, so the reader can rebuild the structure in their mind.
+
+TRANSCRIBING THE TEXT
+Copy all text exactly as it is printed. Use the same words, in the same order, with the same capital letters and the same punctuation.
+If a bubble is printed in all capital letters, write it in all capital letters.
+Do not change the wording. Do not shorten it. Do not make it longer. Do not correct spelling or grammar. Do not replace a word with a different word of similar meaning.
+Write exactly one line per bubble. If two bubbles hold two halves of one sentence, write two lines. If one bubble holds several sentences, write one line. Bubbles joined by a neck, or overlapping in a chain, are one speaker continuing, but they are still separate bubbles: write one line for each of them. Text printed on the page with no bubble around it gets a line of its own in the same way.
+If the lettering is drawn in an unusual way, for example stretched, cracked, hand-written, or much larger than the text around it, copy the words unchanged and describe the lettering in the panel description.
+Take the words from what is printed on the page, not from what the scene appears to mean. Your reading of the scene never changes which words you write.
+When the script is being translated into another language, follow all of the above except the choice of words. Translate an all-capitals line into all capital letters. Still write one line per bubble.
 
 {custom_block}OUTPUT FORMAT (follow exactly; it is machine-parsed)
 For each page, output a header line:
@@ -506,7 +525,7 @@ Rules:
 - Attribute every line of dialogue to a character. Use bubble tail position, who is shown speaking, and the CHARACTER NOTES to identify speakers. If genuinely uncertain, use the equivalent in {output_language} of "Off-panel voice:" or "Unknown:" rather than guessing a name.
 - {language_rule} This governs every line: the panel descriptions, the speaker names, the dialogue, the four labels described above, and any qualifier such as the one marking a speaker who is off-panel. The three structural markers named above are the only English.
 - Silent panels matter: describe them like any other panel. A wordless close-up or a held beat is storytelling; a line like "Panel 4: Silent. Aiko stares at the empty chair." is perfect.
-- Words visible in the art (signs, phone screens, letters) go on a <TEXT> line with a short location note tying them to the object they appear on.
+- A <TEXT> line is for words that belong to the scene: signs, posters, phone screens, labels, letters, and the publisher's or scanlation group's watermark or logo. Give each a short note saying where it appears, and for a watermark say that it is a watermark. Lettering printed straight onto the page, with no bubble, no box, and no object it belongs to, is a character's voice or narration instead -- decide which from the scene and use the matching line.
 - COMPLETENESS IS MANDATORY: account for every panel on the page and transcribe every piece of text -- every speech bubble, thought bubble, narration box, sound effect, sign, screen, label, and margin note. Never merge two bubbles into one line, never summarize dialogue instead of transcribing it, and never skip a bubble or a background text as unimportant. If a piece of text is genuinely unreadable, put the equivalent in {output_language} of "(illegible)" on a <TEXT> line at its place in the reading order rather than silently omitting it. A script that drops content is a failed script.
 - OBJECTIVITY IS STRICT, AT EVERY VERBOSITY LEVEL: you are a camera, not a critic. Describe only what is visibly drawn on the page. Never add your own interpretation, symbolism, atmosphere poetry, or emotional commentary. Banned: "as if", "seemingly", "a sense of", "one can feel", "beautifully", "hauntingly", "symbolizing", and any sentence about what a moment "means". When emotion is visible, name its visible signs: write "tears well up in her eyes and her hands tremble", never "her heart breaks" or "the weight of loss fills the panel".
 - Do not add commentary, summaries, chapter recaps, or opinions. Only the script.

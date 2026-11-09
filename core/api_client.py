@@ -335,18 +335,20 @@ class GeminiClient(_RetryMixin):
         if candidate.get("finishReason") == "MAX_TOKENS":
             # The allowance ran out. Asking again changes nothing,
             # so this is not retryable: it needs fewer pages per
-            # request or a larger allowance in Settings.
+            # request. The messages name only that, because it is the
+            # only lever a reader has. There is no Max tokens control
+            # in Settings, and the stored value is a floor anyway:
+            # processor.py already raises it to fit the verbosity and
+            # the batch size.
             if not text.strip():
                 raise ApiError(
                     "Gemini used up this batch's token allowance "
-                    "before writing any of the script. Lower "
-                    "'Pages per request' in Settings, or raise "
-                    "'Max tokens'.")
+                    "before writing any of the script. Lower Pages "
+                    "per request in Settings.")
             raise ApiError(
                 "Gemini ran out of its token allowance partway "
                 "through this batch, so the script is incomplete. "
-                "Lower 'Pages per request' in Settings, or raise "
-                "'Max tokens'.")
+                "Lower Pages per request in Settings.")
         if not text.strip():
             raise ApiError("Gemini returned an empty response.",
                            retryable=True)
@@ -505,6 +507,21 @@ class AnthropicClient(_RetryMixin):
         text = "".join(block.get("text", "")
                        for block in data.get("content", [])
                        if block.get("type") == "text")
+        # A cut-off reply still parses: the pages that did arrive
+        # would be saved and the rest lost without a word, and a
+        # resume would skip them because they are recorded as done.
+        # Asking again runs out at the same place, so this is not
+        # retryable.
+        if data.get("stop_reason") == "max_tokens":
+            if not text.strip():
+                raise ApiError(
+                    "Claude used up this batch's token allowance "
+                    "before writing any of the script. Lower Pages "
+                    "per request in Settings.")
+            raise ApiError(
+                "Claude ran out of its token allowance partway "
+                "through this batch, so the script is incomplete. "
+                "Lower Pages per request in Settings.")
         if not text.strip():
             raise ApiError("Claude returned an empty response.")
         return text
@@ -555,6 +572,11 @@ class AnthropicClient(_RetryMixin):
                     "Claude rejected the request: %s"
                     % readable_error(response))
             if response.status_code in (429, 500, 502, 503, 529):
+                if response.status_code == 429 and self.rotate_on_rate_limit:
+                    raise ApiError(
+                        "Claude is limiting how often this key may be "
+                        "used right now. %s" % readable_error(response),
+                        key_exhausted=True)
                 last_error = readable_error(response)
                 if attempt == self.MAX_ATTEMPTS:
                     break
@@ -631,6 +653,21 @@ class OpenAIClient(_RetryMixin):
                 "pages. Try again, or switch model or service in "
                 "Settings.")
         text = (choice.get("message") or {}).get("content") or ""
+        # A cut-off reply still parses: the pages that did arrive
+        # would be saved and the rest lost without a word, and a
+        # resume would skip them because they are recorded as done.
+        # Asking again runs out at the same place, so this is not
+        # retryable.
+        if choice.get("finish_reason") == "length":
+            if not text.strip():
+                raise ApiError(
+                    "The service used up this batch's token "
+                    "allowance before writing any of the script. "
+                    "Lower Pages per request in Settings.")
+            raise ApiError(
+                "The service ran out of its token allowance partway "
+                "through this batch, so the script is incomplete. "
+                "Lower Pages per request in Settings.")
         if not text.strip():
             raise ApiError("The service returned an empty response.")
         return text
@@ -667,7 +704,9 @@ class OpenAIClient(_RetryMixin):
                     raise ApiError(
                         "%s returned an unreadable response."
                         % self.SERVICE_NAME)
-            if response.status_code == 401:
+            if response.status_code in (401, 403):
+                # 403 is this key lacking access to the model or the
+                # project, which another key may well have.
                 raise ApiError(
                     "%s rejected the API key. Check the API keys for "
                     "this service in Settings."
@@ -712,6 +751,11 @@ class OpenAIClient(_RetryMixin):
                         "Your progress is saved -- use Process again "
                         "later, or switch model or service in Settings. "
                         "OpenAI's explanation: %s" % (self.model, message),
+                        key_exhausted=True)
+                if self.rotate_on_rate_limit:
+                    raise ApiError(
+                        "%s is limiting how often this key may be used "
+                        "right now. %s" % (self.SERVICE_NAME, message),
                         key_exhausted=True)
                 last_error = "rate limit: %s. %s" % (message, http_hint(429))
                 if attempt == self.MAX_ATTEMPTS:
@@ -764,10 +808,13 @@ class RotatingClient:
     the rotation wraps around, so a run continues as long as any key
     still has capacity.
 
-    Note that Gemini and OpenAI enforce quotas per project or
-    organisation rather than per key, so several keys from the same
-    account all draw on one pool. Keys from different projects or
-    accounts have separate quotas and rotate usefully.
+    Note that Gemini and OpenAI enforce quotas per project rather
+    than per key: Google's documentation says rate limits "are
+    applied per project, not per API key". Several keys made in one
+    project therefore draw on one pool, while keys from separate
+    projects have separate quotas and rotate usefully -- including
+    projects under the same account, which do not need separate
+    Google accounts.
     """
 
     def __init__(self, client_class, api_keys, model, max_tokens=8000):
@@ -813,10 +860,9 @@ class RotatingClient:
         if answer is not None:
             return answer
         raise ApiError(
-            "All %d API keys for this service are unavailable. Note that "
-            "keys from the same project or account share one quota, so "
-            "rotation only helps with keys from different projects or "
-            "accounts. Details -- %s"
+            "All %d API keys for this service are unavailable. Keys "
+            "from the same project share one quota; keys from separate "
+            "projects have their own. Details -- %s"
             % (len(self.api_keys), " | ".join(problems)))
 
 
@@ -952,6 +998,59 @@ def parse_anthropic_model_list(data):
     models = [entry.get("id", "") for entry in data.get("data", [])
               if entry.get("id")]
     return sorted(set(models), key=_version_key, reverse=True)
+
+
+def check_keys(service, api_keys, base_url="", fetch=None):
+    """Try each key against the service's own list-models endpoint.
+
+    Returns one result per key, in the order they are saved:
+    {"position": 1, "working": True, "detail": "42 models"}.
+
+    The key itself is never returned or logged -- a reader reads
+    these out loud, and a position is enough to find the bad line.
+    Listing models costs nothing and uses no generation quota, so a
+    key that is simply out of quota for processing still reports as
+    working here; what this catches is a key that is wrong, revoked,
+    or has no access to the service.
+
+    `fetch` is for tests.
+    """
+    fetch = fetch or fetch_models
+    results = []
+    for position, api_key in enumerate(api_keys, start=1):
+        if not (api_key or "").strip():
+            results.append({"position": position, "working": False,
+                            "detail": "empty"})
+            continue
+        try:
+            models = fetch(service, api_key, base_url=base_url)
+        except ApiError as error:
+            results.append({"position": position, "working": False,
+                            "detail": str(error)})
+        except Exception as error:  # network down, bad URL, ...
+            results.append({"position": position, "working": False,
+                            "detail": "%s: %s" % (type(error).__name__,
+                                                  error)})
+        else:
+            results.append({"position": position, "working": True,
+                            "detail": "%d models" % len(models)})
+    return results
+
+
+def describe_key_check(results):
+    """The check results as lines a screen reader can read out."""
+    if not results:
+        return "No API keys are saved for this service."
+    lines = []
+    for result in results:
+        lines.append("Key %d: %s. %s"
+                     % (result["position"],
+                        "working" if result["working"] else "not working",
+                        result["detail"]))
+    working = sum(1 for r in results if r["working"])
+    lines.insert(0, "%d of %d keys working."
+                 % (working, len(results)))
+    return "\n".join(lines)
 
 
 def fetch_models(service, api_key, base_url=""):
