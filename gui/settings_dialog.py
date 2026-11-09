@@ -12,8 +12,13 @@ Accessibility notes that shape this file:
   - OK/Cancel are children of the dialog itself; OK is the default
     button so Enter activates it anywhere in the dialog, and Escape
     cancels via the standard escape ID plus a char hook for safety.
-  - Switching the AI service swaps the model list and key field contents
-    in place; per-service keys and models are all preserved.
+  - Switching the AI service swaps the model list and key list in
+    place; per-service keys and models are all preserved.
+  - API keys live in a list with Add and Remove buttons rather than a
+    text box. Ten keys in one box cannot be told apart by ear, and
+    deleting one by hand risks damaging the key on the line above.
+    Each entry names its position and last four characters, which is
+    what the key test and the quota messages report by.
 """
 
 import wx
@@ -88,21 +93,34 @@ class SettingsDialog(wx.Dialog):
             lambda p: wx.ComboBox(p, style=wx.CB_DROPDOWN))
 
         self.refresh_button = wx.Button(
-            ai_panel, label="&Refresh model list from service")
+            ai_panel, label="Refresh model &list from service")
         self.refresh_button.Bind(wx.EVT_BUTTON, self.on_refresh_models)
         ai_sizer.Add(self.refresh_button, 0, wx.LEFT | wx.BOTTOM, 6)
 
         self.api_keys = add_labeled(
             ai_panel, ai_sizer,
-            "API &keys for this service, one per line (up to %d). When a "
-            "key runs out of quota the next one is used automatically. "
-            "Keys from the same project share one quota, so only keys "
-            "from separate projects add capacity:"
-            % config.MAX_API_KEYS,
-            lambda p: wx.TextCtrl(p, style=wx.TE_MULTILINE,
-                                  size=(-1, 90)))
+            "API &keys for this service. When a key runs out of quota "
+            "the next one is used automatically. Keys from the same "
+            "project share one quota, so only keys from separate "
+            "projects add capacity:",
+            lambda p: wx.ListBox(p, size=(-1, 90), style=wx.LB_SINGLE))
 
-        self.key_counts = wx.Button(ai_panel, label="How many &keys are saved")
+        self.add_key = wx.Button(ai_panel, label="&Add a key")
+        self.add_key.Bind(wx.EVT_BUTTON, self.on_add_key)
+        ai_sizer.Add(self.add_key, 0, wx.LEFT | wx.BOTTOM, 6)
+
+        self.edit_key = wx.Button(
+            ai_panel, label="Ed&it the selected key")
+        self.edit_key.Bind(wx.EVT_BUTTON, self.on_edit_key)
+        ai_sizer.Add(self.edit_key, 0, wx.LEFT | wx.BOTTOM, 6)
+
+        self.remove_key = wx.Button(
+            ai_panel, label="Remo&ve the selected key")
+        self.remove_key.Bind(wx.EVT_BUTTON, self.on_remove_key)
+        ai_sizer.Add(self.remove_key, 0, wx.LEFT | wx.BOTTOM, 6)
+
+        self.key_counts = wx.Button(
+            ai_panel, label="How man&y keys are saved")
         self.key_counts.Bind(wx.EVT_BUTTON, self.on_key_counts)
         ai_sizer.Add(self.key_counts, 0, wx.LEFT | wx.BOTTOM, 6)
 
@@ -259,8 +277,12 @@ class SettingsDialog(wx.Dialog):
         self.custom_prompt.SetValue(self._custom_prompts.get(new_type, ""))
 
     def _stash_service_fields(self):
+        """Save the visible model and URL into the service they belong to.
+
+        The keys are not read back from the list: Add and Remove change
+        service_state directly, so it is already current.
+        """
         state = self.service_state[self.current_service]
-        state["api_keys"] = config.parse_api_keys(self.api_keys.GetValue())
         model = config.model_from_label(self.model.GetValue())
         if model:
             state["model"] = model
@@ -274,7 +296,7 @@ class SettingsDialog(wx.Dialog):
                         for name in state["models"]])
         self.model.SetValue(config.model_label(service,
                                                state["model"]))
-        self.api_keys.SetValue("\n".join(state["api_keys"]))
+        self._show_keys(0 if state["api_keys"] else None)
         self.base_url.SetValue(state.get("base_url", ""))
         # The URL and its presets only apply to a custom endpoint; the
         # other services have fixed addresses.
@@ -303,11 +325,116 @@ class SettingsDialog(wx.Dialog):
                 parts.append("%s %d" % (label.split()[0], count))
         return ", ".join(parts) if parts else "none"
 
+    def _show_keys(self, select=None):
+        """Redraw the key list, then put the selection on one entry.
+
+        Selecting an entry is what tells a screen-reader user what just
+        happened: after adding, the new key is read out; after removing,
+        whichever key took its place is.
+        """
+        keys = self.service_state[self.current_service]["api_keys"]
+        self.api_keys.Set([config.describe_api_key(position, key)
+                           for position, key in enumerate(keys, 1)])
+        if keys and select is not None:
+            self.api_keys.SetSelection(max(0, min(select, len(keys) - 1)))
+
+    def on_add_key(self, event):
+        """Add one key to the end of the list."""
+        state = self.service_state[self.current_service]
+        dialog = wx.TextEntryDialog(self, "Paste one key:", "Add a key")
+        pressed = dialog.ShowModal()
+        typed = dialog.GetValue()
+        dialog.Destroy()
+        if pressed != wx.ID_OK:
+            self.add_key.SetFocus()
+            return
+        # One field, so one key: a second line pasted into a single-line
+        # field is not reliably delivered, and silently joining two keys
+        # into one would be worse than taking them one at a time.
+        key = typed.strip()
+        if not key:
+            self.add_key.SetFocus()
+            return
+        if self._already_listed(key, state, None, "Add a key"):
+            return
+        state["api_keys"].append(key)
+        self._show_keys(len(state["api_keys"]) - 1)
+        self.api_keys.SetFocus()
+
+    def _selected_key(self, title):
+        """The position of the selected key, or None with a message said.
+
+        Add works with nothing selected; Edit and Remove cannot.
+        """
+        keys = self.service_state[self.current_service]["api_keys"]
+        index = self.api_keys.GetSelection()
+        if index == wx.NOT_FOUND or index >= len(keys):
+            wx.MessageBox("Choose a key from the list first.",
+                          title, wx.OK | wx.ICON_INFORMATION, self)
+            self.api_keys.SetFocus()
+            return None
+        return index
+
+    def _already_listed(self, key, state, index, title):
+        """True, with a message said, when another entry holds this key."""
+        if key in state["api_keys"] and state["api_keys"].index(key) != index:
+            wx.MessageBox(
+                "That key is already %s in the list."
+                % config.describe_api_key(
+                    state["api_keys"].index(key) + 1, key),
+                title, wx.OK | wx.ICON_INFORMATION, self)
+            self.api_keys.SetFocus()
+            return True
+        return False
+
+    def on_edit_key(self, event):
+        """Replace the selected key, starting from what it is now."""
+        state = self.service_state[self.current_service]
+        index = self._selected_key("Edit a key")
+        if index is None:
+            return
+        dialog = wx.TextEntryDialog(self, "Edit the key:", "Edit a key",
+                                    state["api_keys"][index])
+        pressed = dialog.ShowModal()
+        typed = dialog.GetValue()
+        dialog.Destroy()
+        if pressed != wx.ID_OK:
+            self.api_keys.SetFocus()
+            return
+        key = typed.strip()
+        if not key:
+            # Emptying the box would otherwise store a blank key, which
+            # the app would then take its turn trying to use.
+            wx.MessageBox(
+                "A key cannot be empty. Use Remove to take it out of "
+                "the list.",
+                "Edit a key", wx.OK | wx.ICON_INFORMATION, self)
+            self.api_keys.SetFocus()
+            return
+        if self._already_listed(key, state, index, "Edit a key"):
+            return
+        state["api_keys"][index] = key
+        self._show_keys(index)
+        self.api_keys.SetFocus()
+
+    def on_remove_key(self, event):
+        """Remove the selected key, after reading back which one it is."""
+        state = self.service_state[self.current_service]
+        index = self._selected_key("Remove a key")
+        if index is None:
+            return
+        described = config.describe_api_key(
+            index + 1, state["api_keys"][index])
+        if wx.MessageBox("Remove %s?" % described, "Remove a key",
+                         wx.YES_NO | wx.ICON_QUESTION, self) != wx.YES:
+            self.api_keys.SetFocus()
+            return
+        del state["api_keys"][index]
+        self._show_keys(index)
+        self.api_keys.SetFocus()
+
     def on_key_counts(self, event):
-        """Say how many keys each service has, counting what is in the
-        box right now rather than what was last saved."""
-        self.service_state[self.current_service]["api_keys"] = (
-            config.parse_api_keys(self.api_keys.GetValue()))
+        """Say how many keys each service has."""
         wx.MessageBox("Keys saved: %s" % self._counts_text(),
                       "Keys saved", wx.OK | wx.ICON_INFORMATION, self)
         self.key_counts.SetFocus()
@@ -324,7 +451,7 @@ class SettingsDialog(wx.Dialog):
         del busy
         wx.MessageBox(api_client.describe_key_check(results),
                       "Test these keys", wx.OK | wx.ICON_INFORMATION, self)
-        self.api_keys.SetFocus()
+        self.test_button.SetFocus()
 
     def on_refresh_models(self, event):
         self._stash_service_fields()
@@ -390,16 +517,6 @@ class SettingsDialog(wx.Dialog):
             return
 
         self._stash_service_fields()
-        for service, label in config.SERVICE_LABELS:
-            found = len(self.service_state[service]["api_keys"])
-            if found > config.MAX_API_KEYS:
-                wx.MessageBox(
-                    "%s has %d API keys, but at most %d are supported. "
-                    "Remove some lines." % (label, found, config.MAX_API_KEYS),
-                    "Settings", wx.OK | wx.ICON_ERROR, self)
-                self.notebook.SetSelection(0)
-                self.api_keys.SetFocus()
-                return
         if (self._needs_base_url()
                 and self.service_state[self.current_service]["api_keys"]
                 and not self.service_state[self.current_service]["base_url"]):

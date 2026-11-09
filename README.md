@@ -27,7 +27,7 @@ To create a Gemini key:
 2. Select **Get API key**, then **Create API key**.
 3. Choose a Google Cloud project. Create a project if you do not already have one.
 4. Copy the key.
-5. In Accessible Manga Reader, press Alt+S and paste the key into the API keys box.
+5. In Accessible Manga Reader, press Alt+S, choose Gemini, select **Add a key**, and paste the key.
 
 Gemini usage limits are applied per Google Cloud project. Extra keys increase the available allowance only when each key belongs to a different project.
 
@@ -101,7 +101,7 @@ In the reader:
 
 ## Settings
 
-The **AI engine** tab contains the provider, model, API keys, pages per request, and delay between requests. Up to 10 keys can be entered, one per line. The app rotates to the next key when the current key reaches a limit.
+The **AI engine** tab contains the provider, model, saved API keys, pages per request, and delay between requests. Each saved key is listed by position and its last four characters. Use **Add a key**, **Edit the selected key**, and **Remove the selected key** to manage the list. A new key is added at the end. The app does not limit how many keys a service can hold, and it rotates to the next key when the current key reaches a limit.
 
 Select **How many keys are saved** to report the number of API keys held for each service. Select **Test these keys** to check every key for the selected service and see which ones the service accepts.
 

@@ -87,13 +87,16 @@ models for your account.</p>
 <li>Open Accessible Manga Reader.</li>
 <li>Press Alt+S to open Settings.</li>
 <li>On the AI engine tab, choose the provider.</li>
-<li>Paste the key into the API keys box. Enter additional keys on
-separate lines.</li>
-<li>Select OK.</li>
+<li>Select Add a key, paste the key, and select OK. Repeat this step to
+add more keys.</li>
+<li>Select OK to save the settings.</li>
 </ol>
-<p>The app can store up to 10 keys for a provider. When one key reaches a
-limit, the app tries the next key. Keys are stored in the local settings
-file and are sent only to the selected provider.</p>
+<p>Each saved key is listed by position and its last four characters. Use
+Edit the selected key or Remove the selected key to change the list. A new
+key is added at the end. The app does not limit how many keys a service can
+hold. When one key reaches a limit, the app tries the next key. Keys are
+stored in the local settings file and are sent only to the selected
+provider.</p>
 
 <h2>Step 3: Add a book</h2>
 <p>Open the File menu and choose an import command:</p>
@@ -237,6 +240,10 @@ it.</p>
 <p>Select the provider, model, API keys, pages per request, and delay
 between requests. Use Refresh model list to retrieve models available to
 the current account.</p>
+<p>The saved-key list identifies each key by its position and last four
+characters. Use Add a key, Edit the selected key, and Remove the selected
+key to manage the list. A new key is added at the end, and the app does not
+limit how many keys a service can hold.</p>
 <p>Select How many keys are saved to report the number of API keys held for
 each service. Select Test these keys to check every key for the selected
 service and see which ones the service accepts.</p>

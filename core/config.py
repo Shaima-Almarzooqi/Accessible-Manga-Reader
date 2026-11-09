@@ -10,10 +10,6 @@ APP_VERSION = "1.1.0"
 # libraries and settings are not lost to a rename.
 LEGACY_APP_NAMES = ("PanelReader",)
 
-# Maximum API keys stored per service. This is our own cap, not a limit
-# imposed by any service; ten is plenty for rotating between accounts.
-MAX_API_KEYS = 10
-
 DEFAULT_SETTINGS = {
     # One of: gemini, openrouter, anthropic, openai, custom.
     "provider": "gemini",
@@ -363,6 +359,22 @@ def is_local_endpoint(url):
     except ValueError:
         return False
     return hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+
+
+def describe_api_key(position, key):
+    """A line for the key list, enough to tell saved keys apart.
+
+    The position is what the rest of the app counts by: a key's place
+    in the list decides the order they are tried in, and both the key
+    test and the quota messages report by position. The last four
+    characters are there so two keys can be told apart by ear; they
+    identify a key without being enough to use it. A key too short for
+    that is listed by position alone.
+    """
+    key = (key or "").strip()
+    if len(key) >= 8:
+        return "Key %d, ending %s" % (position, key[-4:])
+    return "Key %d" % position
 
 
 def parse_api_keys(text):

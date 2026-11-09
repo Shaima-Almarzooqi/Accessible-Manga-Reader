@@ -1316,6 +1316,70 @@ class TestKeyParsing(unittest.TestCase):
         self.assertEqual(config.parse_api_keys("   \n\n"), [])
 
 
+class TestTellingSavedKeysApart(unittest.TestCase):
+    """Saved keys are listed one per entry, so each has to be nameable.
+
+    Ten keys in a single text box cannot be told apart by ear, and
+    deleting one by hand risks damaging the key above it. Settings
+    lists them instead, which means every entry has to carry enough to
+    identify it: the position the rest of the app counts by, and enough
+    of the key itself to tell two of them apart.
+    """
+
+    def test_entry_names_the_position_and_the_last_four(self):
+        self.assertEqual(
+            config.describe_api_key(3, "AIzaSyAbCdEfGhIjKlMnOp4f7a"),
+            "Key 3, ending 4f7a")
+
+    def test_two_keys_from_one_project_are_still_told_apart(self):
+        # Keys issued together share a long prefix, so the start of a
+        # key identifies nothing; the end is what differs.
+        first = config.describe_api_key(1, "AIzaSyCommonPrefix_aaaa1111")
+        second = config.describe_api_key(2, "AIzaSyCommonPrefix_bbbb2222")
+        self.assertNotEqual(first, second)
+
+    def test_surrounding_space_is_ignored(self):
+        self.assertEqual(
+            config.describe_api_key(1, "  AIzaSyAbCdEfGhIjKl9z8y  "),
+            "Key 1, ending 9z8y")
+
+    def test_a_short_key_is_listed_by_position_alone(self):
+        # Reading out most of a four-character key would show the key
+        # rather than identify it.
+        self.assertEqual(config.describe_api_key(2, "abcd"), "Key 2")
+
+    def test_a_blank_key_still_gets_an_entry(self):
+        # Nothing blank should reach the list, but an entry with no
+        # text at all would be unreachable if one ever did.
+        self.assertEqual(config.describe_api_key(1, ""), "Key 1")
+        self.assertEqual(config.describe_api_key(1, None), "Key 1")
+
+    def test_the_whole_key_is_never_in_the_entry(self):
+        key = "AIzaSyAbCdEfGhIjKlMnOpQrSt"
+        self.assertNotIn(key, config.describe_api_key(1, key))
+
+    def test_positions_match_what_the_key_test_reports(self):
+        # check_keys and the quota messages both report by position, so
+        # "Key 2" has to mean the same thing in all three places.
+        keys = ["AIzaSyFirstKeyaaaa1111", "AIzaSySecondKeybbbb2222"]
+        listed = [config.describe_api_key(position, key)
+                  for position, key in enumerate(keys, 1)]
+        self.assertTrue(listed[0].startswith("Key 1,"))
+        self.assertTrue(listed[1].startswith("Key 2,"))
+        from core import api_client
+
+        checked = api_client.check_keys(
+            "gemini", keys,
+            fetch=lambda *a, **k: ["gemini-3.6-flash"])
+        self.assertEqual([r["position"] for r in checked], [1, 2])
+
+    def test_no_cap_on_how_many_keys_are_stored(self):
+        # The old ten-key cap was ours, not the services'.
+        self.assertFalse(hasattr(config, "MAX_API_KEYS"))
+        many = ["AIzaSyKeyNumber%04d" % n for n in range(25)]
+        self.assertEqual(len(config.parse_api_keys("\n".join(many))), 25)
+
+
 class TestKeyRotation(unittest.TestCase):
     def _rotating(self, behaviours, keys=("k1", "k2", "k3")):
         """behaviours: dict key -> callable(...) returning text or raising."""

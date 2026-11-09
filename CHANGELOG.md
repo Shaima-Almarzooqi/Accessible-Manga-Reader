@@ -9,6 +9,9 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - The app has its own icon in Explorer, the taskbar, shortcuts and its
   windows.
 - The Settings model list marks Gemini 3.6 Flash as recommended.
+- Settings lists each saved API key by position and its last four characters.
+  Add a key places a new key at the end; Edit the selected key and Remove the
+  selected key manage existing entries.
 - Settings has a How many keys are saved button that reports the number of
   API keys held for each service. Test these keys reports which keys the
   service accepts.
@@ -28,6 +31,7 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - Claude Sonnet 5 is no longer listed. A saved choice moves to Haiku 5.5.
 - Claude Haiku 4.5 is no longer listed. A saved choice moves to
   Haiku 5.5.
+- A service can hold any number of API keys.
 - The service list shows service names without repeating what each service
   offers.
 - Scripts transcribe page text as printed, preserve its capitalisation, and
