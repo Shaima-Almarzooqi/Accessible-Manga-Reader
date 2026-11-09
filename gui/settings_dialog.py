@@ -103,8 +103,10 @@ class SettingsDialog(wx.Dialog):
                                   size=(-1, 90)))
         self.api_keys.Bind(wx.EVT_TEXT, self.on_keys_typed)
 
-        self.key_counts = wx.StaticText(ai_panel, label="")
-        ai_sizer.Add(self.key_counts, 0, wx.LEFT | wx.BOTTOM, 6)
+        self.key_counts = add_labeled(
+            ai_panel, ai_sizer, "Keys &saved:",
+            lambda p: wx.TextCtrl(p, value="",
+                                  style=wx.TE_READONLY))
 
         self.test_button = wx.Button(
             ai_panel, label="&Test these keys")
@@ -305,8 +307,7 @@ class SettingsDialog(wx.Dialog):
             if count:
                 # "Gemini by Google (free tier available)" -> "Gemini"
                 parts.append("%s %d" % (label.split()[0], count))
-        self.key_counts.SetLabel(
-            "Keys saved: " + (", ".join(parts) if parts else "none"))
+        self.key_counts.SetValue(", ".join(parts) if parts else "none")
 
     def on_keys_typed(self, event):
         self._update_key_counts()

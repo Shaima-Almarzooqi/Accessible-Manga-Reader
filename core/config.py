@@ -287,10 +287,10 @@ def is_rtl(code):
 
 SERVICE_LABELS = [
     ("gemini", "Gemini by Google (free tier available)"),
-    ("openrouter", "OpenRouter (one key, many models, free ones available)"),
+    ("openrouter", "OpenRouter"),
     ("anthropic", "Claude by Anthropic"),
     ("openai", "ChatGPT by OpenAI"),
-    ("custom", "Other OpenAI-compatible service (Groq, Mistral, local...)"),
+    ("custom", "Other OpenAI-compatible service"),
 ]
 
 # Services needing a user-supplied endpoint URL.
