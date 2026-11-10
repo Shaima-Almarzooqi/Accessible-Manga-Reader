@@ -16,9 +16,12 @@ import hashlib
 import io
 import os
 import re
+import time
 import zipfile
 
 from PIL import Image
+
+from . import diagnostics
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
 ARCHIVE_EXTENSIONS = {".cbz", ".zip"}
@@ -186,13 +189,34 @@ def extract_source(source, workspace, max_dim=1568, quality=85, progress=None):
       - a list of image file paths
     Returns the number of pages extracted.
     """
-    if isinstance(source, (list, tuple)):
-        return extract_image_files(source, workspace, max_dim, quality, progress)
-    ext = os.path.splitext(source)[1].lower()
-    if os.path.isdir(source):
-        return extract_folder(source, workspace, max_dim, quality, progress)
-    if ext in ARCHIVE_EXTENSIONS:
-        return extract_archive(source, workspace, max_dim, quality, progress)
-    if ext in PDF_EXTENSIONS:
-        return extract_pdf(source, workspace, max_dim, quality, progress)
-    raise ValueError("Unsupported source type: %s" % source)
+    started = time.time()
+    kind, pages = "", 0
+    try:
+        if isinstance(source, (list, tuple)):
+            kind = "images"
+            pages = extract_image_files(
+                source, workspace, max_dim, quality, progress)
+        else:
+            ext = os.path.splitext(source)[1].lower()
+            if os.path.isdir(source):
+                kind = "folder"
+                pages = extract_folder(
+                    source, workspace, max_dim, quality, progress)
+            elif ext in ARCHIVE_EXTENSIONS:
+                kind = "archive"
+                pages = extract_archive(
+                    source, workspace, max_dim, quality, progress)
+            elif ext in PDF_EXTENSIONS:
+                kind = "pdf"
+                pages = extract_pdf(
+                    source, workspace, max_dim, quality, progress)
+            else:
+                raise ValueError("Unsupported source type: %s" % source)
+    except Exception as error:
+        diagnostics.failure("library", "pages not read", error, kind=kind,
+                            seconds=time.time() - started)
+        raise
+    diagnostics.write("library", "pages read", kind=kind, pages=pages,
+                      size=max_dim, quality=quality,
+                      seconds=time.time() - started)
+    return pages

@@ -18,6 +18,7 @@ so each format carries them properly:
   TXT   plain text, from the book's own full_text().
 """
 
+import contextlib
 import os
 import pathlib
 import shutil
@@ -28,6 +29,35 @@ import xml.sax.saxutils as _xml
 import zipfile
 
 from . import config, html_export, prompts
+from . import diagnostics as diag
+
+
+@contextlib.contextmanager
+def _logged(kind, book, path):
+    """Record one export: what was asked for, and how it ended.
+
+    Wrapped around each writer rather than put in the menu, so an
+    export started by the audio side is recorded the same way.
+    """
+    started = time.time()
+    diag.write("export", "started", format=kind,
+               book=getattr(book, "title", ""),
+               pages=getattr(book, "page_count", 0),
+               scripts=len(getattr(book, "scripts", {}) or {}),
+               file=os.path.basename(path or ""))
+    try:
+        yield
+    except Exception as error:
+        diag.failure("export", "failed", error, format=kind,
+                     seconds=time.time() - started)
+        raise
+    size = 0
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        pass
+    diag.write("export", "finished", format=kind, bytes=size,
+               seconds=time.time() - started)
 
 
 def _escape(text):
@@ -630,3 +660,22 @@ FORMATS = [
      "Word documents (*.docx)|*.docx", write_docx),
     ("PDF", ".pdf", "PDF files (*.pdf)|*.pdf", write_pdf),
 ]
+
+
+# Every writer is logged the same way, named once here rather than
+# repeated inside five function bodies. The wrapper keeps each
+# function's own signature and does nothing when the log is off.
+def _logged_writer(kind, function):
+    def writer(book, path, *args, **kwargs):
+        with _logged(kind, book, path):
+            return function(book, path, *args, **kwargs)
+    writer.__name__ = function.__name__
+    writer.__doc__ = function.__doc__
+    return writer
+
+
+write_text = _logged_writer("text", write_text)
+write_html = _logged_writer("html", write_html)
+write_epub = _logged_writer("epub", write_epub)
+write_docx = _logged_writer("word", write_docx)
+write_pdf = _logged_writer("pdf", write_pdf)

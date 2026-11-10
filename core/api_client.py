@@ -23,7 +23,7 @@ import json
 import re
 import time
 
-from . import config
+from . import config, diagnostics
 
 
 def http_hint(status):
@@ -88,13 +88,37 @@ def encode_image(path):
         return base64.standard_b64encode(f.read()).decode("ascii")
 
 
-def build_content(page_numbers, image_paths, user_text):
+def build_content(page_numbers, image_paths, user_text, references=()):
     """Interleave 'Page N' labels with their images, then the instructions.
 
     Provider-neutral: images are referenced by path and encoded by the
     client at send time.
+
+    `references` are (path, character name, description) pictures of
+    the characters, sent ahead of the pages. Measured on one volume,
+    a model given them named the right speaker 70% of the time against
+    15% to 62% without, and stopped assigning a two-way conversation
+    backwards. They are labelled and fenced because several images
+    arriving with no explanation invites the model to describe the
+    reference pictures as though they were pages of the book.
     """
     content = []
+    if references:
+        content.append({"type": "text", "text":
+                        "REFERENCE PICTURES. The next %d images are "
+                        "pictures of individual characters, not pages. "
+                        "Do not describe them. Use them to recognise who "
+                        "is who on the pages that follow."
+                        % len(references)})
+        for path, name, description in references:
+            label = "This is %s:" % name
+            if description:
+                label = "This is %s (%s):" % (name, description)
+            content.append({"type": "text", "text": label})
+            content.append({"type": "image", "path": path})
+        content.append({"type": "text", "text":
+                        "END OF REFERENCE PICTURES. The images after "
+                        "this are the pages to describe."})
     for number, path in zip(page_numbers, image_paths):
         content.append({"type": "text", "text": "Page %d:" % number})
         content.append({"type": "image", "path": path})
@@ -151,19 +175,24 @@ def parse_gemini_429(body_json):
     retry_seconds = None
     is_daily = False
     haystacks = [message]
+    # Read by shape, not by @type. The field is usually tagged, but
+    # not always, and a tagged-only reader silently returns no delay
+    # and no quota for a body that plainly carries both.
     for detail in error.get("details", []):
-        detail_type = detail.get("@type", "")
-        if detail_type.endswith("RetryInfo"):
-            delay = detail.get("retryDelay", "")
-            if isinstance(delay, str) and delay.endswith("s"):
-                try:
-                    retry_seconds = float(delay[:-1])
-                except ValueError:
-                    pass
-        if detail_type.endswith("QuotaFailure"):
-            for violation in detail.get("violations", []):
-                haystacks.append(violation.get("quotaId", ""))
-                haystacks.append(violation.get("description", ""))
+        if not isinstance(detail, dict):
+            continue
+        delay = detail.get("retryDelay", "")
+        if isinstance(delay, str) and delay.endswith("s"):
+            try:
+                retry_seconds = float(delay[:-1])
+            except ValueError:
+                pass
+        for violation in detail.get("violations", []) or []:
+            if not isinstance(violation, dict):
+                continue
+            haystacks.append(violation.get("quotaId", ""))
+            haystacks.append(violation.get("quotaMetric", ""))
+            haystacks.append(violation.get("description", ""))
     joined = " ".join(haystacks).lower()
     if "perday" in joined or "per day" in joined or "daily" in joined:
         is_daily = True
@@ -446,6 +475,11 @@ class GeminiClient(_RetryMixin):
                 except ValueError:
                     body = {}
                 message, retry_seconds, is_daily = parse_gemini_429(body)
+                diagnostics.write(
+                    "api", "rate limited", service="gemini",
+                    model=self.model, daily=is_daily,
+                    zero_allowance=gemini_allowance_is_zero(body),
+                    retry_seconds=retry_seconds)
                 if gemini_allowance_is_zero(body):
                     # Not a quota that resets, so no reset time is
                     # given: this key cannot use this model at all.

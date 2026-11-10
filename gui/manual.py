@@ -153,6 +153,27 @@ currently displayed.</p>
 <p>Only one book can be processed at a time. A book being processed cannot
 be renamed, deleted, reprocessed, or cleared with Free up space.</p>
 
+<h2>Character bank</h2>
+<p>A character bank keeps the characters of a series against the series
+rather than one book. Later volumes in that series start with the cast that
+has already been saved.</p>
+<p>When processing finishes, the app suggests a series name from the book's
+title. Confirm the name or edit it before adding the book's characters. Turn
+off Ask to add characters to the series bank after processing in Settings if
+you do not want this offer.</p>
+<p>Each character can have a name, a description, and reference pictures
+taken from pages in your books. Each picture also has a description. This is
+the text read when checking that the picture belongs to the right character,
+and a picture can be removed from the bank.</p>
+<p>A character's name can be changed. The name you enter is the name used in
+scripts for books in that series.</p>
+<p>Use the Character bank tab in Settings to manage series, characters, and
+pictures. For the selected book, Character bank for this series in the Book
+menu opens its bank.</p>
+<p>Reference pictures are stored on the computer and sent with every request
+while a book in the series is processed. A book with a character bank uses
+more of the API allowance than a book without one.</p>
+
 <h2>Step 5: Read</h2>
 <p>Select Read now in the processing window, or select a book in the
 library and press Enter or Alt+R.</p>
@@ -283,6 +304,17 @@ Book instructions apply only to one book and take priority. Select a book
 and press Ctrl+T to edit its instructions.</p>
 <p>Instruction and verbosity changes affect pages processed after the
 change. Use Reprocess pages to replace existing text.</p>
+
+<h3>Detailed log</h3>
+<p>On the General tab, Save a detailed log records each request sent while a
+book is processed, each piece of audio, each export, and books and character
+banks being saved, renamed, and removed. Open the log folder opens the folder
+that holds these files.</p>
+<p>The log is off unless it is turned on. Turning it on takes effect at once,
+and the newest five log files are kept.</p>
+<p>API keys are not written to the log, so a log file can be sent to somebody
+helping with a problem. Turn the log on before reproducing the problem and
+turn it off afterwards.</p>
 
 <h3>Free up space</h3>
 <p>After a book is fully processed, select Free up space from the Book

@@ -18,6 +18,19 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - Books can be marked as finished reading with Ctrl+M. A marked book shows
   "finished" and its page count in the library.
 - New Claude and ChatGPT models are available.
+- A book can belong to a series, and a series keeps a character bank that
+  every book in it uses. The app offers to add a book's characters to the
+  bank when processing finishes.
+- The bank holds a description and reference pictures for each character.
+  Pictures are cut from the book's own pages and each one carries a
+  description.
+- Settings has a Character bank tab for managing series, characters and
+  pictures, and the Book menu has Character bank for this series.
+- Settings has Ask to add characters to the series bank after processing.
+- Settings has Save a detailed log, which records what the app does while
+  processing, reading aloud, exporting and managing books, for working out
+  why something failed. It is off until it is turned on, and API keys are
+  never written to it.
 
 ### Changed
 
@@ -36,6 +49,11 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
   offers.
 - Scripts transcribe page text as printed, preserve its capitalisation, and
   put each speech bubble on its own line.
+- Audio export reports a voice model an API key cannot use instead of a
+  daily limit that will reset.
+- Audio export moves to the next API key when one is rejected.
+- Show one page at a time in the processing window is now Alt+P, so it no
+  longer shares a key with Output language.
 
 ### Fixed
 

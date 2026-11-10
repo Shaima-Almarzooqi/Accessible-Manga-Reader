@@ -18,7 +18,7 @@ first unprocessed page with zero lost API spend.
 import json
 import os
 
-from . import config
+from . import config, diagnostics
 
 
 class Book:
@@ -36,6 +36,11 @@ class Book:
         # its text is not in.
         self.output_language = ""
         self.user_instructions = ""  # reader-provided guidance for the AI
+        # Which series this book belongs to, so later volumes start
+        # with what earlier ones worked out about the characters
+        # instead of learning the cast again from nothing. Empty until
+        # the reader confirms it.
+        self.series = ""
         self.last_position = 0  # caret offset in full-book view
         self.last_page = 1
         self.last_panel = 0
@@ -83,6 +88,7 @@ class Book:
             "character_notes": self.character_notes,
             "output_language": self.output_language,
             "user_instructions": self.user_instructions,
+            "series": self.series,
             "last_position": self.last_position,
             "last_page": self.last_page,
             "last_panel": self.last_panel,
@@ -92,6 +98,13 @@ class Book:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
         os.replace(tmp, self.meta_path)
+        diagnostics.write("library", "book saved", title=self.title,
+                          pages=self.page_count,
+                          scripts=len(self.scripts or {}),
+                          series=self.series,
+                          notes=len(self.character_notes or ""),
+                          language=self.output_language,
+                          finished=os.path.exists(self.finished_path))
 
     @classmethod
     def load(cls, workspace):
@@ -106,6 +119,7 @@ class Book:
             book.character_notes = data.get("character_notes", "")
             book.output_language = data.get("output_language", "")
             book.user_instructions = data.get("user_instructions", "")
+            book.series = data.get("series", "")
             book.source_kind = data.get("source_kind", "book")
             book.last_position = int(data.get("last_position", 0))
             book.last_page = int(data.get("last_page", 1))
@@ -371,6 +385,9 @@ def create_book(book_id, title, source_description, source_kind="book"):
     except OSError:
         pass
     book.save()
+    diagnostics.write("library", "book created", title=title,
+                      kind=source_kind, folder=book_id,
+                      position=book.position)
     return book
 
 
@@ -385,4 +402,6 @@ def next_position():
 def delete_book(book):
     """Remove a book and all its cached data from disk."""
     import shutil
+    diagnostics.write("library", "book deleted", title=book.title,
+                      folder=os.path.basename(book.workspace))
     shutil.rmtree(book.workspace, ignore_errors=True)

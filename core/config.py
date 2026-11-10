@@ -44,6 +44,8 @@ DEFAULT_SETTINGS = {
     # starts processing immediately; instructions stay reachable from
     # the Book menu.
     "ask_instructions_before_processing": True,
+    "ask_character_bank_after_processing": True,
+    "detailed_log": False,
     "custom_prompts": {
         "manga": "",
         "manhwa": "",

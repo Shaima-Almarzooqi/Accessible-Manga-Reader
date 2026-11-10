@@ -55,6 +55,14 @@ Pages are processed in batches. The app saves each completed batch, so a cancell
 
 After processing, choose **Read now**, press Enter on the book in the library, or press Alt+R.
 
+## Character bank
+
+A character bank keeps a series' cast separately from any one book, so later volumes start with the names and descriptions already saved. When processing finishes, the app suggests a series name from the book title. Confirm or edit the name to add the book to that series. The offer can be turned off in Settings.
+
+Each character can have a name, a description, and reference pictures taken from pages in your books. Every picture has a description so it can be checked without seeing the image, and pictures can be removed. If you change a character's name, scripts use the name you entered.
+
+Manage banks from the **Character bank** tab in Settings, or choose **Character bank for this series** from the Book menu. Reference pictures are stored on the computer and sent with every processing request for a book in that series, so a book with a bank uses more of the API allowance than one without.
+
 ## Reading modes
 
 The View menu provides three modes:
@@ -114,6 +122,10 @@ The **General** tab contains:
 - **Processing and reader options.** Controls for the instruction prompt, default reading mode, panel labels, and update checks.
 
 Changes to output language, verbosity, or instructions apply to newly processed pages. Use **Reprocess pages** to apply them to existing text.
+
+The General tab also has **Save a detailed log** and **Open the log folder**. The log records processing requests, pieces of audio, exports, and books and character banks being saved, renamed, or removed. It is off until enabled, takes effect at once, and keeps the newest five log files.
+
+API keys are never written to the log, so a log file can be sent to someone helping with a problem. Turn logging on before reproducing the problem and off afterwards.
 
 ## Export and audio
 

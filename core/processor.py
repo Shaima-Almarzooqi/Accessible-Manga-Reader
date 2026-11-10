@@ -11,7 +11,7 @@ a worker thread and marshals callbacks with wx.CallAfter).
 
 import time
 
-from . import api_client, prompts
+from . import api_client, capture, diagnostics, prompts, series
 
 
 class ProcessResult:
@@ -127,6 +127,64 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
     batches = make_batches(pending, max(1, int(settings["pages_per_request"])))
     delay = float(settings.get("request_delay_seconds", 0))
 
+    # What the series knows is merged in at send time and never
+    # written into the book. Folding it into book.character_notes
+    # would make every character in the series look like one this
+    # volume has met, and the pictures are ordered by exactly that.
+    bank = (series.load_series(book.series) if getattr(book, "series", "")
+            else None)
+    if bank and not bank.get("characters"):
+        bank = None
+
+    def notes_to_send():
+        """The book's own notes, with the series bank behind them."""
+        if not bank:
+            return book.character_notes
+        return series.notes_for_book(bank, book.character_notes)
+
+    def references_now():
+        """Pictures to send, the people this volume is about first."""
+        if not bank:
+            return []
+        return series.pictures_for_prompt(
+            bank, names=series.names_in_notes(book.character_notes))
+
+    captured_pictures = [False]
+
+    def capture_pictures(batch, image_paths):
+        """Ask once where the characters are, and cut the crops out.
+
+        A reader who cannot see the book cannot choose a reference
+        picture, so the model is asked to point at each character and
+        the app crops the page itself. One request per run, skipped
+        entirely when every character already has a picture, and
+        allowed to fail without touching the run.
+        """
+        missing = capture.characters_without_pictures(
+            bank, series.names_in_notes(book.character_notes))
+        if not missing:
+            return False
+        text = "%s\n\nCHARACTER NOTES:\n%s" % (capture.PROMPT,
+                                               notes_to_send())
+        content = api_client.build_content(batch, image_paths, text)
+        try:
+            answer = client.request_scripts(
+                "You look at comic pages and answer with JSON only.",
+                content, cancel_check=cancel_check)
+            boxes = capture.parse_boxes(answer)
+            if not boxes:
+                return True
+            saved = capture.store(
+                bank, book, boxes,
+                dict(zip(batch, image_paths)))
+            if saved:
+                series.save_series(bank)
+        except Exception:
+            # Reference pictures are a bonus. A book that processes
+            # without them is still a finished book.
+            pass
+        return True
+
     if hasattr(client, "on_key_switch") and on_progress:
         def announce_key_switch(new_index, key_total, reason):
             on_progress(
@@ -149,9 +207,10 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
         """
         paths = [book.page_image_path(number)]
         text = prompts.build_user_text(
-            [number], book.character_notes, book.title,
+            [number], notes_to_send(), book.title,
             user_instructions=book.user_instructions)
-        content = api_client.build_content([number], paths, text)
+        content = api_client.build_content([number], paths, text,
+                                           references=references_now())
         response = client.request_scripts(
             system_prompt, content, cancel_check=cancel_check)
         got, _ = prompts.parse_response(
@@ -170,10 +229,19 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
                 result.pages_done, total)
 
         image_paths = [book.page_image_path(n) for n in batch]
+        started_at = time.time()
+        diagnostics.write(
+            "processing", "batch sent", book=book.title,
+            pages="%d-%d" % (batch[0], batch[-1]),
+            model=settings.get("%s_model" % settings.get("provider", ""), "?"),
+            provider=settings.get("provider", "?"),
+            pictures=len(references_now()),
+            notes_characters=len(series.names_in_notes(notes_to_send())))
         user_text = prompts.build_user_text(
-            batch, book.character_notes, book.title,
+            batch, notes_to_send(), book.title,
             user_instructions=book.user_instructions)
-        content = api_client.build_content(batch, image_paths, user_text)
+        content = api_client.build_content(batch, image_paths, user_text,
+                                           references=references_now())
 
         try:
             response_text = client.request_scripts(
@@ -181,10 +249,19 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
             scripts, notes = prompts.parse_response(
                 response_text, previous_notes=book.character_notes)
             scripts = align_to_batch(scripts, batch)
+            diagnostics.write(
+                "processing", "batch answered",
+                pages="%d-%d" % (batch[0], batch[-1]),
+                seconds=time.time() - started_at,
+                pages_returned=len(scripts), characters=len(response_text))
         except api_client.ApiError as error:
             if "Cancelled" in str(error):
                 result.cancelled = True
                 return result
+            diagnostics.failure(
+                "processing", "batch failed", error,
+                pages="%d-%d" % (batch[0], batch[-1]),
+                seconds=time.time() - started_at)
             result.error = str(error)
             result.pages_failed.extend(batch)
             return result
@@ -248,6 +325,8 @@ def process_book(book, settings, on_progress=None, cancel_check=None,
         book.output_language = settings.get("output_language", "English")
         if notes:
             book.character_notes = notes
+        if bank and not captured_pictures[0]:
+            captured_pictures[0] = capture_pictures(batch, image_paths)
         book.save()  # crash-safe checkpoint after every batch
 
         if on_progress:

@@ -11,8 +11,10 @@ import webbrowser
 
 import wx
 
-from core import config, extract, install, jobs, library, updates
+from core import (config, diagnostics, extract, install, jobs, library,
+                  series, updates)
 from . import appicon
+from . import character_bank
 from .html_view import show_html_view
 from .processing_dialog import start_processing
 from . import export_menu
@@ -93,6 +95,7 @@ class MainFrame(wx.Frame):
     def __init__(self):
         super().__init__(None, title=config.APP_NAME, size=(760, 520))
         self.settings = config.load_settings()
+        diagnostics.start(self.settings)
         self.books = []
 
         panel = wx.Panel(self)
@@ -181,6 +184,9 @@ class MainFrame(wx.Frame):
             wx.ID_ANY, "AI &instructions for this book...\tCtrl+T",
             "Give the AI extra guidance, like character names and "
             "descriptions"))
+        self.Bind(wx.EVT_MENU, self.on_character_bank, book_menu.Append(
+            wx.ID_ANY, "Character &bank for this series...",
+            "The characters this series shares between its books"))
         self.Bind(wx.EVT_MENU, self.on_reprocess, book_menu.Append(
             wx.ID_ANY, "Reprocess pa&ges...",
             "Clear the processed pages and process the whole book again, "
@@ -599,6 +605,8 @@ class MainFrame(wx.Frame):
         """Runs when a processing window closes, since the work no
         longer blocks this window and cannot be waited for inline."""
         self.refresh_books(select_book=book)
+        if self.settings.get("ask_character_bank_after_processing", True):
+            character_bank.offer_to_save(self, book)
         if read_now:
             reader = ReaderFrame(self, book, self.settings)
             reader.Show()
@@ -729,6 +737,34 @@ class MainFrame(wx.Frame):
                 return
         reader = ReaderFrame(self, book, self.settings)
         reader.Show()
+
+    def on_character_bank(self, event):
+        """Open the bank for this book's series, asking which if unset.
+
+        A book is not told its series until somebody confirms one, so
+        the first time this is opened it offers the series name the
+        title suggests and lets the reader correct it.
+        """
+        book = self._selected_book()
+        if not book:
+            return
+        name = getattr(book, "series", "")
+        if not name:
+            dialog = wx.TextEntryDialog(
+                self, "Series name:", "Character bank",
+                series.series_name_from_title(book.title))
+            pressed = dialog.ShowModal()
+            name = dialog.GetValue().strip()
+            dialog.Destroy()
+            if pressed != wx.ID_OK or not name:
+                self.book_list.SetFocus()
+                return
+            book.series = name
+            book.save()
+        dialog = character_bank.CharactersDialog(self, name)
+        dialog.ShowModal()
+        dialog.Destroy()
+        self.book_list.SetFocus()
 
     def on_instructions(self, event):
         # Returns wx.ID_OK for Save, wx.ID_APPLY for Save and reprocess.
@@ -866,6 +902,10 @@ class MainFrame(wx.Frame):
         if dialog.ShowModal() == wx.ID_OK:
             self.settings = dialog.settings
             config.save_settings(self.settings)
+            # Turning the log on takes effect at once rather than at
+            # the next start, since it is turned on to catch something
+            # that is happening now.
+            diagnostics.start(self.settings)
         dialog.Destroy()
 
     def on_about(self, event):
@@ -981,6 +1021,9 @@ class MainFrame(wx.Frame):
                           menu.Append(wx.ID_ANY, label))
             self.Bind(wx.EVT_MENU, self.on_instructions,
                       menu.Append(wx.ID_ANY, "AI &instructions..."))
+            self.Bind(wx.EVT_MENU, self.on_character_bank,
+                      menu.Append(wx.ID_ANY,
+                                  "Character &bank for this series..."))
             self.Bind(wx.EVT_MENU, self.on_reprocess,
                       menu.Append(wx.ID_ANY, "Reprocess pa&ges..."))
             menu.AppendSubMenu(

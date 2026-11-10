@@ -3990,7 +3990,7 @@ class TestExportFormats(unittest.TestCase):
         workspace = os.path.join(self.tmp, "ws")
         os.makedirs(os.path.join(workspace, "pages"))
         self.book = library.Book(workspace)
-        self.book.title = "Detective Conan"
+        self.book.title = "Harbour Lights"
         self.book.page_count = 2
         self.book.scripts = {
             1: 'Panel 1 (top right): A street.\nAiko: "Late."\n'
@@ -4531,7 +4531,7 @@ class TestSpeech(unittest.TestCase):
         workspace = os.path.join(self.tmp, "ws")
         os.makedirs(os.path.join(workspace, "pages"))
         self.book = library.Book(workspace)
-        self.book.title = "We Were There"
+        self.book.title = "Riverside Diary"
         self.book.page_count = 2
         self.book.scripts = {
             1: 'Panel 1 (top right): A street.\nAiko: "Late."',
@@ -4975,10 +4975,11 @@ class TestSpeech(unittest.TestCase):
             {"retryDelay": "12s"}]}})
         error = urllib.error.HTTPError(
             "u", 429, "Too Many", {}, io.BytesIO(body.encode()))
-        delay, quota, daily = self.tts.rate_limit_details(error)
+        delay, quota, daily, unavailable = self.tts.rate_limit_details(error)
         self.assertEqual(delay, 12)
         self.assertEqual(quota, "GenerateRequestsPerMinute")
         self.assertFalse(daily)
+        self.assertFalse(unavailable)
 
     def test_requests_are_spaced_apart(self):
         # Firing as fast as possible is what earns a refusal on a free
@@ -6926,6 +6927,914 @@ class TestNovemberModelRefresh(unittest.TestCase):
         for service in ("gemini", "anthropic", "openai", "openrouter"):
             self.assertIn(config.DEFAULT_SETTINGS[service + "_model"],
                           config.SUGGESTED_MODELS[service], service)
+
+
+class TestSeriesBank(unittest.TestCase):
+    """A character bank kept against the series, not the book.
+
+    A book's notes are thrown away at the book boundary today, so each
+    new volume starts knowing nothing the last one learned. These
+    cover the storage that lets a series carry what it has worked out
+    into its later volumes.
+    """
+
+    def setUp(self):
+        from core import series
+        self.series = series
+        self.appdata = tempfile.mkdtemp()
+        self.previous = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = self.appdata
+        os.makedirs(config.data_dir(), exist_ok=True)
+
+    def tearDown(self):
+        if self.previous is None:
+            os.environ.pop("APPDATA", None)
+        else:
+            os.environ["APPDATA"] = self.previous
+        shutil.rmtree(self.appdata, ignore_errors=True)
+
+    # ----- which series a book belongs to -----------------------------
+
+    def test_volume_and_year_are_not_part_of_the_series(self):
+        self.assertEqual(
+            "Riverside Diary",
+            self.series.series_name_from_title("Riverside Diary v14 (2012)"))
+
+    def test_other_book_markers_are_stripped(self):
+        for title, expected in (
+                ("Harbour Lights Ch1168", "Harbour Lights"),
+                ("Paper Lanterns (Batch 2)", "Paper Lanterns"),
+                ("Stone Garden Vol. 3", "Stone Garden"),
+                ("Blue Kite - Volume 100", "Blue Kite"),
+                ("Silver Fox #12", "Silver Fox")):
+            self.assertEqual(expected,
+                             self.series.series_name_from_title(title))
+
+    def test_a_title_with_no_marker_is_its_own_series(self):
+        self.assertEqual("Winter Market",
+                         self.series.series_name_from_title("Winter Market"))
+
+    def test_a_title_that_is_only_a_marker_is_kept(self):
+        # Stripping everything would file the book under "", which
+        # would collect every such book into one series.
+        self.assertEqual("v14", self.series.series_name_from_title("v14"))
+
+    # ----- the folder a series is stored in ---------------------------
+
+    def test_case_punctuation_and_accents_are_one_series(self):
+        self.assertEqual(self.series.slug("Riverside Diary"),
+                         self.series.slug("riverside diary!"))
+        self.assertEqual(self.series.slug("Hârbour Lights"),
+                         self.series.slug("Harbour Lights"))
+
+    def test_titles_in_another_script_do_not_collide(self):
+        # Removing non-Latin characters leaves nothing, and every such
+        # title would otherwise share one folder and overwrite the
+        # previous series' bank.
+        first = self.series.slug("アイウエ")
+        second = self.series.slug("カキクケ")
+        self.assertNotEqual(first, second)
+        self.assertTrue(first and second)
+
+    # ----- names the model uses interchangeably -----------------------
+
+    def test_a_short_name_finds_the_character_already_stored(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Dorian Vale",
+                                  "Figure in a long pale coat.")
+        self.assertEqual("Dorian Vale",
+                         self.series.find_character(record, "Vale")["name"])
+
+    def test_a_surname_finds_the_character_too(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Mira Alcott", "Plain.")
+        self.assertEqual(
+            "Mira Alcott",
+            self.series.find_character(record, "Alcott")["name"])
+
+    def test_a_later_book_does_not_duplicate_the_same_person(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.merge_notes(record,
+                                "- Dorian Vale: Figure in a long pale coat.")
+        self.series.merge_notes(record, "- Vale: ")
+        self.assertEqual(1, len(record["characters"]))
+
+    def test_the_fuller_name_replaces_the_shorter_one(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Vale",
+                                  "Figure in a long pale coat.")
+        self.series.set_character(record, "Dorian Vale", "")
+        self.assertEqual("Dorian Vale", record["characters"][0]["name"])
+
+    def test_a_blank_description_does_not_wipe_what_is_stored(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Vale",
+                                  "Figure in a long pale coat.")
+        self.series.set_character(record, "Vale", "")
+        self.assertEqual("Figure in a long pale coat.",
+                         record["characters"][0]["description"])
+
+    def test_a_shared_surname_is_left_alone_rather_than_guessed(self):
+        # Filing a line under the wrong sibling is worse than not
+        # recognising the name at all.
+        record = self.series.blank_series("Siblings")
+        self.series.set_character(record, "Mira Alcott", "sister")
+        self.series.set_character(record, "Jonas Alcott", "brother")
+        self.assertIsNone(self.series.find_character(record, "Alcott"))
+        self.assertEqual(
+            "brother",
+            self.series.find_character(record,
+                                       "Jonas Alcott")["description"])
+
+    # ----- saving and loading -----------------------------------------
+
+    def test_a_bank_survives_a_differently_spelled_series_name(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Vale",
+                                  "Figure in a long pale coat.")
+        self.series.save_series(record)
+        back = self.series.load_series("riverside diary!")
+        self.assertEqual(1, len(back["characters"]))
+
+    def test_an_unsaved_series_loads_empty_rather_than_failing(self):
+        record = self.series.load_series("Never Saved")
+        self.assertEqual([], record["characters"])
+
+    def test_a_bank_without_a_name_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.series.save_series({"name": "  ", "characters": []})
+
+    def test_listing_counts_characters_and_pictures(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.add_picture(record, "Vale", "a.png", "short hair", "p62")
+        self.series.save_series(record)
+        listed = self.series.list_series()
+        self.assertEqual(1, len(listed))
+        self.assertEqual(1, listed[0]["characters"])
+        self.assertEqual(1, listed[0]["pictures"])
+
+    # ----- pictures a reader cannot see -------------------------------
+
+    def test_a_picture_reads_out_as_its_description_and_source(self):
+        line = self.series.describe_picture(
+            {"file": "a.png", "description": "figure with short hair",
+             "source": "volume 1, page 5"})
+        self.assertEqual("figure with short hair, from volume 1, page 5",
+                         line)
+
+    def test_a_picture_with_no_description_says_so(self):
+        # A reader who cannot see it has only this line to go on, so a
+        # missing description must not look like an ordinary entry.
+        line = self.series.describe_picture(
+            {"file": "a.png", "source": "volume 1, page 9"})
+        self.assertIn("No description", line)
+
+    def test_the_same_file_is_not_stored_twice(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.add_picture(record, "Vale", "a.png", "first", "p1")
+        self.series.add_picture(record, "Vale", "a.png", "second", "p1")
+        pictures = self.series.find_character(record, "Vale")["pictures"]
+        self.assertEqual(1, len(pictures))
+        self.assertEqual("second", pictures[0]["description"])
+
+    def test_the_oldest_picture_is_dropped_at_the_limit(self):
+        # Every picture is sent with every request, so an unbounded
+        # bank would quietly make each request larger and slower.
+        record = self.series.blank_series("Riverside Diary")
+        limit = self.series.MAX_PICTURES_PER_CHARACTER
+        for number in range(limit + 2):
+            self.series.add_picture(record, "Vale", "%d.png" % number,
+                                    "crop %d" % number, "page %d" % number)
+        pictures = self.series.find_character(record, "Vale")["pictures"]
+        self.assertEqual(limit, len(pictures))
+        self.assertEqual("2.png", pictures[0]["file"])
+
+    def test_removing_a_picture_reports_whether_there_was_one(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.add_picture(record, "Vale", "a.png", "x", "y")
+        self.assertTrue(self.series.remove_picture(record, "Vale", "a.png"))
+        self.assertFalse(self.series.remove_picture(record, "Vale", "a.png"))
+
+    def test_a_picture_whose_file_is_gone_is_not_sent(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.add_picture(record, "Vale", "missing.png", "x", "y")
+        self.series.save_series(record)
+        self.assertEqual([], self.series.pictures_for_prompt(record))
+
+    # ----- the format the AI already uses ------------------------------
+
+    def test_notes_round_trip_through_the_block_the_model_writes(self):
+        record = self.series.blank_series("Riverside Diary")
+        written = (
+            "LABELS: thinking, narration, sound effect, text\n"
+            "- Mira Alcott: Figure with short dark hair.\n"
+            "- Dorian Vale: Figure in a long pale coat.")
+        added = self.series.merge_notes(record, written)
+        self.assertEqual(["Mira Alcott", "Dorian Vale"], added)
+        text = self.series.notes_text(record)
+        self.assertIn("- Mira Alcott: Figure with short dark hair.", text)
+        self.assertNotIn("LABELS", text)
+
+    def test_a_character_with_no_description_still_appears(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Vale", "")
+        self.assertEqual("- Vale", self.series.notes_text(record))
+
+    def test_deleting_a_series_removes_it_from_the_listing(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Vale",
+                                  "Figure in a long pale coat.")
+        self.series.save_series(record)
+        self.series.delete_series("Riverside Diary")
+        self.assertEqual([], self.series.list_series())
+
+
+    # ----- what is stored, and what is actually sent ------------------
+
+    def test_the_whole_recurring_cast_can_be_stored(self):
+        record = self.series.blank_series("Long Series")
+        for number in range(20):
+            self.series.set_character(record, "Character %d" % number, "x")
+        self.assertEqual(20, len(record["characters"]))
+
+    def test_only_a_bounded_number_of_pictures_is_sent(self):
+        # Every picture rides along on every request. Twenty
+        # characters at six pictures each would be a hundred and
+        # twenty images per call, which a busy service refuses.
+        record = self.series.blank_series("Long Series")
+        folder = self.series.pictures_dir("Long Series")
+        for number in range(20):
+            name = "c%d.png" % number
+            with open(os.path.join(folder, name), "wb") as handle:
+                handle.write(b"x")
+            self.series.add_picture(record, "Character %d" % number, name,
+                                    "crop", "page 1")
+        self.series.save_series(record)
+        sent = self.series.pictures_for_prompt(record)
+        self.assertEqual(self.series.PICTURES_SENT_IN_TOTAL, len(sent))
+
+    def test_one_picture_per_character_is_sent_by_default(self):
+        record = self.series.blank_series("Riverside Diary")
+        folder = self.series.pictures_dir("Riverside Diary")
+        for number in range(4):
+            name = "vale-%d.png" % number
+            with open(os.path.join(folder, name), "wb") as handle:
+                handle.write(b"x")
+            self.series.add_picture(record, "Vale", name, "crop", "page 1")
+        self.series.save_series(record)
+        self.assertEqual(1, len(self.series.pictures_for_prompt(record)))
+
+    def test_a_mentioned_character_is_sent_ahead_of_the_rest(self):
+        # Naming orders the bank rather than filtering it: a volume
+        # that has mentioned nobody yet still needs the cast, and the
+        # cap is what keeps a long series in bounds.
+        record = self.series.blank_series("Long Series")
+        folder = self.series.pictures_dir("Long Series")
+        for who in ("Dorian Vale", "Mira Alcott", "Teacher Brand"):
+            name = "%s.png" % self.series.slug(who)
+            with open(os.path.join(folder, name), "wb") as handle:
+                handle.write(b"x")
+            self.series.add_picture(record, who, name, "crop", "page 1")
+        self.series.save_series(record)
+        sent = self.series.pictures_for_prompt(record, names=["Brand"])
+        self.assertEqual("Teacher Brand", sent[0][1])
+        self.assertEqual(3, len(sent))
+
+    def test_the_cap_drops_the_characters_nobody_mentioned(self):
+        record = self.series.blank_series("Long Series")
+        folder = self.series.pictures_dir("Long Series")
+        for number in range(20):
+            name = "c%d.png" % number
+            with open(os.path.join(folder, name), "wb") as handle:
+                handle.write(b"x")
+            self.series.add_picture(record, "Character %d" % number, name,
+                                    "crop", "page 1")
+        self.series.save_series(record)
+        sent = self.series.pictures_for_prompt(record,
+                                               names=["Character 19"])
+        self.assertEqual("Character 19", sent[0][1])
+        self.assertEqual(self.series.PICTURES_SENT_IN_TOTAL, len(sent))
+
+    def test_moving_a_picture_up_changes_which_one_is_sent(self):
+        # A character may be stored front and profile, in costume and
+        # out of it; this is how a reader picks the one to send.
+        record = self.series.blank_series("Riverside Diary")
+        folder = self.series.pictures_dir("Riverside Diary")
+        for name in ("first.png", "second.png"):
+            with open(os.path.join(folder, name), "wb") as handle:
+                handle.write(b"x")
+            self.series.add_picture(record, "Vale", name, name, "page 1")
+        self.series.save_series(record)
+        self.assertTrue(self.series.promote_picture(record, "Vale",
+                                                    "second.png"))
+        sent = self.series.pictures_for_prompt(record)
+        self.assertTrue(sent[0][0].endswith("second.png"))
+
+    def test_promoting_a_picture_that_is_not_there_reports_it(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Vale", "x")
+        self.assertFalse(
+            self.series.promote_picture(record, "Vale", "no.png"))
+
+    # ----- names the reader chooses -----------------------------------
+
+    def test_a_name_the_reader_typed_is_not_overwritten(self):
+        # Scripts call a character whatever the bank calls them, so
+        # shortening Dorian Vale to Vale decides how every later
+        # volume reads. A book mentioning the full name must not
+        # quietly undo that.
+        record = self.series.blank_series("Riverside Diary")
+        self.series.merge_notes(record, "- Dorian Vale: coat.")
+        self.series.set_character(record, "Vale", "",
+                                  chosen_by_reader=True)
+        self.series.merge_notes(record, "- Dorian Vale: more detail.")
+        self.assertEqual("Vale", record["characters"][0]["name"])
+
+    def test_a_chosen_name_still_takes_new_descriptions(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Vale", "",
+                                  chosen_by_reader=True)
+        self.series.merge_notes(record, "- Dorian Vale: wears a coat.")
+        self.assertEqual("wears a coat.",
+                         record["characters"][0]["description"])
+
+    def test_the_fuller_name_still_wins_when_nobody_chose(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.merge_notes(record, "- Vale: coat.")
+        self.series.merge_notes(record, "- Dorian Vale: more.")
+        self.assertEqual("Dorian Vale", record["characters"][0]["name"])
+
+    def test_a_chosen_name_is_what_the_script_is_told(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.merge_notes(record, "- Dorian Vale: coat.")
+        self.series.set_character(record, "Vale", "",
+                                  chosen_by_reader=True)
+        self.assertIn("- Vale:", self.series.notes_text(record))
+        self.assertNotIn("Dorian", self.series.notes_text(record))
+
+    def test_a_chosen_name_survives_saving_and_loading(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Vale", "coat",
+                                  chosen_by_reader=True)
+        self.series.save_series(record)
+        back = self.series.load_series("Riverside Diary")
+        self.series.merge_notes(back, "- Dorian Vale: more.")
+        self.assertEqual("Vale", back["characters"][0]["name"])
+
+
+class TestProcessingWithASeriesBank(WorkspaceTestCase):
+    """What a book sends once its series has a bank.
+
+    Measured on one volume, a model reading a page cold named the
+    right speaker 28% of the time and 70% when given the series' own
+    pictures of the characters. These cover the wiring that gets them
+    there.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from core import series
+        self.series = series
+        self.appdata = tempfile.mkdtemp()
+        self.previous = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = self.appdata
+        os.makedirs(config.data_dir(), exist_ok=True)
+
+    def tearDown(self):
+        if self.previous is None:
+            os.environ.pop("APPDATA", None)
+        else:
+            os.environ["APPDATA"] = self.previous
+        shutil.rmtree(self.appdata, ignore_errors=True)
+        super().tearDown()
+
+    def _book_with_pages(self, count):
+        book = library.Book(self.workspace)
+        book.title = "Riverside Diary v2"
+        pages_dir = os.path.join(self.workspace, "pages")
+        os.makedirs(pages_dir, exist_ok=True)
+        for number in range(1, count + 1):
+            make_test_image().save(
+                os.path.join(pages_dir, "%04d.jpg" % number), "JPEG")
+        book.detect_page_count()
+        return book
+
+    def _run(self, book, capture):
+        from core import api_client
+
+        class FakeClient:
+            def request_scripts(self, system_prompt, content,
+                                cancel_check=None):
+                capture.append(content)
+                pages = [int(block["text"].split()[1].rstrip(":"))
+                         for block in content
+                         if block["type"] == "text"
+                         and block["text"].startswith("Page ")]
+                parts = ["=== PAGE %d ===\nPanel 1: action." % n
+                         for n in pages]
+                parts.append("=== CHARACTER NOTES ===\n- Vale: seen here.")
+                return "\n\n".join(parts)
+
+        original = api_client.create_client
+        api_client.create_client = lambda settings: FakeClient()
+        try:
+            settings = dict(config.DEFAULT_SETTINGS)
+            settings.update({"gemini_api_keys": ["test"],
+                             "pages_per_request": 2,
+                             "request_delay_seconds": 0})
+            return processor.process_book(book, settings)
+        finally:
+            api_client.create_client = original
+
+    def _bank_with_a_picture(self):
+        record = self.series.blank_series("Riverside Diary")
+        self.series.set_character(record, "Dorian Vale",
+                                  "Figure in a long pale coat.")
+        self.series.set_character(record, "Mira Alcott",
+                                  "Figure with short dark hair.")
+        folder = self.series.pictures_dir("Riverside Diary")
+        name = "vale.png"
+        make_test_image().save(os.path.join(folder, name), "PNG")
+        self.series.add_picture(record, "Dorian Vale", name,
+                                "figure in a pale coat", "volume 1, page 5")
+        self.series.save_series(record)
+        return record
+
+    def test_a_book_with_no_series_sends_what_it_always_did(self):
+        # The feature must be invisible until a reader opts into it.
+        capture = []
+        book = self._book_with_pages(2)
+        self._run(book, capture)
+        kinds = [block["type"] for block in capture[0]]
+        self.assertEqual(2, kinds.count("image"))  # the two pages, nothing more
+        self.assertFalse(any("REFERENCE PICTURES" in block.get("text", "")
+                             for block in capture[0]))
+
+    def test_a_later_volume_opens_knowing_the_cast(self):
+        # The bank is merged at send time and never written into the
+        # book: storing it would make every character in the series
+        # look like one this volume had met.
+        self._bank_with_a_picture()
+        capture = []
+        book = self._book_with_pages(2)
+        book.series = "Riverside Diary"
+        self._run(book, capture)
+        sent = "\n".join(block.get("text", "") for block in capture[0])
+        self.assertIn("Mira Alcott", sent)
+        self.assertIn("Dorian Vale", sent)
+        self.assertNotIn("Mira Alcott", book.character_notes)
+
+    def test_the_series_pictures_are_sent_with_the_pages(self):
+        self._bank_with_a_picture()
+        capture = []
+        book = self._book_with_pages(2)
+        book.series = "Riverside Diary"
+        self._run(book, capture)
+        texts = [block.get("text", "") for block in capture[0]]
+        self.assertTrue(any("REFERENCE PICTURES" in t for t in texts))
+        self.assertTrue(any(t.startswith("This is Dorian Vale") for t in texts))
+        # One reference picture plus the two pages.
+        self.assertEqual(3, [b["type"] for b in capture[0]].count("image"))
+
+    def test_the_pictures_come_before_the_pages(self):
+        # A page described before the model has seen who is who would
+        # get no benefit from the bank at all.
+        self._bank_with_a_picture()
+        capture = []
+        book = self._book_with_pages(2)
+        book.series = "Riverside Diary"
+        self._run(book, capture)
+        types = [b["type"] for b in capture[0]]
+        texts = [b.get("text", "") for b in capture[0]]
+        first_page = next(i for i, t in enumerate(texts)
+                          if t.startswith("Page "))
+        first_image = types.index("image")
+        self.assertLess(first_image, first_page)
+
+    def test_the_characters_this_book_is_about_are_sent_first(self):
+        # Ordering, not filtering: at the start of a volume the book
+        # has mentioned nobody, and the bank is the only thing that
+        # knows the cast. The cap is what protects a long series.
+        record = self._bank_with_a_picture()
+        folder = self.series.pictures_dir("Riverside Diary")
+        make_test_image().save(os.path.join(folder, "marlow.png"), "PNG")
+        self.series.set_character(record, "Ines Marlow", "Elsewhere.")
+        self.series.add_picture(record, "Ines Marlow", "marlow.png",
+                                "another figure", "volume 1, page 7")
+        self.series.save_series(record)
+        capture = []
+        book = self._book_with_pages(2)
+        book.series = "Riverside Diary"
+        book.character_notes = "- Ines Marlow: in this volume."
+        self._run(book, capture)
+        labels = [b.get("text", "") for b in capture[0]
+                  if b.get("text", "").startswith("This is ")]
+        self.assertTrue(labels[0].startswith("This is Ines Marlow"))
+
+    def test_a_missing_bank_does_not_stop_the_run(self):
+        book = self._book_with_pages(2)
+        book.series = "Never Saved"
+        result = self._run(book, capture=[])
+        self.assertEqual(2, result.pages_done)
+
+
+class TestOfferingToSaveCharacters(unittest.TestCase):
+    """The one prompt the character bank adds to a reader's day.
+
+    It appears when a book finishes, settles which series the book
+    belongs to and whether its characters are worth keeping, and is
+    skipped entirely when the book learned nobody -- an empty offer
+    is only an interruption.
+    """
+
+    def setUp(self):
+        self.frame = open(os.path.join("gui", "main_frame.py"),
+                          encoding="utf-8-sig").read()
+        self.bank = open(os.path.join("gui", "character_bank.py"),
+                         encoding="utf-8-sig").read()
+
+    def test_it_is_offered_when_a_book_finishes(self):
+        handler = self.frame[self.frame.index("def _after_processing"):]
+        handler = handler[:handler.index("def on_free_space")]
+        self.assertIn("character_bank.offer_to_save", handler)
+
+    def test_the_setting_can_turn_it_off(self):
+        handler = self.frame[self.frame.index("def _after_processing"):]
+        handler = handler[:handler.index("def on_free_space")]
+        self.assertIn("ask_character_bank_after_processing", handler)
+
+    def test_it_is_offered_before_reading_starts(self):
+        # Opening the reader first would put the prompt behind it.
+        handler = self.frame[self.frame.index("def _after_processing"):]
+        handler = handler[:handler.index("def on_free_space")]
+        self.assertLess(handler.index("offer_to_save"),
+                        handler.index("ReaderFrame"))
+
+    def test_nothing_is_asked_when_no_characters_were_found(self):
+        offer = self.bank[self.bank.index("def offer_to_save"):]
+        self.assertIn("if not found:", offer)
+        self.assertLess(offer.index("if not found:"),
+                        offer.index("SaveToBankDialog"))
+
+    def test_the_series_name_is_suggested_from_the_title(self):
+        offer = self.bank[self.bank.index("def offer_to_save"):]
+        self.assertIn("series_name_from_title", offer)
+
+    def test_a_book_already_in_a_series_keeps_that_series(self):
+        offer = self.bank[self.bank.index("def offer_to_save"):]
+        # The book's own series is preferred over a fresh guess.
+        self.assertLess(offer.index('getattr(book, "series", "")'),
+                        offer.index("series_name_from_title"))
+
+    def test_the_characters_found_are_shown_before_saving(self):
+        self.assertIn("self.characters = wx.ListBox", self.bank)
+        dialog = self.bank[self.bank.index("class SaveToBankDialog"):]
+        self.assertIn("notes_from_text", self.bank)
+        self.assertIn("&Characters:", dialog)
+
+
+class TestCuttingReferencePicturesFromThePages(unittest.TestCase):
+    """Where the bank's pictures come from.
+
+    A reader who cannot see the book cannot choose one, and fetching
+    from the internet risks the wrong character, the wrong series or a
+    plot spoiler, none of which they could detect. So the model points
+    at each character and the app crops the reader's own page.
+    """
+
+    def setUp(self):
+        from core import capture
+        self.capture = capture
+
+    def test_a_plain_answer_is_read(self):
+        boxes = self.capture.parse_boxes(
+            '[{"name": "Vale", "page": 3, "description": "pale coat",'
+            ' "box": [100, 200, 600, 500]}]')
+        self.assertEqual(1, len(boxes))
+        self.assertEqual("Vale", boxes[0]["name"])
+        self.assertEqual(3, boxes[0]["page"])
+
+    def test_an_answer_wrapped_in_prose_is_still_read(self):
+        # Models put JSON in a code fence and add a sentence either
+        # side often enough that the answer has to be searched for.
+        boxes = self.capture.parse_boxes(
+            'Here you go:\n```json\n[{"name": "Alcott", "page": 4,'
+            ' "box": [0, 0, 400, 300]}]\n```\nHope that helps.')
+        self.assertEqual("Alcott", boxes[0]["name"])
+
+    def test_a_backwards_box_is_dropped(self):
+        self.assertEqual([], self.capture.parse_boxes(
+            '[{"name": "A", "box": [500, 500, 100, 100]}]'))
+
+    def test_an_entry_with_no_name_is_dropped(self):
+        self.assertEqual([], self.capture.parse_boxes(
+            '[{"name": "", "box": [0, 0, 100, 100]}]'))
+
+    def test_an_answer_that_is_not_json_is_not_a_crash(self):
+        for answer in ("I could not see anyone.", "", None, "[]", "{}"):
+            self.assertEqual([], self.capture.parse_boxes(answer))
+
+    def test_a_crop_too_small_to_show_anything_is_refused(self):
+        # A bank entry nobody can see is worse than no entry.
+        workspace = tempfile.mkdtemp()
+        try:
+            page = os.path.join(workspace, "page.jpg")
+            make_test_image().save(page, "JPEG")
+            target = os.path.join(workspace, "out.png")
+            self.assertFalse(self.capture.crop_from_page(
+                page, (0, 0, 1, 1), target))
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+
+    def test_a_missing_page_is_not_a_crash(self):
+        self.assertFalse(self.capture.crop_from_page(
+            "/no/such/page.jpg", (0, 0, 500, 500), "/no/such/out.png"))
+
+    def test_a_character_who_already_has_a_picture_is_left_alone(self):
+        # A reader's own choice is never pushed aside by an automatic
+        # one.
+        from core import series
+        appdata = tempfile.mkdtemp()
+        previous = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = appdata
+        try:
+            os.makedirs(config.data_dir(), exist_ok=True)
+            record = series.blank_series("Riverside Diary")
+            folder = series.pictures_dir("Riverside Diary")
+            make_test_image().save(os.path.join(folder, "mine.png"), "PNG")
+            series.add_picture(record, "Vale", "mine.png", "chosen by hand",
+                               "by hand")
+            pages = tempfile.mkdtemp()
+            page = os.path.join(pages, "0001.jpg")
+            make_test_image(600, 900).save(page, "JPEG")
+            book = type("Book", (), {"title": "Riverside Diary v2"})()
+            saved = self.capture.store(
+                record, book,
+                [{"name": "Vale", "page": 1, "description": "x",
+                  "box": (0, 0, 800, 800)}], {1: page})
+            self.assertEqual([], saved)
+            self.assertEqual(
+                "mine.png",
+                series.find_character(record, "Vale")["pictures"][0]["file"])
+        finally:
+            if previous is None:
+                os.environ.pop("APPDATA", None)
+            else:
+                os.environ["APPDATA"] = previous
+            shutil.rmtree(appdata, ignore_errors=True)
+
+    def test_only_characters_with_no_picture_are_asked_about(self):
+        from core import series
+        record = series.blank_series("Riverside Diary")
+        series.set_character(record, "Vale", "")
+        series.set_character(record, "Alcott", "")
+        record["characters"][0]["pictures"] = [{"file": "a.png"}]
+        self.assertEqual(
+            ["Alcott"],
+            self.capture.characters_without_pictures(
+                record, ["Vale", "Alcott"]))
+
+
+class TestAudioKeepsUpWithThePageSide(unittest.TestCase):
+    """Fixes made for processing pages have to reach reading aloud.
+
+    Audio export had its own reader for Gemini's rate-limit replies,
+    and the two drifted: a voice model that needs billing was reported
+    as a daily limit that resets overnight, which it never does.
+    """
+
+    def setUp(self):
+        from core import tts
+        self.tts = tts
+
+    def _error(self, body):
+        import io
+        import json as _json
+        import urllib.error
+        return urllib.error.HTTPError(
+            "u", 429, "Too Many", {},
+            io.BytesIO(_json.dumps(body).encode()))
+
+    def test_a_voice_model_the_key_cannot_use_is_not_a_daily_limit(self):
+        error = self._error({"error": {"message": (
+            "Quota exceeded for metric: "
+            "generate_content_free_tier_requests, limit: 0, model: "
+            "gemini-3.8-flash-tts, description: requests per day limit "
+            "exceeded on Free Tier.")}})
+        _delay, _quota, _daily, unavailable = self.tts.rate_limit_details(
+            error)
+        self.assertTrue(unavailable)
+
+    def test_a_spent_daily_allowance_is_still_a_daily_allowance(self):
+        error = self._error({"error": {"message": (
+            "Quota exceeded, limit: 250, description: requests per day "
+            "limit exceeded on Free Tier.")}})
+        _delay, _quota, daily, unavailable = self.tts.rate_limit_details(
+            error)
+        self.assertTrue(daily)
+        self.assertFalse(unavailable)
+
+    def test_the_wait_is_read_whether_or_not_the_detail_is_tagged(self):
+        # Gemini usually tags the detail with an @type and sometimes
+        # does not; a reader that insists on the tag loses the wait.
+        tagged = self._error({"error": {"details": [
+            {"@type": "type.googleapis.com/google.rpc.RetryInfo",
+             "retryDelay": "12s"}]}})
+        untagged = self._error({"error": {"details": [
+            {"retryDelay": "12s"}]}})
+        self.assertEqual(12, self.tts.rate_limit_details(tagged)[0])
+        self.assertEqual(12, self.tts.rate_limit_details(untagged)[0])
+
+    def test_a_rejected_key_does_not_stop_a_whole_book(self):
+        # With several keys saved, one revoked key should cost a
+        # moment, not the export.
+        import urllib.error
+        tried = []
+
+        def speak(text, key):
+            tried.append(key)
+            if key == "bad":
+                raise urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
+            return b"audio"
+
+        result = self.tts._speak_with_retry(
+            speak, "a line", ["bad", "good"], 0)
+        self.assertEqual(b"audio", result)
+        self.assertIn("good", tried)
+
+    def test_every_key_being_rejected_is_reported(self):
+        import urllib.error
+
+        def speak(text, key):
+            raise urllib.error.HTTPError("u", 401, "No", {}, None)
+
+        with self.assertRaises(self.tts.SpeechError):
+            self.tts._speak_with_retry(speak, "a line", ["one", "two"], 0)
+
+
+class TestTheDetailedLog(unittest.TestCase):
+    """The log a reader turns on when something goes wrong.
+
+    Two things matter more than what it records: it is off until it is
+    asked for, and it never writes a key. A log is a file a reader may
+    well send to somebody else for help.
+    """
+
+    def setUp(self):
+        from core import diagnostics
+        self.diagnostics = diagnostics
+        self.appdata = tempfile.mkdtemp()
+        self.previous = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = self.appdata
+        os.makedirs(config.data_dir(), exist_ok=True)
+        diagnostics.start({"detailed_log": False})
+
+    def tearDown(self):
+        self.diagnostics.start({"detailed_log": False})
+        if self.previous is None:
+            os.environ.pop("APPDATA", None)
+        else:
+            os.environ["APPDATA"] = self.previous
+        shutil.rmtree(self.appdata, ignore_errors=True)
+
+    def _files(self):
+        folder = self.diagnostics.logs_dir()
+        return [name for name in os.listdir(folder)
+                if name.startswith("log-")]
+
+    def _text(self):
+        with open(self.diagnostics.current_path(), encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_nothing_is_written_until_it_is_turned_on(self):
+        self.diagnostics.write("processing", "batch sent", pages="1-4")
+        self.assertFalse(self.diagnostics.is_on())
+        self.assertEqual(self._files(), [])
+
+    def test_a_default_settings_file_leaves_it_off(self):
+        self.diagnostics.start(dict(config.DEFAULT_SETTINGS))
+        self.assertFalse(self.diagnostics.is_on())
+
+    def test_turning_it_on_records_what_happens(self):
+        self.diagnostics.start({"detailed_log": True, "provider": "gemini"})
+        self.diagnostics.write("processing", "batch sent", pages="1-4",
+                               model="a-model")
+        text = self._text()
+        self.assertIn("batch sent", text)
+        self.assertIn("pages=1-4", text)
+        self.assertIn("model=a-model", text)
+
+    def test_turning_it_off_stops_the_writing(self):
+        self.diagnostics.start({"detailed_log": True})
+        path = self.diagnostics.current_path()
+        self.diagnostics.start({"detailed_log": False})
+        self.diagnostics.write("processing", "batch sent")
+        with open(path, encoding="utf-8") as handle:
+            self.assertNotIn("batch sent", handle.read())
+
+    def test_a_failure_records_the_kind_of_error(self):
+        self.diagnostics.start({"detailed_log": True})
+        try:
+            raise ValueError("a page could not be read")
+        except ValueError as error:
+            self.diagnostics.failure("export", "failed", error, format="epub")
+        text = self._text()
+        self.assertIn("ValueError", text)
+        self.assertIn("a page could not be read", text)
+        self.assertIn("format=epub", text)
+
+    def test_keys_are_removed_whatever_shape_they_arrive_in(self):
+        samples = [
+            "AIzaSyExampleKeyMaterial0000",
+            "sk-ExampleKeyMaterial0000",
+            "sk-ant-ExampleKeyMaterial0000",
+            "sk-or-ExampleKeyMaterial0000",
+            "x-goog-api-key: AIzaSyExampleKeyMaterial0000",
+            "Authorization: Bearer sk-ExampleKeyMaterial0000",
+            "api_key=AIzaSyExampleKeyMaterial0000",
+        ]
+        for sample in samples:
+            cleaned = self.diagnostics.redact(sample)
+            self.assertNotIn("ExampleKeyMaterial", cleaned, sample)
+            self.assertIn("[key removed]", cleaned, sample)
+
+    def test_a_key_in_a_recorded_field_is_removed_too(self):
+        self.diagnostics.start({"detailed_log": True})
+        self.diagnostics.write("api", "request refused",
+                               detail="key AIzaSyExampleKeyMaterial0000 bad")
+        self.assertNotIn("ExampleKeyMaterial", self._text())
+
+    def test_ordinary_text_is_left_alone(self):
+        self.assertEqual(
+            self.diagnostics.redact("page 12 of 40, 3 characters named"),
+            "page 12 of 40, 3 characters named")
+
+    def test_one_marker_is_left_where_two_patterns_overlap(self):
+        cleaned = self.diagnostics.redact(
+            "x-goog-api-key: AIzaSyExampleKeyMaterial0000")
+        self.assertEqual(cleaned.count("[key removed]"), 1)
+
+    def test_a_broken_log_does_not_break_the_app(self):
+        self.diagnostics.start({"detailed_log": True})
+        self.diagnostics._path = os.path.join(
+            self.appdata, "no-such-folder", "log.txt")
+        self.diagnostics.write("processing", "batch sent")
+        try:
+            raise ValueError("boom")
+        except ValueError as error:
+            self.diagnostics.failure("processing", "batch failed", error)
+
+    def test_only_the_last_few_logs_are_kept(self):
+        folder = self.diagnostics.logs_dir()
+        for index in range(self.diagnostics.MAX_FILES + 4):
+            name = os.path.join(folder, "log-2026-01-%02d-000000.txt" % (
+                index + 1))
+            with open(name, "w", encoding="utf-8") as handle:
+                handle.write("old\n")
+            os.utime(name, (index, index))
+        self.diagnostics.start({"detailed_log": True})
+        self.assertLessEqual(len(self._files()), self.diagnostics.MAX_FILES)
+        self.assertIn(os.path.basename(self.diagnostics.current_path()),
+                      self._files())
+
+    def test_saving_a_book_is_recorded(self):
+        self.diagnostics.start({"detailed_log": True})
+        workspace = os.path.join(self.appdata, "book")
+        os.makedirs(workspace, exist_ok=True)
+        book = library.Book(workspace)
+        book.title = "Harbour Lights"
+        book.page_count = 12
+        book.save()
+        text = self._text()
+        self.assertIn("book saved", text)
+        self.assertIn("pages=12", text)
+
+    def test_an_export_records_its_start_and_its_end(self):
+        from core import export
+        self.diagnostics.start({"detailed_log": True})
+        workspace = os.path.join(self.appdata, "exported")
+        os.makedirs(workspace, exist_ok=True)
+        book = library.Book(workspace)
+        book.title = "Harbour Lights"
+        book.page_count = 1
+        book.scripts = {1: "Page 1\nA quiet street."}
+        target = os.path.join(self.appdata, "out.txt")
+        export.write_text(book, target)
+        text = self._text()
+        self.assertIn("started", text)
+        self.assertIn("finished", text)
+        self.assertIn("format=text", text)
+
+    def test_an_export_that_fails_is_recorded_and_still_raises(self):
+        from core import export
+        self.diagnostics.start({"detailed_log": True})
+        workspace = os.path.join(self.appdata, "unexported")
+        os.makedirs(workspace, exist_ok=True)
+        book = library.Book(workspace)
+        with self.assertRaises(Exception):
+            export.write_text(
+                book, os.path.join(self.appdata, "no-folder", "out.txt"))
+        self.assertIn("failed", self._text())
 
 
 if __name__ == "__main__":

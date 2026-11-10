@@ -32,7 +32,7 @@ import wave
 import urllib.error
 import urllib.request
 
-from . import export
+from . import api_client, diagnostics, export
 
 # Gemini's prebuilt voices. The names are the API's own; the
 # descriptions are Google's short characterisations, kept so the
@@ -442,29 +442,31 @@ def rate_limit_details(error):
     is worth waiting out, while a daily one will not clear until it
     resets, so retrying is pointless and saying so is kinder than
     trying for several minutes and then failing anyway.
+
+    Returns (delay, quota, daily, unavailable). `unavailable` means
+    the allowance for this voice model is zero rather than spent --
+    a model that needs billing answers a free key that way, and it
+    never comes back, so a reset time would be a lie.
+
+    The reading itself is shared with the page side rather than
+    repeated here: two parsers for one error format drifted apart
+    once already.
     """
     try:
         data = json.loads(error.read().decode("utf-8", "replace"))
     except Exception:
-        return None, None, False
-    delay = None
+        return None, None, False, False
+    message, retry_seconds, daily = api_client.parse_gemini_429(data)
+    delay = (min(300, max(1, int(retry_seconds)))
+             if retry_seconds else None)
     quota = None
-    daily = False
     for detail in (data.get("error") or {}).get("details") or []:
-        value = detail.get("retryDelay")
-        if isinstance(value, str) and value.endswith("s"):
-            try:
-                delay = min(300, max(1, int(float(value[:-1]))))
-            except ValueError:
-                pass
         for violation in detail.get("violations") or []:
             identifier = (violation.get("quotaId")
                           or violation.get("quotaMetric") or "")
             if identifier:
                 quota = identifier
-                if "perday" in identifier.lower().replace("_", ""):
-                    daily = True
-    return delay, quota, daily
+    return delay, quota, daily, api_client.gemini_allowance_is_zero(data)
 
 
 def retry_delay_from(error):
@@ -508,6 +510,7 @@ def _speak_with_retry(speak, text, keys, index, notify=None,
     # spread rather than piled onto the first one.
     position = index % len(keys)
     tried_every_key = False
+    refused = set()
     last = None
     rate_limited = 0
     attempt = 0
@@ -521,6 +524,20 @@ def _speak_with_retry(speak, text, keys, index, notify=None,
             wait = 3 * (attempt + 1)
             attempt += 1
         except urllib.error.HTTPError as error:
+            diagnostics.write("audio", "request refused",
+                              code=error.code, key_position=position + 1,
+                              piece=index + 1)
+            if error.code in (401, 403) and len(keys) > 1 and (
+                    not tried_every_key):
+                # One rejected key should not stop a book: the others
+                # may be fine. Only once they have all refused is this
+                # worth reporting as a key problem.
+                refused.add(position)
+                position = (position + 1) % len(keys)
+                if len(refused) >= len(keys):
+                    tried_every_key = True
+                else:
+                    continue
             if error.code in (400, 401, 403):
                 # A key or model problem: retrying only repeats it.
                 raise SpeechError(
@@ -528,7 +545,12 @@ def _speak_with_retry(speak, text, keys, index, notify=None,
                     "your API key is correct and that it can use the "
                     "chosen voice model.")
             if error.code == 429:
-                asked, quota, daily = rate_limit_details(error)
+                asked, quota, daily, unavailable = rate_limit_details(error)
+                if unavailable:
+                    # Not an allowance that resets, so no reset time.
+                    raise SpeechError(
+                        "This voice model is not available on your API "
+                        "key. Choose another voice model in Settings.")
                 if daily:
                     # A daily allowance does not come back by waiting;
                     # it resets at midnight Pacific time.

@@ -21,9 +21,13 @@ Accessibility notes that shape this file:
     what the key test and the quota messages report by.
 """
 
+import os
+
 import wx
 
-from core import api_client, config
+from core import api_client, config, diagnostics, series
+
+from . import character_bank
 
 from . import keys as keyhelp
 
@@ -206,6 +210,14 @@ class SettingsDialog(wx.Dialog):
             self.settings.get("ask_instructions_before_processing", True)))
         general_sizer.Add(self.ask_instructions, 0, wx.ALL, 6)
 
+        self.ask_character_bank = wx.CheckBox(
+            general_panel,
+            label="&Ask to add characters to the series bank after "
+                  "processing")
+        self.ask_character_bank.SetValue(bool(
+            self.settings.get("ask_character_bank_after_processing", True)))
+        general_sizer.Add(self.ask_character_bank, 0, wx.ALL, 6)
+
         self.panel_labels = wx.CheckBox(
             general_panel,
             label="Show panel &numbers and positions in the reader text")
@@ -215,10 +227,20 @@ class SettingsDialog(wx.Dialog):
 
         self.one_page_converted = wx.CheckBox(
             general_panel,
-            label="Show &one page at a time in the processing window")
+            label="Show one &page at a time in the processing window")
         self.one_page_converted.SetValue(
             bool(self.settings.get("converted_pages_one_page", True)))
         general_sizer.Add(self.one_page_converted, 0, wx.ALL, 6)
+
+        self.detailed_log = wx.CheckBox(
+            general_panel, label="Save a detailed &log")
+        self.detailed_log.SetValue(
+            bool(self.settings.get("detailed_log", False)))
+        general_sizer.Add(self.detailed_log, 0, wx.ALL, 6)
+
+        self.open_logs = wx.Button(general_panel, label="Open the log &folder")
+        self.open_logs.Bind(wx.EVT_BUTTON, self.on_open_logs)
+        general_sizer.Add(self.open_logs, 0, wx.LEFT | wx.BOTTOM, 6)
 
         self.check_updates = wx.CheckBox(
             general_panel,
@@ -235,6 +257,33 @@ class SettingsDialog(wx.Dialog):
 
         general_panel.SetSizer(general_sizer)
         self.notebook.AddPage(general_panel, "General")
+
+        # ----- Character bank tab ------------------------------------------
+        bank_panel = wx.Panel(self.notebook)
+        bank_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        bank_sizer.Add(wx.StaticText(
+            bank_panel,
+            label="&Series with a character bank. Every book in a series "
+                  "uses its bank:"), 0, wx.ALL, 6)
+        self.series_list = wx.ListBox(bank_panel, size=(-1, 150),
+                                      style=wx.LB_SINGLE)
+        bank_sizer.Add(self.series_list, 1,
+                       wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
+
+        for label, handler in (
+                ("&Characters in the selected series...",
+                 self.on_bank_characters),
+                ("&Add a series...", self.on_bank_add),
+                ("Rena&me the selected series...", self.on_bank_rename),
+                ("&Remove the selected series", self.on_bank_remove)):
+            button = wx.Button(bank_panel, label=label)
+            button.Bind(wx.EVT_BUTTON, handler)
+            bank_sizer.Add(button, 0, wx.LEFT | wx.TOP, 6)
+
+        bank_panel.SetSizer(bank_sizer)
+        self.notebook.AddPage(bank_panel, "Character bank")
+        self._show_series()
 
         # ----- OK / Cancel -------------------------------------------------
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -304,6 +353,113 @@ class SettingsDialog(wx.Dialog):
         self.base_url.Enable(needs_url)
         self.preset.Enable(needs_url)
         self.preset.SetSelection(0)
+
+    # ----- character bank ---------------------------------------------
+
+    def _series_names(self):
+        return [item["name"] for item in series.list_series()]
+
+    def _show_series(self, select=None):
+        """Redraw the series list with what each bank holds."""
+        listed = series.list_series()
+        self.series_list.Set([
+            "%s, %d character%s, %d picture%s"
+            % (item["name"], item["characters"],
+               "" if item["characters"] == 1 else "s",
+               item["pictures"], "" if item["pictures"] == 1 else "s")
+            for item in listed])
+        if listed and select is not None:
+            self.series_list.SetSelection(
+                max(0, min(select, len(listed) - 1)))
+
+    def _selected_series(self):
+        index = self.series_list.GetSelection()
+        names = self._series_names()
+        if index == wx.NOT_FOUND or index >= len(names):
+            wx.MessageBox("Choose a series from the list first.",
+                          "Character bank", wx.OK | wx.ICON_INFORMATION,
+                          self)
+            self.series_list.SetFocus()
+            return None
+        return names[index]
+
+    def on_bank_add(self, event):
+        dialog = wx.TextEntryDialog(self, "Series name:", "Add a series")
+        pressed = dialog.ShowModal()
+        name = dialog.GetValue().strip()
+        dialog.Destroy()
+        if pressed != wx.ID_OK or not name:
+            self.series_list.SetFocus()
+            return
+        if series.slug(name) in [series.slug(n)
+                                 for n in self._series_names()]:
+            wx.MessageBox("%s is already here." % name, "Character bank",
+                          wx.OK | wx.ICON_INFORMATION, self)
+            self.series_list.SetFocus()
+            return
+        series.save_series(series.blank_series(name))
+        names = self._series_names()
+        self._show_series(names.index(name) if name in names else 0)
+        self.series_list.SetFocus()
+
+    def on_bank_rename(self, event):
+        name = self._selected_series()
+        if name is None:
+            return
+        dialog = wx.TextEntryDialog(self, "Series name:",
+                                    "Rename a series", name)
+        pressed = dialog.ShowModal()
+        new_name = dialog.GetValue().strip()
+        dialog.Destroy()
+        if pressed != wx.ID_OK or not new_name or new_name == name:
+            self.series_list.SetFocus()
+            return
+        record = series.load_series(name)
+        record["name"] = new_name
+        series.save_series(record)
+        # Renaming moves the folder, so the pictures of the old name
+        # are left behind unless the old record goes with it.
+        if series.slug(new_name) != series.slug(name):
+            series.delete_series(name)
+        names = self._series_names()
+        self._show_series(names.index(new_name) if new_name in names else 0)
+        self.series_list.SetFocus()
+
+    def on_bank_remove(self, event):
+        name = self._selected_series()
+        if name is None:
+            return
+        if wx.MessageBox(
+                "Remove the character bank for %s? The pictures saved "
+                "with it are deleted." % name, "Remove a series",
+                wx.YES_NO | wx.ICON_QUESTION, self) != wx.YES:
+            self.series_list.SetFocus()
+            return
+        index = self.series_list.GetSelection()
+        series.delete_series(name)
+        self._show_series(index)
+        self.series_list.SetFocus()
+
+    def on_bank_characters(self, event):
+        name = self._selected_series()
+        if name is None:
+            return
+        index = self.series_list.GetSelection()
+        dialog = character_bank.CharactersDialog(self, name)
+        dialog.ShowModal()
+        dialog.Destroy()
+        self._show_series(index)
+        self.series_list.SetFocus()
+
+    def on_open_logs(self, event):
+        """Open the folder holding the log files."""
+        folder = diagnostics.logs_dir()
+        try:
+            os.startfile(folder)
+        except Exception:
+            wx.MessageBox("The logs are in %s" % folder, "Log folder",
+                          wx.OK | wx.ICON_INFORMATION, self)
+        self.open_logs.SetFocus()
 
     def on_preset_chosen(self, event):
         index = self.preset.GetSelection()
@@ -552,6 +708,9 @@ class SettingsDialog(wx.Dialog):
         self.settings["reader_view"] = (
             ["book", "page", "panel"][self.reader_view.GetSelection()])
         self.settings["show_panel_labels"] = self.panel_labels.GetValue()
+        self.settings["detailed_log"] = self.detailed_log.GetValue()
+        self.settings["ask_character_bank_after_processing"] = (
+            self.ask_character_bank.GetValue())
         self.settings["ask_instructions_before_processing"] = (
             self.ask_instructions.GetValue())
         self.settings["converted_pages_one_page"] = (
