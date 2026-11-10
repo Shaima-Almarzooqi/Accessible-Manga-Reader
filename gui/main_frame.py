@@ -182,8 +182,7 @@ class MainFrame(wx.Frame):
             wx.ID_ANY, "&Process or resume\tAlt+P"))
         self.Bind(wx.EVT_MENU, self.on_instructions, book_menu.Append(
             wx.ID_ANY, "AI &instructions for this book...\tCtrl+T",
-            "Give the AI extra guidance, like character names and "
-            "descriptions"))
+            "Give the AI any extra instruction to follow for this book"))
         self.Bind(wx.EVT_MENU, self.on_character_bank, book_menu.Append(
             wx.ID_ANY, "Character &bank for this series...",
             "The characters this series shares between its books"))
@@ -532,10 +531,11 @@ class MainFrame(wx.Frame):
         if quiet:
             return "imported", ""
         answer = wx.MessageBox(
-            "Imported %d pages. Process the book now? You will be able "
-            "to give the AI optional instructions first, like character "
-            "names. Processing may take a while; you can cancel and "
-            "resume at any point." % state["count"],
+            "Imported %d pages. Process the book now? You can give the AI "
+            "optional instructions first, such as content to include or "
+            "leave out. Character names and descriptions are kept in the "
+            "character bank. Processing may take a while; you can cancel "
+            "and resume at any point." % state["count"],
             "Import complete", wx.YES_NO | wx.ICON_QUESTION, self)
         if answer == wx.YES:
             self.on_process(None)
@@ -1325,9 +1325,9 @@ class UpdateDialog(wx.Dialog):
 
 class InstructionsDialog(wx.Dialog):
     """Reader-provided guidance the AI receives with every batch of this
-    book: character names and descriptions, name spellings, tone notes,
-    or anything else. Standard multiline editing: Enter inserts a new
-    line; Tab to OK (or Alt+O) to save; Escape cancels.
+    book: content to include or avoid, tone notes, or anything else.
+    Standard multiline editing: Enter inserts a new line; Tab to OK
+    (or Alt+O) to save; Escape cancels.
     """
 
     EXPLANATION = (

@@ -979,6 +979,56 @@ class Test429Parsing(unittest.TestCase):
                  "retryDelay": "47837s"}]}}
         self.assertTrue(api_client.gemini_allowance_is_zero(body))
 
+    def test_a_model_with_zero_allowance_does_not_try_every_key(self):
+        """Zero allowance describes the model tier, not a spent key."""
+        from core import api_client
+
+        body = {"error": {"code": 429, "message": (
+            "Quota exceeded for metric: "
+            "generate_content_free_tier_requests, limit: 0, "
+            "model: gemini-4-argon.")}}
+
+        class FakeResponse:
+            status_code = 429
+            headers = {}
+            text = json.dumps(body)
+
+            def json(self):
+                return body
+
+        real_requests = sys.modules.get("requests")
+        fake = types.ModuleType("requests")
+        calls = []
+
+        def post(*args, **kwargs):
+            calls.append(kwargs["headers"]["x-goog-api-key"])
+            return FakeResponse()
+
+        fake.post = post
+        sys.modules["requests"] = fake
+        try:
+            client = api_client.RotatingClient(
+                api_client.GeminiClient,
+                ["key%d" % number for number in range(1, 7)],
+                "gemini-4-argon")
+            switches = []
+            client.on_key_switch = lambda *args: switches.append(args)
+            with self.assertRaises(api_client.ApiError) as caught:
+                client.request_scripts("system", [])
+        finally:
+            if real_requests is None:
+                sys.modules.pop("requests", None)
+            else:
+                sys.modules["requests"] = real_requests
+
+        self.assertEqual(calls, ["key1"])
+        self.assertEqual(switches, [])
+        self.assertEqual(
+            str(caught.exception),
+            "This model is not available on your API key. "
+            "Choose another model in Settings.")
+        self.assertNotIn("All 6 API keys", str(caught.exception))
+
     def test_a_zero_quota_value_counts_too(self):
         from core import api_client
 
@@ -7955,6 +8005,26 @@ class TestWhatTheReaderSInstructionsClaimToOverride(unittest.TestCase):
     def test_no_instructions_means_no_block(self):
         text = prompts.build_user_text([1], "", book_title="Harbour Lights")
         self.assertNotIn("READER'S INSTRUCTIONS", text)
+
+    def test_the_import_offer_does_not_call_them_character_names(self):
+        source = open(os.path.join("gui", "main_frame.py"),
+                      encoding="utf-8-sig").read()
+        start = source.index('"Imported %d pages.')
+        end = source.index('"Import complete"', start)
+        offer = source[start:end]
+        self.assertIn("content to include or", offer)
+        self.assertIn("character bank", offer)
+        self.assertNotIn("like character", offer)
+
+    def test_the_book_menu_describes_general_instructions(self):
+        source = open(os.path.join("gui", "main_frame.py"),
+                      encoding="utf-8-sig").read()
+        start = source.index('"AI &instructions for this book')
+        end = source.index("self.Bind(wx.EVT_MENU, self.on_character_bank",
+                           start)
+        menu_item = source[start:end]
+        self.assertIn("any extra instruction", menu_item)
+        self.assertNotIn("character names", menu_item)
 
 
 class TestPuttingABookIntoASeries(unittest.TestCase):
