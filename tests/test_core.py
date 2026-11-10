@@ -7476,15 +7476,21 @@ class TestOfferingToSaveCharacters(unittest.TestCase):
         self.assertLess(offer.index("if not found:"),
                         offer.index("SaveToBankDialog"))
 
-    def test_the_series_name_is_suggested_from_the_title(self):
+    def test_the_series_name_is_suggested_for_the_reader(self):
         offer = self.bank[self.bank.index("def offer_to_save"):]
-        self.assertIn("series_name_from_title", offer)
+        self.assertIn("suggested_series_name", offer)
 
     def test_a_book_already_in_a_series_keeps_that_series(self):
-        offer = self.bank[self.bank.index("def offer_to_save"):]
+        from core import series
+
+        class _Book:
+            title = "Riverside Diary v3"
+            source = ""
+            series = "Harbour Lights"
+
         # The book's own series is preferred over a fresh guess.
-        self.assertLess(offer.index('getattr(book, "series", "")'),
-                        offer.index("series_name_from_title"))
+        self.assertEqual(series.suggested_series_name(_Book()),
+                         "Harbour Lights")
 
     def test_the_characters_found_are_shown_before_saving(self):
         self.assertIn("self.characters = wx.ListBox", self.bank)
@@ -7835,6 +7841,198 @@ class TestTheDetailedLog(unittest.TestCase):
             export.write_text(
                 book, os.path.join(self.appdata, "no-folder", "out.txt"))
         self.assertIn("failed", self._text())
+
+
+class TestWorkingOutWhichSeriesABookBelongsTo(unittest.TestCase):
+    """Chapter files are named after the chapter, not the series.
+
+    A book downloaded as "Ch001" tells the app nothing about which
+    series it belongs to. Suggesting that title would file every
+    chapter as a series of its own, and two unrelated series both
+    downloaded as "Ch001" would share one bank, so one series'
+    characters would be used to read the other.
+    """
+
+    def setUp(self):
+        from core import series
+        self.series = series
+
+    class _Book:
+        def __init__(self, title="", source="", series=""):
+            self.title = title
+            self.source = source
+            self.series = series
+
+    def test_a_title_that_is_only_a_chapter_marker_is_recognised(self):
+        for title in ["Ch001", "Vol01", "v03", "Chapter 12", "01",
+                      "Vol. 2", "[Scan] Ch 4", "volume_7", "ep12", ""]:
+            self.assertTrue(
+                self.series.says_nothing_about_the_series(title), title)
+
+    def test_a_real_title_is_not_mistaken_for_a_marker(self):
+        for title in ["Riverside Diary", "Riverside Diary v14 (2012)",
+                      "Chapter of Rain", "Bookshop", "Harbour Lights 2"]:
+            self.assertFalse(
+                self.series.says_nothing_about_the_series(title), title)
+
+    def test_a_named_title_is_still_suggested(self):
+        book = self._Book(title="Riverside Diary v14 (2012)")
+        self.assertEqual(self.series.suggested_series_name(book),
+                         "Riverside Diary")
+
+    def test_a_chapter_file_falls_back_to_its_folder(self):
+        book = self._Book(
+            title="Ch001",
+            source=r"C:\Comics\Riverside Diary\Ch001.cbz")
+        self.assertEqual(self.series.suggested_series_name(book),
+                         "Riverside Diary")
+
+    def test_the_folder_loses_its_own_volume_marker(self):
+        book = self._Book(
+            title="Ch001",
+            source=r"C:\Comics\Riverside Diary v2\Ch001.cbz")
+        self.assertEqual(self.series.suggested_series_name(book),
+                         "Riverside Diary")
+
+    def test_a_batch_of_images_is_read_from_the_first_path(self):
+        book = self._Book(
+            title="Ch001",
+            source=(r"C:\Comics\Harbour Lights\a.jpg|"
+                    r"C:\Comics\Harbour Lights\b.jpg"))
+        self.assertEqual(self.series.suggested_series_name(book),
+                         "Harbour Lights")
+
+    def test_forward_slashes_work_the_same_way(self):
+        book = self._Book(title="Ch001",
+                          source="/comics/Harbour Lights/Ch001.cbz")
+        self.assertEqual(self.series.suggested_series_name(book),
+                         "Harbour Lights")
+
+    def test_nothing_is_suggested_when_the_folder_says_nothing_either(self):
+        book = self._Book(title="Vol01",
+                          source=r"C:\Comics\Ch001\Vol01.cbz")
+        self.assertEqual(self.series.suggested_series_name(book), "")
+
+    def test_nothing_is_suggested_when_there_is_no_source(self):
+        self.assertEqual(
+            self.series.suggested_series_name(self._Book(title="Ch002")), "")
+
+    def test_two_chapter_files_from_different_series_stay_apart(self):
+        first = self._Book(title="Ch001",
+                           source=r"C:\Comics\Riverside Diary\Ch001.cbz")
+        second = self._Book(title="Ch001",
+                            source=r"C:\Comics\Harbour Lights\Ch001.cbz")
+        self.assertNotEqual(self.series.suggested_series_name(first),
+                            self.series.suggested_series_name(second))
+        self.assertNotEqual(
+            self.series.slug(self.series.suggested_series_name(first)),
+            self.series.slug(self.series.suggested_series_name(second)))
+
+    def test_the_book_s_own_series_wins_over_any_guess(self):
+        book = self._Book(title="Ch001",
+                          source=r"C:\Comics\Riverside Diary\Ch001.cbz",
+                          series="Harbour Lights")
+        self.assertEqual(self.series.suggested_series_name(book),
+                         "Harbour Lights")
+
+
+class TestWhatTheReaderSInstructionsClaimToOverride(unittest.TestCase):
+    """The instructions box is for anything the reader wants done.
+
+    It used to tell the model that the instructions outranked its own
+    identification of characters. With reference pictures in the bank,
+    that wording pointed the model at the weaker signal.
+    """
+
+    def test_the_instructions_are_sent_as_a_general_override(self):
+        text = prompts.build_user_text(
+            [1], "", book_title="Harbour Lights",
+            user_instructions="Leave out the margin notes.")
+        self.assertIn("READER'S INSTRUCTIONS", text)
+        self.assertIn("Leave out the margin notes.", text)
+        self.assertNotIn("character names", text)
+
+    def test_no_instructions_means_no_block(self):
+        text = prompts.build_user_text([1], "", book_title="Harbour Lights")
+        self.assertNotIn("READER'S INSTRUCTIONS", text)
+
+
+class TestPuttingABookIntoASeries(unittest.TestCase):
+    """Attaching a book to a bank, from either end.
+
+    A bank does nothing until a book points at it, and a series name
+    typed slightly differently each time is how one series becomes
+    two banks. So the series already saved are offered to pick from,
+    and the whole library can be ticked off from the bank itself.
+    """
+
+    def setUp(self):
+        self.bank = open(os.path.join("gui", "character_bank.py"),
+                         encoding="utf-8-sig").read()
+        self.frame = open(os.path.join("gui", "main_frame.py"),
+                          encoding="utf-8-sig").read()
+        self.settings = open(os.path.join("gui", "settings_dialog.py"),
+                             encoding="utf-8-sig").read()
+
+    def test_the_saved_series_are_offered_to_choose_from(self):
+        dialog = self.bank[self.bank.index("class ChooseSeriesDialog"):]
+        self.assertIn("series.list_series()", dialog)
+        self.assertIn("wx.ListBox", dialog)
+
+    def test_a_new_name_can_still_be_typed(self):
+        dialog = self.bank[self.bank.index("class ChooseSeriesDialog"):]
+        self.assertIn("new series name", dialog)
+        self.assertIn("wx.TextCtrl", dialog)
+
+    def test_the_book_menu_offers_the_list_instead_of_a_bare_box(self):
+        handler = self.frame[self.frame.index("def on_character_bank"):]
+        handler = handler[:handler.index("def on_instructions")]
+        self.assertIn("character_bank.choose_series", handler)
+        self.assertNotIn("wx.TextEntryDialog", handler)
+
+    def test_a_suggestion_that_names_a_saved_series_selects_it(self):
+        from core import series
+        names = ["Riverside Diary", "Harbour Lights"]
+        self.assertEqual(series.index_of_series(names, "riverside diary!"), 0)
+        self.assertEqual(series.index_of_series(names, "Harbour Lights"), 1)
+        self.assertIsNone(series.index_of_series(names, "Something Else"))
+        self.assertIsNone(series.index_of_series(names, ""))
+        dialog = self.bank[self.bank.index("class ChooseSeriesDialog"):]
+        self.assertIn("index_of_series", dialog)
+
+    def test_two_spellings_of_one_series_are_treated_as_one(self):
+        from core import series
+        self.assertTrue(series.same_series("Riverside Diary",
+                                           "riverside diary"))
+        self.assertFalse(series.same_series("Riverside Diary",
+                                            "Harbour Lights"))
+        self.assertFalse(series.same_series("", "Riverside Diary"))
+
+    def test_the_bank_tab_can_list_the_books_in_a_series(self):
+        self.assertIn("on_bank_books", self.settings)
+        self.assertIn("Books in the selected series", self.settings)
+        self.assertIn("character_bank.BooksDialog", self.settings)
+
+    def test_the_books_dialog_ticks_off_the_whole_library(self):
+        dialog = self.bank[self.bank.index("class BooksDialog"):]
+        self.assertIn("library.list_books()", dialog)
+        self.assertIn("wx.CheckListBox", dialog)
+
+    def test_a_book_already_in_another_series_says_so(self):
+        dialog = self.bank[self.bank.index("class BooksDialog"):]
+        entry = dialog[dialog.index("def _entry"):]
+        self.assertIn('"%s, in %s"', entry)
+
+    def test_unticking_only_clears_this_series(self):
+        dialog = self.bank[self.bank.index("class BooksDialog"):]
+        on_ok = dialog[dialog.index("def on_ok"):]
+        self.assertIn("same_series(current, self.series_name)", on_ok)
+        self.assertIn('book.series = ""', on_ok)
+
+    def test_settings_reloads_the_books_it_may_have_moved(self):
+        handler = self.frame[self.frame.index("def on_settings"):]
+        handler = handler[:handler.index("def ", 10)]
+        self.assertIn("refresh_books", handler)
 
 
 if __name__ == "__main__":

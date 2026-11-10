@@ -20,7 +20,7 @@ import shutil
 
 import wx
 
-from core import series
+from core import library, series
 
 from . import keys as keyhelp
 
@@ -382,6 +382,149 @@ class SaveToBankDialog(wx.Dialog):
         event.Skip()
 
 
+class ChooseSeriesDialog(wx.Dialog):
+    """Which series a book belongs to: one already saved, or a new one.
+
+    Typing the name every time is how one series ends up as two
+    banks, so the series already saved are offered first and the box
+    is for a name that is not among them.
+    """
+
+    def __init__(self, parent, suggested=""):
+        super().__init__(parent, title="Character bank")
+        self.series_name = ""
+        self.names = [item["name"] for item in series.list_series()]
+
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(panel, label="&Series this book belongs to:"),
+                  0, wx.ALL, 8)
+        self.choices = wx.ListBox(panel, size=(360, 150),
+                                  style=wx.LB_SINGLE, choices=self.names)
+        sizer.Add(self.choices, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+
+        sizer.Add(wx.StaticText(panel, label="Or type a &new series name:"),
+                  0, wx.LEFT | wx.TOP, 8)
+        self.typed = wx.TextCtrl(panel, size=(360, -1))
+        sizer.Add(self.typed, 0, wx.EXPAND | wx.ALL, 8)
+
+        # A suggestion that names a series already saved selects it
+        # rather than filling the box, so accepting the dialog adds
+        # the book to that bank instead of starting another one.
+        chosen = series.index_of_series(self.names, suggested)
+        if chosen is not None:
+            self.choices.SetSelection(chosen)
+            self.choices.SetFocus()
+        else:
+            self.typed.SetValue(suggested)
+            self.typed.SetFocus()
+
+        buttons = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
+        sizer.Add(buttons, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
+        panel.SetSizer(sizer)
+        sizer.SetSizeHints(self)
+        self.Bind(wx.EVT_BUTTON, self.on_ok, id=wx.ID_OK)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+
+    def on_ok(self, event):
+        typed = self.typed.GetValue().strip()
+        index = self.choices.GetSelection()
+        if typed:
+            self.series_name = typed
+        elif index != wx.NOT_FOUND and index < len(self.names):
+            self.series_name = self.names[index]
+        else:
+            wx.MessageBox("Choose a series or type a name.",
+                          "Character bank", wx.OK | wx.ICON_INFORMATION,
+                          self)
+            self.choices.SetFocus()
+            return
+        self.EndModal(wx.ID_OK)
+
+    def on_char_hook(self, event):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        if keyhelp.consume_arrow_navigation(event, wx.Window.FindFocus()):
+            return
+        event.Skip()
+
+
+def choose_series(parent, book):
+    """Ask which series a book belongs to. Returns "" when cancelled."""
+    dialog = ChooseSeriesDialog(parent, series.suggested_series_name(book))
+    try:
+        if dialog.ShowModal() != wx.ID_OK:
+            return ""
+        return dialog.series_name
+    finally:
+        dialog.Destroy()
+
+
+class BooksDialog(wx.Dialog):
+    """Which books belong to one series, ticked off in a list.
+
+    A bank built by hand does nothing until a book points at it, and
+    the Book menu asks one book at a time. Here the whole library is
+    listed, so a series can be assembled where it was created.
+    """
+
+    def __init__(self, parent, series_name):
+        super().__init__(parent, title="Books in %s" % series_name)
+        self.series_name = series_name
+        self.books = library.list_books()
+
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(
+            panel, label="&Books in %s:" % series_name), 0, wx.ALL, 8)
+        self.list = wx.CheckListBox(
+            panel, size=(420, 220),
+            choices=[self._entry(book) for book in self.books])
+        sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        for index, book in enumerate(self.books):
+            if series.same_series(getattr(book, "series", ""), series_name):
+                self.list.Check(index)
+
+        buttons = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
+        sizer.Add(buttons, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
+        panel.SetSizer(sizer)
+        sizer.SetSizeHints(self)
+        self.Bind(wx.EVT_BUTTON, self.on_ok, id=wx.ID_OK)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        self.list.SetFocus()
+
+    def _entry(self, book):
+        """One line per book, saying where it belongs now.
+
+        A book already in another series is said so here, because
+        ticking it moves it, and that is worth seeing first.
+        """
+        title = book.title or "Untitled"
+        current = (getattr(book, "series", "") or "").strip()
+        if current and not series.same_series(current, self.series_name):
+            return "%s, in %s" % (title, current)
+        return title
+
+    def on_ok(self, event):
+        for index, book in enumerate(self.books):
+            current = (getattr(book, "series", "") or "").strip()
+            if self.list.IsChecked(index):
+                if current != self.series_name:
+                    book.series = self.series_name
+                    book.save()
+            elif current and series.same_series(current, self.series_name):
+                book.series = ""
+                book.save()
+        self.EndModal(wx.ID_OK)
+
+    def on_char_hook(self, event):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+            return
+        event.Skip()
+
+
 def offer_to_save(parent, book):
     """Ask whether this book's characters should join its series bank.
 
@@ -392,8 +535,7 @@ def offer_to_save(parent, book):
     found = series.notes_from_text(book.character_notes)
     if not found:
         return False
-    suggested = (getattr(book, "series", "")
-                 or series.series_name_from_title(book.title))
+    suggested = series.suggested_series_name(book)
     dialog = SaveToBankDialog(parent, book, suggested, found)
     try:
         if dialog.ShowModal() != wx.ID_OK:

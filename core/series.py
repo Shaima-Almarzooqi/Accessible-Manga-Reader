@@ -42,6 +42,21 @@ _BOOK_MARKERS = re.compile(
 _TRAILING_JUNK = re.compile(r"[\s\-–—_,:;.]+$")
 _UNSAFE = re.compile(r"[^A-Za-z0-9]+")
 
+# A title that is nothing but a volume or chapter marker: "Ch001",
+# "Vol01", "Chapter 12", "[Scan] v3", "01". Files downloaded a chapter
+# at a time are named this way, and the title then says nothing about
+# which series the book belongs to.
+_ONLY_A_MARKER = re.compile(
+    r"""(?ix)
+    ^(?:
+        (?:v|vol|volume|ch|chapter|part|pt|book|episode|ep|
+           raw|scan|digital|batch)
+      | \#
+      | \d+
+      | [\s\-\u2013\u2014_,:;.\[\](){}]+
+    )*$
+    """)
+
 MAX_PICTURES_PER_CHARACTER = 6
 
 
@@ -62,6 +77,50 @@ def series_name_from_title(title):
         name = trimmed
     name = name.strip()
     return name or (title or "").strip()
+
+
+def says_nothing_about_the_series(title):
+    """True when a title is only a volume or chapter marker.
+
+    "Ch001" and "Vol01" name the book, not the series. Suggesting
+    them would file every chapter as its own series, and -- worse --
+    two unrelated series downloaded the same way would share one
+    bank, so one series' characters would be used to read the other.
+    """
+    return not _ONLY_A_MARKER.sub("", (title or "").strip())
+
+
+def series_name_from_source(source):
+    """The series name the file's own folder suggests, or "".
+
+    A chapter file almost always sits in a folder named after the
+    series, which is the only other thing the app knows about where
+    the book came from. Several paths joined together (a batch of
+    images) are read from the first one; they share a folder.
+    """
+    path = (source or "").split("|")[0].strip()
+    if not path:
+        return ""
+    folder = os.path.dirname(path.replace("\\", "/").rstrip("/"))
+    name = series_name_from_title(os.path.basename(folder))
+    return "" if says_nothing_about_the_series(name) else name
+
+
+def suggested_series_name(book):
+    """What to offer as this book's series, or "" to offer nothing.
+
+    The title comes first. When the title is only a chapter marker
+    the folder the book came from is tried instead, and when that
+    says nothing either the reader is left to type the name: an empty
+    box is better than a wrong name that looks right enough to accept.
+    """
+    existing = (getattr(book, "series", "") or "").strip()
+    if existing:
+        return existing
+    title = getattr(book, "title", "") or ""
+    if not says_nothing_about_the_series(title):
+        return series_name_from_title(title)
+    return series_name_from_source(getattr(book, "source", ""))
 
 
 def slug(name):
@@ -90,6 +149,26 @@ def slug(name):
         return "series"
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:10]
     return "%s-%s" % (cleaned, digest) if cleaned else "series-%s" % digest
+
+
+def same_series(one, other):
+    """True when two spellings mean the same series.
+
+    Spelling, case and punctuation are forgiven here exactly as they
+    are when a bank is filed, so "riverside diary" and "Riverside
+    Diary" are never two banks.
+    """
+    return bool(one) and bool(other) and slug(one) == slug(other)
+
+
+def index_of_series(names, wanted):
+    """Where `wanted` sits in `names`, ignoring spelling, or None."""
+    if not wanted:
+        return None
+    for index, name in enumerate(names):
+        if same_series(name, wanted):
+            return index
+    return None
 
 
 def series_dir():

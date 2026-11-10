@@ -750,13 +750,8 @@ class MainFrame(wx.Frame):
             return
         name = getattr(book, "series", "")
         if not name:
-            dialog = wx.TextEntryDialog(
-                self, "Series name:", "Character bank",
-                series.series_name_from_title(book.title))
-            pressed = dialog.ShowModal()
-            name = dialog.GetValue().strip()
-            dialog.Destroy()
-            if pressed != wx.ID_OK or not name:
+            name = character_bank.choose_series(self, book)
+            if not name:
                 self.book_list.SetFocus()
                 return
             book.series = name
@@ -907,6 +902,10 @@ class MainFrame(wx.Frame):
             # that is happening now.
             diagnostics.start(self.settings)
         dialog.Destroy()
+        # Settings can move books between series, so the books held
+        # here are reloaded rather than left to overwrite that with
+        # what they were when the dialog opened.
+        self.refresh_books(select_book=self._selected_book())
 
     def on_about(self, event):
         wx.MessageBox(
@@ -1333,14 +1332,14 @@ class InstructionsDialog(wx.Dialog):
 
     EXPLANATION = (
         "These instructions are sent to the AI with every batch of "
-        "pages for this book. Most useful: character names with brief "
-        "descriptions, for example: 'Aiko: short dark hair, school "
-        "uniform, the class representative. Kenta: messy hair, always "
-        "late.' The AI will use these names from the very first page "
-        "instead of guessing. Note: instructions only affect pages "
-        "processed from now on. To apply them to an already processed "
-        "book, use Save and reprocess (also available as Reprocess "
-        "entire book in the Book menu).")
+        "pages for this book. Use them for anything you want the AI "
+        "to do or avoid, for example: 'This volume is a flashback, so "
+        "the narrator is the younger brother.' or 'Leave out the "
+        "author's notes in the margins.' Character names are kept in "
+        "the character bank, not here. Note: instructions only affect "
+        "pages processed from now on. To apply them to an already "
+        "processed book, use Save and reprocess (also available as "
+        "Reprocess entire book in the Book menu).")
 
     def __init__(self, parent, book, before_processing=False):
         title = ("AI instructions before processing %s"

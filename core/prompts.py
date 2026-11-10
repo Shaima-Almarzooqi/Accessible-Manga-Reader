@@ -698,9 +698,9 @@ def build_user_text(page_numbers, character_notes, book_title="",
         parts.append(f"Book: {book_title}")
     if user_instructions.strip():
         parts.append(
-            "READER'S INSTRUCTIONS for this book (follow them; they "
-            "override your own guesses, especially for character names "
-            "and identification):\n" + user_instructions.strip())
+            "READER'S INSTRUCTIONS for this book. Follow them. They "
+            "override your own judgement about how to write the "
+            "script:\n" + user_instructions.strip())
     parts.append(
         f"You are given {len(page_numbers)} page image(s), in order: "
         f"pages {pages_list}. Produce EXACTLY {len(page_numbers)} page "

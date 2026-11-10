@@ -27,6 +27,13 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - Settings has a Character bank tab for managing series, characters and
   pictures, and the Book menu has Character bank for this series.
 - Settings has Ask to add characters to the series bank after processing.
+- When a book's title is only a chapter or volume number, the series name
+  is taken from the folder the book came from, and is left blank when
+  neither says which series it is.
+- Character bank for this series offers the series already saved to choose
+  from, as well as a box for a new name.
+- The Character bank tab has Books in the selected series, which lists the
+  library so books can be ticked into and out of that series.
 - Settings has Save a detailed log, which records what the app does while
   processing, reading aloud, exporting and managing books, for working out
   why something failed. It is off until it is turned on, and API keys are
@@ -54,6 +61,8 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
 - Audio export moves to the next API key when one is rejected.
 - Show one page at a time in the processing window is now Alt+P, so it no
   longer shares a key with Output language.
+- The AI instructions box is described as being for any instruction, and
+  character names are kept in the character bank.
 
 ### Fixed
 

@@ -274,6 +274,7 @@ class SettingsDialog(wx.Dialog):
         for label, handler in (
                 ("&Characters in the selected series...",
                  self.on_bank_characters),
+                ("&Books in the selected series...", self.on_bank_books),
                 ("&Add a series...", self.on_bank_add),
                 ("Rena&me the selected series...", self.on_bank_rename),
                 ("&Remove the selected series", self.on_bank_remove)):
@@ -382,6 +383,17 @@ class SettingsDialog(wx.Dialog):
             self.series_list.SetFocus()
             return None
         return names[index]
+
+    def on_bank_books(self, event):
+        name = self._selected_series()
+        if name is None:
+            return
+        index = self.series_list.GetSelection()
+        dialog = character_bank.BooksDialog(self, name)
+        dialog.ShowModal()
+        dialog.Destroy()
+        self._show_series(index)
+        self.series_list.SetFocus()
 
     def on_bank_add(self, event):
         dialog = wx.TextEntryDialog(self, "Series name:", "Add a series")

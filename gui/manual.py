@@ -128,9 +128,10 @@ mark.</p>
 <ol>
 <li>Select the book in the library.</li>
 <li>Press Alt+P.</li>
-<li>Enter optional instructions for this book. Character names and brief
-identifying details can improve speaker attribution. Leave the box empty
-if no instructions are needed.</li>
+<li>Enter any optional instruction you want the AI to follow for this book,
+such as "Leave out the author's notes in the margins." Character names and
+descriptions belong in the character bank. Leave the box empty if no
+instructions are needed.</li>
 <li>Select Save and process.</li>
 </ol>
 <p>Turn off Ask for AI instructions before processing a book in Settings
@@ -158,18 +159,25 @@ be renamed, deleted, reprocessed, or cleared with Free up space.</p>
 rather than one book. Later volumes in that series start with the cast that
 has already been saved.</p>
 <p>When processing finishes, the app suggests a series name from the book's
-title. Confirm the name or edit it before adding the book's characters. Turn
-off Ask to add characters to the series bank after processing in Settings if
-you do not want this offer.</p>
+title. If the title is only a chapter or volume number, it uses the name of
+the folder the book came from. If neither provides a series name, the box is
+left blank for you to fill in. Confirm the name or edit it before adding the
+book's characters. Turn off Ask to add characters to the series bank after
+processing in Settings if you do not want this offer.</p>
 <p>Each character can have a name, a description, and reference pictures
 taken from pages in your books. Each picture also has a description. This is
 the text read when checking that the picture belongs to the right character,
 and a picture can be removed from the bank.</p>
 <p>A character's name can be changed. The name you enter is the name used in
 scripts for books in that series.</p>
+<p>For a book that has not joined a series, Character bank for this series in
+the Book menu lists the series already saved. Choose one of them or type a
+new series name.</p>
 <p>Use the Character bank tab in Settings to manage series, characters, and
-pictures. For the selected book, Character bank for this series in the Book
-menu opens its bank.</p>
+pictures. Books in the selected series lists every book in the library, with
+the books in that series ticked. Tick a book to add it to the series, or
+untick it to remove it. A book that belongs to another series is shown with
+that series' name.</p>
 <p>Reference pictures are stored on the computer and sent with every request
 while a book in the series is processed. A book with a character bank uses
 more of the API allowance than a book without one.</p>
@@ -206,8 +214,8 @@ removed with Free up space.</p>
 <h3>Speaker attribution</h3>
 <p>The AI uses speech-bubble tails and the conventions of the selected
 comic type to identify speakers. Attribution can still be incorrect on
-crowded or unclear pages. Book instructions with character names and
-identifying features can improve the result.</p>
+crowded or unclear pages. A character bank can improve the result by giving
+the AI names, descriptions, and reference pictures.</p>
 <p>Use Ctrl+Q to ask about a questionable line. Use Ctrl+R to replace the
 processed text for a page.</p>
 

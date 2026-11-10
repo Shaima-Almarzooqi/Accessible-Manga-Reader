@@ -49,7 +49,7 @@ Books are listed alphabetically until you reorder them. Use Ctrl+, to move a sel
 
 Press Ctrl+M, or use the Book or context menu, to mark a selected book as finished reading. The mark is shown in the book's library line and can be cleared with the same command.
 
-Select the book and press Alt+P to process it. Before processing, you can enter book-specific instructions, such as character names and identifying features. This prompt can be disabled in Settings.
+Select the book and press Alt+P to process it. Before processing, you can enter any instruction you want the AI to follow for that book, such as "Leave out the author's notes in the margins." Character names and descriptions belong in the character bank. The instruction prompt can be disabled in Settings.
 
 Pages are processed in batches. The app saves each completed batch, so a cancelled or interrupted job can continue later. A partially processed book can be read while the remaining pages are processed.
 
@@ -57,11 +57,13 @@ After processing, choose **Read now**, press Enter on the book in the library, o
 
 ## Character bank
 
-A character bank keeps a series' cast separately from any one book, so later volumes start with the names and descriptions already saved. When processing finishes, the app suggests a series name from the book title. Confirm or edit the name to add the book to that series. The offer can be turned off in Settings.
+A character bank keeps a series' cast separately from any one book, so later volumes start with the names and descriptions already saved. When processing finishes, the app suggests a series name from the book title. If the title is only a chapter or volume number, it uses the name of the folder the book came from. If neither provides a series name, the box is left blank for you to fill in. Confirm or edit the name to add the book to that series. The offer can be turned off in Settings.
 
 Each character can have a name, a description, and reference pictures taken from pages in your books. Every picture has a description so it can be checked without seeing the image, and pictures can be removed. If you change a character's name, scripts use the name you entered.
 
-Manage banks from the **Character bank** tab in Settings, or choose **Character bank for this series** from the Book menu. Reference pictures are stored on the computer and sent with every processing request for a book in that series, so a book with a bank uses more of the API allowance than one without.
+For a book that has not joined a series, choose **Character bank for this series** from the Book menu to select a series already saved or type a new name. On the **Character bank** tab in Settings, **Books in the selected series** lists every book in the library. Books in that series are ticked; ticking a book adds it, and unticking it removes it. A book in another series is shown with that series' name.
+
+Reference pictures are stored on the computer and sent with every processing request for a book in that series, so a book with a bank uses more of the API allowance than one without.
 
 ## Reading modes
 
