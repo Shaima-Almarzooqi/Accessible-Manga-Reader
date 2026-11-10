@@ -961,6 +961,60 @@ class Test429Parsing(unittest.TestCase):
         _message, _retry, is_daily = api_client.parse_gemini_429(body)
         self.assertFalse(is_daily)
 
+    def test_a_model_the_key_cannot_use_is_not_a_daily_quota(self):
+        """A paid-only model answers a free-tier key with "limit: 0".
+
+        That allowance never refills, so telling a reader it resets
+        overnight sends them round the same loop every day.
+        """
+        from core import api_client
+
+        body = {"error": {"code": 429, "message": (
+            "Quota exceeded for metric: "
+            "generativelanguage.googleapis.com/"
+            "generate_content_free_tier_requests, limit: 0, "
+            "model: gemini-4-argon, description: Generate content "
+            "requests per day limit exceeded on Free Tier."), "details": [
+                {"@type": "type.googleapis.com/google.rpc.RetryInfo",
+                 "retryDelay": "47837s"}]}}
+        self.assertTrue(api_client.gemini_allowance_is_zero(body))
+
+    def test_a_zero_quota_value_counts_too(self):
+        from core import api_client
+
+        body = {"error": {"code": 429, "message": "Quota exceeded.",
+                          "details": [{
+                              "@type": "type.googleapis.com/"
+                                       "google.rpc.QuotaFailure",
+                              "violations": [{"quotaValue": "0",
+                                              "description": "no allowance"}]
+                          }]}}
+        self.assertTrue(api_client.gemini_allowance_is_zero(body))
+
+    def test_an_ordinary_daily_quota_is_not_mistaken_for_zero(self):
+        # limit: 250 is a real allowance that has been spent, and it
+        # does reset overnight.
+        from core import api_client
+
+        body = {"error": {"code": 429, "message": (
+            "Quota exceeded for metric: "
+            "generate_content_free_tier_requests, limit: 250, "
+            "model: gemini-3.6-flash, description: Generate content "
+            "requests per day limit exceeded on Free Tier.")}}
+        self.assertFalse(api_client.gemini_allowance_is_zero(body))
+        self.assertTrue(api_client.parse_gemini_429(body)[2])
+
+    def test_a_limit_that_merely_starts_with_zero_is_not_zero(self):
+        from core import api_client
+
+        body = {"error": {"code": 429,
+                          "message": "Quota exceeded, limit: 0.5"}}
+        self.assertFalse(api_client.gemini_allowance_is_zero(body))
+
+    def test_empty_body_has_no_zero_allowance(self):
+        from core import api_client
+        self.assertFalse(api_client.gemini_allowance_is_zero({}))
+
     def test_gemini_empty_body_is_safe(self):
         from core import api_client
         message, retry_seconds, is_daily = api_client.parse_gemini_429({})

@@ -117,6 +117,26 @@ def readable_error(response):
     return response.text[:300]
 
 
+def gemini_allowance_is_zero(body_json):
+    """True when a 429 says this key's allowance for the model is zero.
+
+    A model that needs billing reports "limit: 0" to a free-tier key.
+    That is not a quota that resets overnight: waiting changes
+    nothing, so reporting a reset time would send a reader round the
+    same loop every day.
+    """
+    error = (body_json or {}).get("error", {})
+    texts = [error.get("message", "") or ""]
+    for detail in error.get("details", []):
+        if detail.get("@type", "").endswith("QuotaFailure"):
+            for violation in detail.get("violations", []):
+                texts.append(violation.get("description", "") or "")
+                value = violation.get("quotaValue")
+                if value is not None and str(value).strip() == "0":
+                    return True
+    return bool(re.search(r"limit:\s*0(?![.\d])", " ".join(texts)))
+
+
 def parse_gemini_429(body_json):
     """Interpret a Gemini 429 body.
 
@@ -426,6 +446,13 @@ class GeminiClient(_RetryMixin):
                 except ValueError:
                     body = {}
                 message, retry_seconds, is_daily = parse_gemini_429(body)
+                if gemini_allowance_is_zero(body):
+                    # Not a quota that resets, so no reset time is
+                    # given: this key cannot use this model at all.
+                    raise ApiError(
+                        "This model is not available on your API key. "
+                        "Choose another model in Settings.",
+                        key_exhausted=True)
                 if is_daily:
                     raise ApiError(
                         "Gemini's daily free-tier quota for this model is "

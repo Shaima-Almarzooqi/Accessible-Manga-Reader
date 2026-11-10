@@ -49,6 +49,8 @@ Notable changes to Accessible Manga Reader are listed below, newest first.
   projects add capacity even when they belong to the same account.
 - Settings asks for an endpoint URL only when that service has API keys saved,
   so an unused service can be cleared.
+- A model that an API key cannot use is reported as unavailable instead of as
+  a daily quota that will reset.
 - Refresh model list orders models by version number, so a version such
   as 3.10 appears above 3.9.
 - Scripts use the selected output language throughout, including labels for
